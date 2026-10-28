@@ -9,11 +9,11 @@ AI エージェントが人の代わりに取引をするとき、その取引�
 
 | 順 | 知りたいこと | 読む文書 |
 |---|---|---|
-| 1 | 伝えたいこと（3 つの確認）、AI で難しくなること、例えと題材を選んだ理由 | [purpose.md](docs/purpose.md) |
+| 1 | AI に任せる関係が窓口と同じ形であること、確かめる 3 つ、電子の仕組みで崩れること | [purpose.md](docs/purpose.md) |
 | 2 | 保険の窓口が、3 つの確認をどう行っているか | [domain.md](docs/domain.md) |
 | 3 | AI が営業員を担う構成で、3 つの確認をどう行うか。標準仕様と検証項目 | [architecture.md](docs/architecture.md) |
 | 4 | 実装の技術スタック、フォルダ構成、動かし方 | [implementation.md](docs/implementation.md) |
-| 5 | 確認を省いた実装と、確認する実装の比較（17 シナリオ） | [scenarios.md](docs/scenarios.md) |
+| 5 | 確認を省いた実装と、確認する実装の比較（21 シナリオ） | [scenarios.md](docs/scenarios.md) |
 | 随時 | 用語の意味 | [glossary.md](docs/glossary.md) |
 | 付録 | 窓口の調査と設計の根拠、事実と出典 | [research/](docs/research/findings.md) |
 
@@ -25,4 +25,4 @@ npm install
 npm test
 ```
 
-期待する結果: `57 passed`。全シナリオで、悪い実装は攻撃を通し、良い実装は拒否する。サービスの起動と環境変数は、[implementation.md](docs/implementation.md) にある。
+期待する結果: `93 passed`。全シナリオで、悪い実装では被害が出て、良い実装では出ない。サービスの起動と環境変数は、[implementation.md](docs/implementation.md) にある。

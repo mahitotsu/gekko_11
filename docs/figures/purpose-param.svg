@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 752 376" width="752" height="376" role="img" aria-labelledby="t d">
+<title id="t">「顧客 A の申込みです」を、営業 AI エージェントの言い分のまま受け取る設計</title><desc id="d">顧客が営業 AI エージェントに申込みを任せる。営業 AI エージェントは、事務サービスへの依頼の「顧客」の欄に「顧客 A」と書いて送る。この値は営業 AI エージェントの言い分でしかなく、事務サービスは本当かを確かめられないまま、保険会社のシステムに入力する。営業 AI エージェントが「顧客 B」と書けば、顧客 B の申込みとして入力される。</desc>
+<style>
+  svg { font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  .bg { fill: #fcfcfb; } .ink { fill: #0b0b0b; } .ink2 { fill: #52514e; } .ink3 { fill: #898781; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis { stroke: #c3c2b7; stroke-width: 1; }
+  .box { fill: #ffffff; stroke: #c3c2b7; stroke-width: 1; } .grp { fill: #f4f3f0; stroke: #e1e0d9; stroke-width: 1; } .track { fill: #e1e0d9; }
+  .k1 { fill: #e8f0fb; stroke: #2a78d6; stroke-width: 1.5; } .k2 { fill: #fdeee7; stroke: #eb6834; stroke-width: 1.5; }
+  .kadd { fill: #e6f6ef; stroke: #1baf7a; stroke-width: 1.5; } .krem { fill: #fdeceb; stroke: #e34948; stroke-width: 1.5; stroke-dasharray: 5 3; }
+  .line { stroke: #52514e; stroke-width: 1.5; fill: none; } .dash { stroke: #9a9992; stroke-width: 1; stroke-dasharray: 4 3; fill: none; } .head { fill: #52514e; }
+  .ladd { stroke: #1baf7a; stroke-width: 2; fill: none; } .lrem { stroke: #e34948; stroke-width: 1.5; stroke-dasharray: 5 3; fill: none; } .hadd { fill: #1baf7a; } .hrem { fill: #e34948; }
+  .l1, .l2, .l3, .lg { stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; } .l1 { stroke: #2a78d6; } .l2 { stroke: #eb6834; } .l3 { stroke: #1baf7a; } .lg { stroke: #898781; }
+  .link { stroke: #c3c2b7; stroke-width: 3; stroke-linecap: round; } .ring { stroke: #fcfcfb; stroke-width: 2; } .mark { stroke: #0b0b0b; stroke-width: 1.5; } .today { stroke: #0b0b0b; stroke-width: 1.5; }
+  .s1 { fill: #2a78d6; } .s2 { fill: #eb6834; } .s3 { fill: #1baf7a; } .s4 { fill: #eda100; } .s5 { fill: #e87ba4; } .gray { fill: #898781; } .onfill { fill: #0b0b0b; }
+  .h1 { fill: #cde2fb; } .h2 { fill: #86b6ef; } .h3 { fill: #3987e5; } .h4 { fill: #1c5cab; } .h5 { fill: #0d366b; }
+  .t1, .t2, .t3 { fill: #0b0b0b; } .t4, .t5 { fill: #ffffff; }
+  .ok { fill: #0ca30c; } .warn { fill: #fab219; } .bad { fill: #d03b3b; } .glyph { stroke: #ffffff; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1a19; } .ink { fill: #f0efec; } .ink2 { fill: #c3c2b7; } .ink3 { fill: #898781; } .grid { stroke: #2c2c2a; } .axis { stroke: #383835; }
+    .box { fill: #242422; stroke: #4a4a46; } .grp { fill: #20201f; stroke: #2c2c2a; } .track { fill: #2c2c2a; }
+    .k1 { fill: #17263a; stroke: #3987e5; } .k2 { fill: #3a2218; stroke: #d95926; }
+    .kadd { fill: #12281f; stroke: #199e70; } .krem { fill: #3a1c1c; stroke: #e66767; }
+    .line { stroke: #c3c2b7; } .dash { stroke: #7a7972; } .head { fill: #c3c2b7; }
+    .ladd { stroke: #199e70; } .lrem { stroke: #e66767; } .hadd { fill: #199e70; } .hrem { fill: #e66767; }
+    .l1 { stroke: #3987e5; } .l2 { stroke: #d95926; } .l3 { stroke: #199e70; }
+    .link { stroke: #5a5a55; } .ring { stroke: #1a1a19; } .mark { stroke: #f0efec; } .today { stroke: #f0efec; }
+    .s1 { fill: #3987e5; } .s2 { fill: #d95926; } .s3 { fill: #199e70; } .s4 { fill: #c98500; } .s5 { fill: #d55181; }
+    .h1 { fill: #0d366b; } .h2 { fill: #184f95; } .h3 { fill: #256abf; } .h4 { fill: #3987e5; } .h5 { fill: #9ec5f4; }
+    .t1, .t2, .t3 { fill: #f0efec; } .t4, .t5 { fill: #0b0b0b; }
+  }
+</style>
+<rect class="bg" width="752" height="376"/>
+<line class="dash" x1="76" x2="76" y1="60" y2="338"/><line class="dash" x1="276" x2="276" y1="60" y2="338"/><line class="dash" x1="476" x2="476" y1="60" y2="338"/><line class="dash" x1="676" x2="676" y1="60" y2="338"/><rect class="box" x="24" y="16" width="104" height="44" rx="6"/><text x="76" y="34" class="ink" font-size="12" text-anchor="middle" font-weight="600">顧客</text><text x="76" y="50" class="ink2" font-size="11" text-anchor="middle" font-weight="400">本人</text><rect class="k1" x="224" y="16" width="104" height="44" rx="6"/><text x="276" y="34" class="ink" font-size="12" text-anchor="middle" font-weight="600">営業 AI</text><text x="276" y="50" class="ink2" font-size="11" text-anchor="middle" font-weight="400">エージェント</text><rect class="box" x="424" y="16" width="104" height="44" rx="6"/><text x="476" y="34" class="ink" font-size="12" text-anchor="middle" font-weight="600">事務</text><text x="476" y="50" class="ink2" font-size="11" text-anchor="middle" font-weight="400">サービス</text><rect class="box" x="624" y="16" width="104" height="44" rx="6"/><text x="676" y="34" class="ink" font-size="12" text-anchor="middle" font-weight="600">保険会社の</text><text x="676" y="50" class="ink2" font-size="11" text-anchor="middle" font-weight="400">システム</text><polyline class="line" points="78,90 274,90"/><polygon class="head" points="274,90 266.6,86.9 266.6,93.1"/><text x="176" y="83" class="ink" font-size="12" text-anchor="middle" font-weight="400">ログインして、申込みを任せる</text><polyline class="line" points="278,130 474,130"/><polygon class="head" points="474,130 466.6,126.9 466.6,133.1"/><text x="376" y="123" class="ink" font-size="12" text-anchor="middle" font-weight="400">顧客を書いた欄で申込みを送る</text><rect class="grp" x="241.2" y="156" width="269.7" height="26" rx="4"/><text x="376" y="174" class="ink2" font-size="11" text-anchor="middle" font-weight="400">欄の「顧客 A」は、営業 AI エージェントの言い分</text><rect class="grp" x="405.5" y="196" width="141" height="26" rx="4"/><text x="476" y="214" class="ink2" font-size="11" text-anchor="middle" font-weight="400">本当かを確かめられない</text><polyline class="line" points="478,250 674,250"/><polygon class="head" points="674,250 666.6,246.9 666.6,253.1"/><text x="576" y="243" class="ink" font-size="12" text-anchor="middle" font-weight="400">申込みを、システムに入力する</text><rect class="grp" x="268" y="276" width="416" height="26" rx="4"/><text x="476" y="294" class="ink2" font-size="11" text-anchor="middle" font-weight="400">「顧客 B」と書けば、顧客 B の申込みとして入力される</text><text x="24" y="366" class="ink2" font-size="11" text-anchor="start" font-weight="400">確かめる要件が設計から抜けても、欄に値が入っていれば、普段どおりに動く。</text>
+</svg>

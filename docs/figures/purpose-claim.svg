@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 368" width="720" height="368" role="img" aria-labelledby="t d">
+<title id="t">「顧客 A の申込み」を、言い分のまま渡す設計と、証明から読む設計</title><desc id="d">言い分のまま渡す設計では、営業 AI エージェントが「顧客 A」を事務サービスの受け付ける項目に書いて送る。事務サービスは、その値が本当かを確かめられない。証明から読む設計では、保険会社が顧客本人を確かめて、署名つきの証明を発行する。営業 AI エージェントはそれを運ぶだけで、事務サービスは署名を確かめてから、証明から顧客 A を読む。</desc>
+<style>
+  svg { font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  .bg { fill: #fcfcfb; } .ink { fill: #0b0b0b; } .ink2 { fill: #52514e; } .ink3 { fill: #898781; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis { stroke: #c3c2b7; stroke-width: 1; }
+  .box { fill: #ffffff; stroke: #c3c2b7; stroke-width: 1; } .grp { fill: #f4f3f0; stroke: #e1e0d9; stroke-width: 1; } .track { fill: #e1e0d9; }
+  .k1 { fill: #e8f0fb; stroke: #2a78d6; stroke-width: 1.5; } .k2 { fill: #fdeee7; stroke: #eb6834; stroke-width: 1.5; }
+  .kadd { fill: #e6f6ef; stroke: #1baf7a; stroke-width: 1.5; } .krem { fill: #fdeceb; stroke: #e34948; stroke-width: 1.5; stroke-dasharray: 5 3; }
+  .line { stroke: #52514e; stroke-width: 1.5; fill: none; } .dash { stroke: #9a9992; stroke-width: 1; stroke-dasharray: 4 3; fill: none; } .head { fill: #52514e; }
+  .ladd { stroke: #1baf7a; stroke-width: 2; fill: none; } .lrem { stroke: #e34948; stroke-width: 1.5; stroke-dasharray: 5 3; fill: none; } .hadd { fill: #1baf7a; } .hrem { fill: #e34948; }
+  .l1, .l2, .l3, .lg { stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; } .l1 { stroke: #2a78d6; } .l2 { stroke: #eb6834; } .l3 { stroke: #1baf7a; } .lg { stroke: #898781; }
+  .link { stroke: #c3c2b7; stroke-width: 3; stroke-linecap: round; } .ring { stroke: #fcfcfb; stroke-width: 2; } .mark { stroke: #0b0b0b; stroke-width: 1.5; } .today { stroke: #0b0b0b; stroke-width: 1.5; }
+  .s1 { fill: #2a78d6; } .s2 { fill: #eb6834; } .s3 { fill: #1baf7a; } .s4 { fill: #eda100; } .s5 { fill: #e87ba4; } .gray { fill: #898781; } .onfill { fill: #0b0b0b; }
+  .h1 { fill: #cde2fb; } .h2 { fill: #86b6ef; } .h3 { fill: #3987e5; } .h4 { fill: #1c5cab; } .h5 { fill: #0d366b; }
+  .t1, .t2, .t3 { fill: #0b0b0b; } .t4, .t5 { fill: #ffffff; }
+  .ok { fill: #0ca30c; } .warn { fill: #fab219; } .bad { fill: #d03b3b; } .glyph { stroke: #ffffff; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1a19; } .ink { fill: #f0efec; } .ink2 { fill: #c3c2b7; } .ink3 { fill: #898781; } .grid { stroke: #2c2c2a; } .axis { stroke: #383835; }
+    .box { fill: #242422; stroke: #4a4a46; } .grp { fill: #20201f; stroke: #2c2c2a; } .track { fill: #2c2c2a; }
+    .k1 { fill: #17263a; stroke: #3987e5; } .k2 { fill: #3a2218; stroke: #d95926; }
+    .kadd { fill: #12281f; stroke: #199e70; } .krem { fill: #3a1c1c; stroke: #e66767; }
+    .line { stroke: #c3c2b7; } .dash { stroke: #7a7972; } .head { fill: #c3c2b7; }
+    .ladd { stroke: #199e70; } .lrem { stroke: #e66767; } .hadd { fill: #199e70; } .hrem { fill: #e66767; }
+    .l1 { stroke: #3987e5; } .l2 { stroke: #d95926; } .l3 { stroke: #199e70; }
+    .link { stroke: #5a5a55; } .ring { stroke: #1a1a19; } .mark { stroke: #f0efec; } .today { stroke: #f0efec; }
+    .s1 { fill: #3987e5; } .s2 { fill: #d95926; } .s3 { fill: #199e70; } .s4 { fill: #c98500; } .s5 { fill: #d55181; }
+    .h1 { fill: #0d366b; } .h2 { fill: #184f95; } .h3 { fill: #256abf; } .h4 { fill: #3987e5; } .h5 { fill: #9ec5f4; }
+    .t1, .t2, .t3 { fill: #f0efec; } .t4, .t5 { fill: #0b0b0b; }
+  }
+</style>
+<rect class="bg" width="720" height="368"/>
+<g transform="translate(60.5,20)"><rect class="grp" x="0" y="110" width="188" height="200" rx="8"/><text x="10" y="128" class="ink2" font-size="11" text-anchor="start" font-weight="600">言い分のまま渡す設計</text><rect class="grp" x="424" y="0" width="175" height="310" rx="8"/><text x="434" y="18" class="ink2" font-size="11" text-anchor="start" font-weight="600">証明から読む設計</text><polyline class="line" points="94,186 94,244"/><polygon class="head" points="94,244 97.1,236.6 90.9,236.6"/><polyline class="line" points="511.5,76 511.5,134"/><polygon class="head" points="511.5,134 514.6,126.6 508.4,126.6"/><polyline class="line" points="511.5,186 511.5,244"/><polygon class="head" points="511.5,244 514.6,236.6 508.4,236.6"/><rect class="k1" x="20.5" y="134" width="147" height="52" rx="6"/><text x="94" y="156" class="ink" font-size="12" text-anchor="middle" font-weight="600">営業 AI エージェント</text><text x="94" y="172" class="ink2" font-size="11" text-anchor="middle" font-weight="400">代理人</text><rect class="box" x="14" y="244" width="160" height="52" rx="6"/><text x="94" y="266" class="ink" font-size="12" text-anchor="middle" font-weight="600">事務サービス</text><text x="94" y="282" class="ink2" font-size="11" text-anchor="middle" font-weight="400">値の真偽を確かめられない</text><rect class="box" x="448" y="24" width="127" height="52" rx="6"/><text x="511.5" y="46" class="ink" font-size="12" text-anchor="middle" font-weight="600">保険会社</text><text x="511.5" y="62" class="ink2" font-size="11" text-anchor="middle" font-weight="400">顧客本人を確かめる</text><rect class="k1" x="438" y="134" width="147" height="52" rx="6"/><text x="511.5" y="156" class="ink" font-size="12" text-anchor="middle" font-weight="600">営業 AI エージェント</text><text x="511.5" y="172" class="ink2" font-size="11" text-anchor="middle" font-weight="400">代理人</text><rect class="box" x="448" y="244" width="127" height="52" rx="6"/><text x="511.5" y="266" class="ink" font-size="12" text-anchor="middle" font-weight="600">事務サービス</text><text x="511.5" y="282" class="ink2" font-size="11" text-anchor="middle" font-weight="400">署名を確かめて読む</text><rect class="bg" x="33.8" y="206.5" width="120.4" height="17"/><text x="94" y="218.5" class="ink2" font-size="11" text-anchor="middle" font-weight="400">「顧客 A です」と書く</text><rect class="bg" x="469" y="96.5" width="85" height="17"/><text x="511.5" y="108.5" class="ink2" font-size="11" text-anchor="middle" font-weight="400">署名つきの証明</text><rect class="bg" x="480" y="206.5" width="63" height="17"/><text x="511.5" y="218.5" class="ink2" font-size="11" text-anchor="middle" font-weight="400">証明を運ぶ</text></g><text x="20" y="350" class="ink2" font-size="11" text-anchor="start" font-weight="400">左では「顧客 A」は代理人の言い分にすぎない。右では、代理人が変えられない証明から読む。</text>
+</svg>

@@ -26,7 +26,7 @@ export interface BackendConfig {
   trustFromUser: boolean; // ツール引数の for_user を信じる(本人が消える実装)
   offers: "verify" | "none"; // 案が、保険会社の署名つきの提示に含まれるか
   chain: "verify" | "none"; // 意向確認と申込みの署名の連鎖
-  range: "rar" | "none"; // 取決め(扱える保険の種類、給付額の上限)との照合
+  range: "rar" | "none"; // 取決め(scope、扱える保険の種類、給付額の上限)との照合
   registration: "introspect" | "none"; // トークンを取り次いだ営業員(AI)の登録の有効性
   nonce: "once" | "none"; // 申込みは一度だけ
   insured: "required" | "none"; // 別人が被保険者なら、その人の署名

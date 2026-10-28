@@ -5,7 +5,7 @@
   "participants": [
     { "id": "app", "name": "顧客のアプリ", "sub": "署名する" },
     { "id": "agent", "name": "営業員（AI）", "sub": "案を選び、運ぶ", "cls": "k1" },
-    { "id": "mcp", "name": "MCP", "sub": "窓口の道具" },
+    { "id": "mcp", "name": "MCP", "sub": "事務の受付" },
     { "id": "auth", "name": "認可サーバー", "sub": "トークンを発行する" },
     { "id": "back", "name": "バックエンド", "sub": "検証して記録する" }
   ],

@@ -178,16 +178,14 @@ export function createApp() {
     // 7. 取決め(扱える保険の種類、給付額の上限)との照合
     if (serviceTicket) {
       skipped("取決めとの照合");
-    } else {
+    } else if (config.range === "rar") {
       if (!ticket.scope?.split(" ").includes("apply")) return reject("取決め(scope)", "apply が許されていません");
-      if (config.range === "rar") {
-        const terms = ticket.authorization_details?.[0];
-        if (!terms) return reject("取決め(RAR)", "取決めがありません");
-        if (!terms.kinds.includes(application.plan.kind)) return reject("扱える保険の種類", `${application.plan.kind} は取決めの範囲外です`);
-        if (application.plan.benefit > terms.maxBenefit) return reject("給付額の上限以内", `${application.plan.benefit} 円は上限 ${terms.maxBenefit} 円を超えています`);
-        pass("取決めの範囲内");
-      } else skipped("取決めの範囲内");
-    }
+      const terms = ticket.authorization_details?.[0];
+      if (!terms) return reject("取決め(RAR)", "取決めがありません");
+      if (!terms.kinds.includes(application.plan.kind)) return reject("扱える保険の種類", `${application.plan.kind} は取決めの範囲外です`);
+      if (application.plan.benefit > terms.maxBenefit) return reject("給付額の上限以内", `${application.plan.benefit} 円は上限 ${terms.maxBenefit} 円を超えています`);
+      pass("取決めの範囲内");
+    } else skipped("取決め(scope と RAR)の範囲内");
 
     // 8. 一度しか受け付けない
     const n = nonces.get(application.nonce);

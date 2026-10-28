@@ -51,7 +51,7 @@ scripts/dev.ts       5 つのサービスをまとめて起動する
 | `packages/insurer-backend/src/verify/seal.ts` | 署名の検証 |
 | `packages/insurer-backend/src/app.ts` | 申込みの検証と、2 段の署名の連鎖 |
 | `packages/insurer-mcp/src/core-ticket.ts` | バックエンドを呼ぶトークンの用意。悪い実装を含む |
-| `test/scenarios.test.ts` | 17 シナリオと基本の流れ |
+| `test/scenarios.test.ts` | 21 シナリオと基本の流れ |
 
 ## 3. サービスは固定ポートで動き、環境変数で設定する
 | サービス | ポート | 環境変数 |
@@ -66,7 +66,7 @@ scripts/dev.ts       5 つのサービスをまとめて起動する
 
 ```sh
 npm install
-npm test               # 期待する結果: 57 passed
+npm test               # 期待する結果: 93 passed
 cp .env.example .env   # Claude を使うなら CLAUDE_CODE_OAUTH_TOKEN を貼る
 npm run dev            # 5 つのサービスが起動する
 ```
