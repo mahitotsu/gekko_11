@@ -17,7 +17,7 @@ export const customers: Record<string, { contact: string }> = {
   mallory: { contact: `${urls.customerApp}/notices?customer=mallory` },
 };
 
-// 提示の署名鍵。保険会社の鍵で、票の発行元(認可サーバー)の鍵とは別にする。
+// 提示の署名鍵。保険会社の鍵で、トークンの発行元(認可サーバー)の鍵とは別にする。
 const { publicKey, privateKey } = await generateKeyPair("ES256");
 export const offerKid = "offer-key-1";
 export const offerKey = { publicKey, privateKey };

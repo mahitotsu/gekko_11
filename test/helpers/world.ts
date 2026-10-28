@@ -58,7 +58,7 @@ export interface Submission {
   insuredAssertion?: any;
 }
 
-// 顧客の側: ログイン → パスキーの登録 → 取次ぎの範囲に同意して票をもらう → 案を選んで署名する
+// 顧客の側: ログイン → パスキーの登録 → 取次ぎの範囲に同意してトークンをもらう → 案を選んで署名する
 export class Customer {
   cookie = "";
   auth = new SoftAuthenticator();
@@ -82,7 +82,7 @@ export class Customer {
     if (!res.ok) throw new Error(`パスキーの登録に失敗: ${await res.text()}`);
     return this;
   }
-  // 認可コードフロー(PKCE + RAR)で票をもらう
+  // 認可コードフロー(PKCE + RAR)でトークンをもらう
   async tokens(terms: InsuranceTerms[] = TERMS): Promise<{ access_token: string; id_token: string }> {
     const verifier = randomBytes(32).toString("base64url");
     const redirectUri = `${urls.customerApp}/callback`;
@@ -126,7 +126,7 @@ export class Customer {
   }
 }
 
-// 営業員(台本): 顧客の票を替えてもらい、MCP の道具を呼ぶ。
+// 営業員(台本): 顧客のトークンを替えてもらい、MCP の道具を呼ぶ。
 // 「乗っ取られた AI」を模すので、渡された値を好きなように書き換えられる。
 export async function exchange(client: "sales-agent" | "insurer-mcp", subjectToken: string, audience: string, extra: Record<string, string> = {}) {
   const res = await fetch(`${urls.insurerAuth}/token`, {

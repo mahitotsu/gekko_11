@@ -30,8 +30,8 @@ function buildServer(incoming: string, ticket: Ticket) {
       bt = await ticketForBackend(incoming, ticket);
     } catch (e) {
       const msg = (e as Error).message;
-      await emit({ actor, mode: mode(), action: `${action}(事務センターに出す票を用意できない)`, ticket: view(ticket),
-        checks: [{ name: "事務センター宛ての票を受け取る", ok: false, detail: msg }], outcome: "rejected" });
+      await emit({ actor, mode: mode(), action: `${action}(事務センターに出すトークンを用意できない)`, ticket: view(ticket),
+        checks: [{ name: "事務センター宛てのトークンを受け取る", ok: false, detail: msg }], outcome: "rejected" });
       return text({ error: msg }, true);
     }
     const res = await fetch(`${urls.insurerBackend}${path}`, {
@@ -83,10 +83,10 @@ export function createApp() {
       ticket = await verifyIncoming(token);
     } catch (e) {
       const msg = e instanceof VerifyError ? e.message : (e as Error).message;
-      await emit({ actor, mode: mode(), action: "票を受け取る", checks: [{ name: "替えた票の検証", ok: false, detail: msg }], outcome: "rejected" });
+      await emit({ actor, mode: mode(), action: "トークンを受け取る", checks: [{ name: "替えたトークンの検証", ok: false, detail: msg }], outcome: "rejected" });
       return c.json({ error: msg }, 401);
     }
-    await emit({ actor, mode: mode(), action: "票を受け取る", ticket: view(ticket),
+    await emit({ actor, mode: mode(), action: "トークンを受け取る", ticket: view(ticket),
       checks: [{ name: "署名・期限", ok: true }, { name: "宛先(aud)が MCP である", ok: true, detail: config.incoming === "good" ? undefined : "⚠ この項目は確認していません" }], outcome: "ok" });
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     await buildServer(token, ticket).connect(transport);

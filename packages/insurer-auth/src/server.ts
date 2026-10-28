@@ -1,6 +1,6 @@
 // 保険会社の認可サーバー(教材用の簡易版。本番では使わないこと)。
-// 本人確認、票の発行(認可コード + PKCE + RAR)、票の替え(token exchange)、
-// 営業員(AI)の登録と失効、票の有効性の問い合わせと失効、パスキーの登録を担当する。
+// 本人確認、トークンの発行(認可コード + PKCE + RAR)、トークンの替え(token exchange)、
+// 営業員(AI)の登録と失効、トークンの有効性の問い合わせと失効、パスキーの登録を担当する。
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
@@ -115,7 +115,7 @@ app.get("/internal/passkeys/:user", (c) => {
   return c.json(list);
 });
 
-// ---- 営業員(AI)の登録 (RFC 7591 の最小形)。登録を外すと、新しい票を出さず、出した票も無効になる ----
+// ---- 営業員(AI)の登録 (RFC 7591 の最小形)。登録を外すと、新しいトークンを出さず、出したトークンも無効になる ----
 app.post("/register", async (c) => {
   if (c.req.header("x-internal-key") !== INTERNAL_KEY) return c.text("forbidden", 403);
   const b = (await c.req.json()) as { client_id: string; client_name: string };
@@ -132,7 +132,7 @@ app.post("/admin/clients/:id/revoke", (c) => {
   return c.json({ client_id: c.req.param("id"), revoked: true });
 });
 
-// ---- 票の発行(認可コードフロー + PKCE + RAR) ----
+// ---- トークンの発行(認可コードフロー + PKCE + RAR) ----
 app.get("/authorize", (c) => {
   const q = c.req.query();
   const client = clients[q.client_id ?? ""];
@@ -171,7 +171,7 @@ app.post("/authorize/approve", async (c) => {
   return c.redirect(u.toString());
 });
 
-// ---- /token: 営業員向けの票(authorization_code) / 替えた票(token-exchange) / 窓口自身の票(client_credentials) ----
+// ---- /token: 営業員向けのトークン(authorization_code) / 替えたトークン(token-exchange) / 窓口自身のトークン(client_credentials) ----
 // 窓口ごとに渡せる先。
 const EXCHANGE = { "sales-agent": audiences.mcp, "insurer-mcp": audiences.backend } as const;
 const OWN_AUD = { "sales-agent": audiences.sales, "insurer-mcp": audiences.mcp } as const;
@@ -231,7 +231,7 @@ app.post("/token", async (c) => {
     let subject: Ticket;
     try { subject = await verifyTicketGood(f.subject_token ?? "", OWN_AUD[client as Exchanger]); }
     catch (e) { return err("invalid_grant", e instanceof VerifyError ? e.message : "subject_token が不正です"); }
-    if (subject.jti && revokedJti.has(subject.jti)) return err("invalid_grant", "失効した票です");
+    if (subject.jti && revokedJti.has(subject.jti)) return err("invalid_grant", "失効したトークンです");
     const terms = narrow(subject.authorization_details, f.authorization_details ? JSON.parse(f.authorization_details) : undefined);
     const token = await issue({
       sub: subject.sub, aud: target, clientId: client, scope: subject.scope ?? "", terms,
@@ -242,7 +242,7 @@ app.post("/token", async (c) => {
   }
 
   if (f.grant_type === "client_credentials") {
-    // 窓口自身の資格で票をもらう。利用者(sub)は含まれない。悪い実装の再現に使う。
+    // 窓口自身の資格でトークンをもらう。利用者(sub)は含まれない。悪い実装の再現に使う。
     const target = EXCHANGE[client as Exchanger];
     if (!target) return err("invalid_target", "宛先がありません");
     const token = await issue({ sub: client, aud: target, clientId: client, scope: "service" });
@@ -251,7 +251,7 @@ app.post("/token", async (c) => {
   return err("unsupported_grant_type", String(f.grant_type));
 });
 
-// ---- 票の失効 (RFC 7009) と有効性の問い合わせ (RFC 7662) ----
+// ---- トークンの失効 (RFC 7009) と有効性の問い合わせ (RFC 7662) ----
 async function parseOwn(token: string) {
   try {
     const { payload } = await jwtVerify(token, publicKey, { algorithms: ["ES256"], issuer: ISSUER });
@@ -263,7 +263,7 @@ app.post("/revoke", async (c) => {
   if (!authClient(c, f)) return c.json({ error: "invalid_client" }, 401);
   const t = await parseOwn(f.token ?? "");
   if (t?.jti) revokedJti.add(t.jti);
-  return c.body(null, 200); // 票が不明でも 200 を返す(RFC 7009)
+  return c.body(null, 200); // トークンが不明でも 200 を返す(RFC 7009)
 });
 app.post("/introspect", async (c) => {
   const f = (await c.req.parseBody()) as Record<string, string>;
@@ -271,7 +271,7 @@ app.post("/introspect", async (c) => {
   if (!caller) return c.json({ error: "invalid_client" }, 401);
   const t = await parseOwn(f.token ?? "");
   if (!t) return c.json({ active: false });
-  // 取り次いだ窓口(act の連鎖)と、票を取ったクライアントが、全て登録されていて有効か。
+  // 取り次いだ窓口(act の連鎖)と、トークンを取ったクライアントが、全て登録されていて有効か。
   const chain: string[] = [];
   for (let a = t.act; a; a = a.act) chain.push(a.sub);
   if (t.client_id) chain.push(t.client_id);

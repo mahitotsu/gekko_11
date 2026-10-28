@@ -13,7 +13,7 @@ export const users: Record<string, UserRec> = {
   mallory: { name: "Mallory(本人確認が済んでいない顧客)" },
 };
 
-// クライアント。customer-app は公開クライアント(PKCE)、他は秘密を持つ。登録を外す(revoked)と、新しい票を出さない。
+// クライアント。customer-app は公開クライアント(PKCE)、他は秘密を持つ。登録を外す(revoked)と、新しいトークンを出さない。
 export interface ClientRec { secret?: string; redirectUris: string[]; name: string; revoked?: boolean }
 const initialClients = (): Record<string, ClientRec> => ({
   "customer-app": { name: "顧客のアプリ", redirectUris: ["http://localhost:4000/callback"] },
@@ -32,7 +32,7 @@ export interface Passkey {
 export const passkeys = new Map<string, Passkey[]>(); // user -> パスキー
 export const sessions = new Map<string, string>(); // cookie -> user
 export const challenges = new Map<string, string>(); // user -> 登録中の challenge
-export const revokedJti = new Set<string>(); // 失効させた票
+export const revokedJti = new Set<string>(); // 失効させたトークン
 
 export interface AuthCode {
   user: string;

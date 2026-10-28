@@ -1,5 +1,5 @@
 // 教材のための意図的に悪い実装を含む。本番の部品として使わないこと。
-// 事務センター(保険会社のバックエンド) = 最後の砦。票と申込みを照合してから契約を記録し、顧客へ直接通知する。
+// 事務センター(保険会社のバックエンド) = 最後の砦。トークンと申込みを照合してから契約を記録し、顧客へ直接通知する。
 import { Hono } from "hono";
 import {
   actChain, bearer, canonical, challengeOf, emit, modeOf, offerSetId, signOfferSet, verifyOfferSet, VerifyError,
@@ -43,11 +43,11 @@ export function createApp() {
   const actor = "事務センター";
   const mode = () => (isGood() ? "good" : "bad");
 
-  // 票を検証して返す。失敗したら理由つきでイベントを出す。
+  // トークンを検証して返す。失敗したら理由つきでイベントを出す。
   async function authenticate(header: string | undefined, action: string) {
     let token: string;
     try { token = bearer(header); } catch (e) {
-      await emit({ actor, mode: mode(), action, checks: [{ name: "票が付いている", ok: false, detail: (e as Error).message }], outcome: "rejected" });
+      await emit({ actor, mode: mode(), action, checks: [{ name: "トークンが付いている", ok: false, detail: (e as Error).message }], outcome: "rejected" });
       return { error: (e as Error).message };
     }
     try {
@@ -56,12 +56,12 @@ export function createApp() {
         name: c.name, ok: true, detail: c.on ? undefined : "⚠ この項目は確認していません" })) };
     } catch (e) {
       const msg = e instanceof VerifyError ? e.message : String(e);
-      await emit({ actor, mode: mode(), action, checks: [{ name: "票の検証", ok: false, detail: msg }], outcome: "rejected" });
+      await emit({ actor, mode: mode(), action, checks: [{ name: "トークンの検証", ok: false, detail: msg }], outcome: "rejected" });
       return { error: msg };
     }
   }
 
-  // 「誰の契約か」は票の sub から決める。悪い実装は、窓口が言う for_user をそのまま信じる。
+  // 「誰の契約か」はトークンの sub から決める。悪い実装は、窓口が言う for_user をそのまま信じる。
   const customerOf = (t: Ticket, forUser?: string) => (config.trustFromUser && forUser ? forUser : t.sub);
 
   app.get("/offers-jwks.json", (c) => c.json({ keys: [offerJwk] }));
@@ -73,8 +73,8 @@ export function createApp() {
     const body = (await c.req.json().catch(() => ({}))) as { for_user?: string };
     const customer = customerOf(a.ticket, body.for_user);
     if (!customers[customer]) {
-      await emit({ actor, mode: mode(), action: "提示の取得", ticket: ticketView(a.ticket), checks: [...a.checks, { name: "票の利用者本人が顧客である", ok: false, detail: `sub=${a.ticket.sub} は顧客ではありません` }], outcome: "rejected" });
-      return c.json({ error: "利用者本人の票ではありません" }, 403);
+      await emit({ actor, mode: mode(), action: "提示の取得", ticket: ticketView(a.ticket), checks: [...a.checks, { name: "トークンの利用者本人が顧客である", ok: false, detail: `sub=${a.ticket.sub} は顧客ではありません` }], outcome: "rejected" });
+      return c.json({ error: "利用者本人のトークンではありません" }, 403);
     }
     const set: OfferSet = { customer, plans: catalog };
     const nonce = randomUUID();
@@ -90,7 +90,7 @@ export function createApp() {
     const a = await authenticate(c.req.header("authorization"), "契約の照会");
     if (!a.ticket) return c.json({ error: a.error }, 401);
     const customer = customerOf(a.ticket, c.req.query("for_user"));
-    if (!customers[customer]) return c.json({ error: "利用者本人の票ではありません" }, 403);
+    if (!customers[customer]) return c.json({ error: "利用者本人のトークンではありません" }, 403);
     return c.json({ contracts: contracts.filter((r) => r.contract.customer === customer).map((r) => r.contract) });
   });
 
@@ -111,26 +111,26 @@ export function createApp() {
     const pass = (name: string, detail?: string) => checks.push({ name, ok: true, detail });
     const skipped = (name: string) => checks.push({ name, ok: true, detail: "⚠ この項目は確認していません" });
 
-    // 窓口自身の票(sub が顧客ではない)を内部の信頼できる呼び出しとみなす悪い実装がある。
+    // 窓口自身のトークン(sub が顧客ではない)を内部の信頼できる呼び出しとみなす悪い実装がある。
     const serviceTicket = config.trustFromUser && !customers[ticket.sub];
     const customer = serviceTicket ? application.customer : ticket.sub;
-    if (!customers[customer]) return reject("票の利用者本人が顧客である", `sub=${ticket.sub} は顧客ではありません`);
-    if (application.customer !== customer) return reject("申込みの契約者が票の本人", `${application.customer} は ${customer} ではありません`);
+    if (!customers[customer]) return reject("トークンの利用者本人が顧客である", `sub=${ticket.sub} は顧客ではありません`);
+    if (application.customer !== customer) return reject("申込みの契約者がトークンの本人", `${application.customer} は ${customer} ではありません`);
 
-    // 1. 票を取り次いだ営業員(AI)が、今も登録されているか
+    // 1. トークンを取り次いだ営業員(AI)が、今も登録されているか
     if (config.registration === "introspect") {
       const r = await fetch(`${urls.insurerAuth}/introspect`, {
         method: "POST", headers: { authorization: INTROSPECT_AUTH, "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ token: a.token }),
       });
-      if (!((await r.json()) as { active?: boolean }).active) return reject("取り次いだ営業員(AI)の登録が有効", "票が無効か、登録が外れています");
+      if (!((await r.json()) as { active?: boolean }).active) return reject("取り次いだ営業員(AI)の登録が有効", "トークンが無効か、登録が外れています");
       pass("取り次いだ営業員(AI)の登録が有効");
     } else skipped("取り次いだ営業員(AI)の登録が有効");
 
-    // 2. 本人確認が済んでいるか。確認済みの属性は、票から取る。
+    // 2. 本人確認が済んでいるか。確認済みの属性は、トークンから取る。
     const claims = config.identity === "token" ? ticket.verified_claims : (body.verified_claims ?? ticket.verified_claims);
     if (!claims?.verification?.method) return reject("本人確認が済んでいる", "確認済みの属性がありません");
-    if (config.identity === "token") pass("本人確認が済んでいる(票の属性)", `${claims.verification.method}`);
+    if (config.identity === "token") pass("本人確認が済んでいる(トークンの属性)", `${claims.verification.method}`);
     else checks.push({ name: "本人確認が済んでいる", ok: true, detail: "⚠ 営業員の申告を信じています" });
 
     // 3. 案が、保険会社の署名つきの提示に含まれるか

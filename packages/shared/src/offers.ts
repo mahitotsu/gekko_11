@@ -17,7 +17,7 @@ export const offerSetId = (set: OfferSet) => challengeOf(set);
 type SignKey = Parameters<SignJWT["sign"]>[0];
 type VerifyKey = Parameters<typeof jwtVerify>[1];
 
-// 保険会社が、顧客に示す案の一式に署名する。typ を offer+jwt にして、票(at+jwt)と取り違えられないようにする。
+// 保険会社が、顧客に示す案の一式に署名する。typ を offer+jwt にして、トークン(at+jwt)と取り違えられないようにする。
 export function signOfferSet(key: SignKey, kid: string, set: OfferSet, nonce: string, ttlSec = 600): Promise<string> {
   return new SignJWT({ customer: set.customer, plans: set.plans, offerSetId: offerSetId(set), nonce })
     .setProtectedHeader({ alg: "ES256", kid, typ: OFFER_TYP })

@@ -4,12 +4,12 @@ import { modeOf } from "@gekko/shared";
 // 事務センターの検証の仕方。悪い側は、何を省くと何が起きるかを見せるための実装。
 // 環境変数で選ぶ。INSURER_MODE_BACKEND=bad にすると、全項目が悪い側になる。
 
-// 票の検証(宛先、期限、署名、種類)
+// トークンの検証(宛先、期限、署名、種類)
 export type TicketCheck =
   | "good" // 署名・iss・aud・期限・typ を全て見る
-  | "no-aud" // 宛先を見ない(別の窓口宛ての票が通る)
+  | "no-aud" // 宛先を見ない(別の窓口宛てのトークンが通る)
   | "no-exp" // 期限を見ない
-  | "no-typ" // typ を見ない(別の用途の票が通る)
+  | "no-typ" // typ を見ない(別の用途のトークンが通る)
   | "no-signature" // 署名を見ない(alg=none や偽造が通る)
   | "signature-only"; // 署名だけ見る(悪い実装の標準)
 
@@ -27,10 +27,10 @@ export interface BackendConfig {
   offers: "verify" | "none"; // 案が、保険会社の署名つきの提示に含まれるか
   chain: "verify" | "none"; // 意向確認と申込みの署名の連鎖
   range: "rar" | "none"; // 取決め(扱える保険の種類、給付額の上限)との照合
-  registration: "introspect" | "none"; // 票を取り次いだ営業員(AI)の登録の有効性
+  registration: "introspect" | "none"; // トークンを取り次いだ営業員(AI)の登録の有効性
   nonce: "once" | "none"; // 申込みは一度だけ
   insured: "required" | "none"; // 別人が被保険者なら、その人の署名
-  identity: "token" | "agent-claim"; // 本人確認の済んだ属性を、票から取るか、営業員の申告から取るか
+  identity: "token" | "agent-claim"; // 本人確認の済んだ属性を、トークンから取るか、営業員の申告から取るか
   ingest: "derive" | "manual"; // 契約の記録を、署名済み申込から導出するか、人が入力するか
   notify: "registered" | "from-application"; // 通知先を、登録済みの連絡先にするか、申込みに書かれた連絡先にするか
 }

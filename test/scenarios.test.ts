@@ -27,7 +27,7 @@ afterEach(() => vi.useRealTimers());
 
 const MEDICAL_ONLY: InsuranceTerms[] = [{ type: "insurance_application", kinds: ["medical"], maxBenefit: 10_000_000 }];
 
-// 顧客が営業員の窓口に来て、替えた票で MCP につながるまで
+// 顧客が営業員の窓口に来て、替えたトークンで MCP につながるまで
 async function atMcp(who: Customer = alice, terms: InsuranceTerms[] = TERMS) {
   const ticket = await who.salesTicket(terms);
   const routed = (await exchange("sales-agent", ticket, "insurer-mcp")).access_token!;
@@ -74,7 +74,7 @@ describe("基本の流れ(good)", () => {
 });
 
 describe("1. 宛先(aud)を見ない", () => {
-  it("bad: 営業員宛ての票で、事務センターの契約が照会できてしまう", async () => {
+  it("bad: 営業員宛てのトークンで、事務センターの契約が照会できてしまう", async () => {
     setBackend({ ticket: "no-aud" });
     expect((await backendGet("/contracts", await alice.salesTicket())).status).toBe(200);
   });
@@ -84,33 +84,33 @@ describe("1. 宛先(aud)を見ない", () => {
 });
 
 describe("2. トークンの素通し", () => {
-  it("bad: MCP が受け取った票をそのまま事務センターへ流し、事務センターも宛先を見ない", async () => {
+  it("bad: MCP が受け取ったトークンをそのまま事務センターへ流し、事務センターも宛先を見ない", async () => {
     setMcp({ backendAuth: "passthrough" });
     setBackend({ ticket: "no-aud" });
     const { mcp } = await atMcp();
     expect((await mcp.call("list_contracts")).isError).toBe(false);
   });
-  it("good(事務センターだけ丁寧): 流用された票は宛先が違うので弾かれる", async () => {
+  it("good(事務センターだけ丁寧): 流用されたトークンは宛先が違うので弾かれる", async () => {
     setMcp({ backendAuth: "passthrough" });
     const { mcp } = await atMcp();
     expect((await mcp.call("list_contracts")).isError).toBe(true);
   });
-  it("bad: MCP も事務センターも宛先を見ず票を流すと、営業員宛ての票が奥まで通る", async () => {
+  it("bad: MCP も事務センターも宛先を見ずトークンを流すと、営業員宛てのトークンが奥まで通る", async () => {
     setMcp({ incoming: "no-aud", backendAuth: "passthrough" });
     setBackend({ ticket: "no-aud" });
     const { ticket } = await atMcp();
     const mcp = await connectMcp(ticket);
     expect((await mcp.call("list_contracts")).isError).toBe(false);
   });
-  it("good(MCP だけ悪い): 宛先の違う票は、認可サーバーが替えてくれないので奥へ進めない", async () => {
+  it("good(MCP だけ悪い): 宛先の違うトークンは、認可サーバーが替えてくれないので奥へ進めない", async () => {
     setMcp({ incoming: "no-aud" });
     const { ticket } = await atMcp();
     const mcp = await connectMcp(ticket);
     const r = await mcp.call("list_contracts");
     expect(r.isError).toBe(true);
-    expect(JSON.stringify(r.body)).toContain("認可サーバーが票を出しませんでした");
+    expect(JSON.stringify(r.body)).toContain("認可サーバーがトークンを出しませんでした");
   });
-  it("good: MCP が宛先を見るので、営業員宛ての票では入れない", async () => {
+  it("good: MCP が宛先を見るので、営業員宛てのトークンでは入れない", async () => {
     const ticket = await alice.salesTicket();
     await expect(connectMcp(ticket)).rejects.toThrow();
   });
@@ -134,14 +134,14 @@ describe("3. 本人が消える(MCP 自身の資格で事務センターを呼�
     expect(r.isError).toBe(false);
     expect(r.body.contracts).toHaveLength(1);
   });
-  it("good(MCP だけ悪い): 事務センターが利用者本人の票でないと断る", async () => {
+  it("good(MCP だけ悪い): 事務センターが利用者本人のトークンでないと断る", async () => {
     await bobHasContract();
     setMcp({ backendAuth: "client-credentials" });
     const r = await attack();
     expect(r.isError).toBe(true);
     expect(JSON.stringify(r.body)).toContain("利用者本人");
   });
-  it("good: 替えた票なら sub は alice のまま、act に経由した窓口が残る", async () => {
+  it("good: 替えたトークンなら sub は alice のまま、act に経由した窓口が残る", async () => {
     const { routed } = await atMcp();
     const p = payloadOf(routed);
     expect(p.sub).toBe("alice");
@@ -174,10 +174,10 @@ describe("5. 期限を見ない", () => {
   const stale = async () => {
     const { routed } = await atMcp();
     const backendTicket = (await exchange("insurer-mcp", routed, "insurer-backend")).access_token!;
-    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 11 * 60_000 }); // 票の10分を過ぎる
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 11 * 60_000 }); // トークンの10分を過ぎる
     return backendTicket;
   };
-  it("bad: 期限切れの票が通る", async () => {
+  it("bad: 期限切れのトークンが通る", async () => {
     setBackend({ ticket: "no-exp" });
     expect((await backendGet("/contracts", await stale())).status).toBe(200);
   });
@@ -186,7 +186,7 @@ describe("5. 期限を見ない", () => {
   });
 });
 
-describe("6. 別の用途の票(ID トークン)を、アクセス用の票として受け付ける", () => {
+describe("6. 別の用途のトークン(ID トークン)を、アクセス用のトークンとして受け付ける", () => {
   it("bad(発行が雑 + typ を見ない): ID トークンで事務センターに入れる", async () => {
     process.env.INSURER_MODE_AUTH = "bad"; // ID トークンの aud に API の識別子まで入る
     setBackend({ ticket: "no-typ" });
@@ -341,14 +341,14 @@ describe("10. 取決め(RAR)の範囲外", () => {
 });
 
 describe("11. 登録が外れた営業員(AI)の申込み", () => {
-  // 票をもらい、案も受け取ったあとで、営業員(AI)の登録が外れる。
+  // トークンをもらい、案も受け取ったあとで、営業員(AI)の登録が外れる。
   const afterRevoked = async () => {
     const { mcp } = await atMcp();
     const sub = alice.prepare(await getOffer(mcp), "med-light");
     await revokeClient("sales-agent");
     return { mcp, sub };
   };
-  it("bad(登録の有効性を見ない): 出済みの票が使い続けられ、申込みが通る", async () => {
+  it("bad(登録の有効性を見ない): 出済みのトークンが使い続けられ、申込みが通る", async () => {
     setBackend({ registration: "none" });
     const { mcp, sub } = await afterRevoked();
     expect((await apply(mcp, sub)).isError).toBe(false);
@@ -359,12 +359,12 @@ describe("11. 登録が外れた営業員(AI)の申込み", () => {
     expect(r.isError).toBe(true);
     expect(JSON.stringify(r.body)).toContain("登録が有効");
   });
-  it("登録が外れた営業員(AI)には、新しい票も出さない", async () => {
+  it("登録が外れた営業員(AI)には、新しいトークンも出さない", async () => {
     const ticket = await alice.salesTicket();
     await revokeClient("sales-agent");
     expect((await exchange("sales-agent", ticket, "insurer-mcp")).access_token).toBeUndefined();
   });
-  it("票の失効(RFC 7009)と有効性の問い合わせ(RFC 7662)", async () => {
+  it("トークンの失効(RFC 7009)と有効性の問い合わせ(RFC 7662)", async () => {
     const { routed } = await atMcp();
     const basic = "Basic " + Buffer.from("insurer-backend:insurer-backend-secret").toString("base64");
     const ask = async () => ((await (await fetch(`${urls.insurerAuth}/introspect`, {
@@ -432,7 +432,7 @@ describe("13. 被保険者の同意のない申込み", () => {
 });
 
 describe("14. 本人確認が済んだことを、営業員の申告で済ませる", () => {
-  it("票には、確認の済んだ顧客だけに確認済みの属性が付く", async () => {
+  it("トークンには、確認の済んだ顧客だけに確認済みの属性が付く", async () => {
     expect(payloadOf(await alice.salesTicket()).verified_claims.verification.method).toBeTruthy();
     expect(payloadOf(await mallory.salesTicket()).verified_claims).toBeUndefined();
   });
@@ -450,7 +450,7 @@ describe("14. 本人確認が済んだことを、営業員の申告で済ませ
     expect((await apply(mcp, sub)).isError).toBe(true); // 申告がなければ止まる
     expect((await apply(mcp, sub, { verified_claims: claims })).isError).toBe(false);
   });
-  it("good: 申告を付け足しても、票の属性しか見ないので弾かれる", async () => {
+  it("good: 申告を付け足しても、トークンの属性しか見ないので弾かれる", async () => {
     const claims = payloadOf(await alice.salesTicket()).verified_claims;
     const { mcp } = await atMcp(mallory);
     const r = await apply(mcp, mallory.prepare(await getOffer(mcp), "med-light"), { verified_claims: claims });
@@ -459,8 +459,8 @@ describe("14. 本人確認が済んだことを、営業員の申告で済ませ
   });
 });
 
-describe("15. 正しく検証できない票を発行する(認可サーバーが悪い)", () => {
-  it("bad: 全窓口が宛先の万能票は、丁寧な事務センターでも通してしまう", async () => {
+describe("15. 正しく検証できないトークンを発行する(認可サーバーが悪い)", () => {
+  it("bad: 全窓口が宛先の万能トークンは、丁寧な事務センターでも通してしまう", async () => {
     process.env.INSURER_MODE_AUTH = "bad";
     expect((await backendGet("/contracts", await alice.salesTicket())).status).toBe(200);
   });
@@ -469,7 +469,7 @@ describe("15. 正しく検証できない票を発行する(認可サーバー�
     const p = payloadOf(await alice.salesTicket());
     expect(p.exp - p.iat).toBe(24 * 3600);
   });
-  it("bad: 替えた票から act が消え、誰を経由したか分からなくなる", async () => {
+  it("bad: 替えたトークンから act が消え、誰を経由したか分からなくなる", async () => {
     process.env.INSURER_MODE_AUTH = "bad";
     const { routed } = await atMcp();
     expect(payloadOf(routed).act).toBeUndefined();
@@ -481,7 +481,7 @@ describe("15. 正しく検証できない票を発行する(認可サーバー�
     const routed = (await exchange("sales-agent", ticket, "insurer-mcp", { authorization_details: wide })).access_token!;
     expect(payloadOf(routed).authorization_details[0].maxBenefit).toBe(100_000_000);
   });
-  it("good: 万能票は出さず、取決めは広げられず、期間は短く、act が残る", async () => {
+  it("good: 万能トークンは出さず、取決めは広げられず、期間は短く、act が残る", async () => {
     const ticket = await alice.salesTicket();
     expect((await backendGet("/contracts", ticket)).status).toBe(401);
     const routed = (await exchange("sales-agent", ticket, "insurer-mcp", { authorization_details: wide })).access_token!;

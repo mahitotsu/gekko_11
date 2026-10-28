@@ -4,7 +4,7 @@ import type { TicketCheck } from "../config.js";
 
 const base = { signature: true, audience: audiences.backend, expiry: true, typ: true };
 
-// 票の検証。check を変えると何を省くかが変わる。
+// トークンの検証。check を変えると何を省くかが変わる。
 export function verifyTicket(token: string, check: TicketCheck): Promise<Ticket> {
   switch (check) {
     case "good": return verifyTicketWith(token, base);
@@ -22,6 +22,6 @@ export function ticketChecklist(check: TicketCheck) {
     { name: "署名が保険会社のものと一致する", on: check !== "no-signature" },
     { name: "宛先(aud)が事務センターである", on: check === "good" || check === "no-exp" || check === "no-typ" },
     { name: "期限内である", on: check === "good" || check === "no-aud" || check === "no-typ" },
-    { name: "票の種類(typ)がアクセス用である", on: check === "good" || check === "no-aud" || check === "no-exp" },
+    { name: "トークンの種類(typ)がアクセス用である", on: check === "good" || check === "no-aud" || check === "no-exp" },
   ];
 }

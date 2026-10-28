@@ -4,7 +4,7 @@ import { audiences, urls } from "@gekko/shared";
 
 const basic = "Basic " + Buffer.from("sales-agent:sales-agent-secret").toString("base64");
 
-// 顧客から受け取った票を、MCP 宛ての票に替えてもらう。利用者本人(sub)は残り、営業員(AI)が act に記録される。
+// 顧客から受け取ったトークンを、MCP 宛てのトークンに替えてもらう。利用者本人(sub)は残り、営業員(AI)が act に記録される。
 export async function ticketForMcp(customerTicket: string): Promise<string> {
   const res = await fetch(`${urls.insurerAuth}/token`, {
     method: "POST", headers: { authorization: basic, "content-type": "application/x-www-form-urlencoded" },
@@ -14,7 +14,7 @@ export async function ticketForMcp(customerTicket: string): Promise<string> {
     }),
   });
   const j = (await res.json()) as { access_token?: string; error_description?: string };
-  if (!j.access_token) throw new Error(`替えた票を受け取れませんでした: ${j.error_description}`);
+  if (!j.access_token) throw new Error(`替えたトークンを受け取れませんでした: ${j.error_description}`);
   return j.access_token;
 }
 

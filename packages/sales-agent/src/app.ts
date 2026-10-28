@@ -23,10 +23,10 @@ export function createApp() {
     let auth;
     try { auth = await authenticate(c.req.header("authorization")); } catch (e) {
       const msg = e instanceof VerifyError ? e.message : (e as Error).message;
-      await emit({ actor, mode: "good", action: "顧客の票を受け取る", checks: [{ name: "票の検証", ok: false, detail: msg }], outcome: "rejected" });
+      await emit({ actor, mode: "good", action: "顧客のトークンを受け取る", checks: [{ name: "トークンの検証", ok: false, detail: msg }], outcome: "rejected" });
       return c.json({ error: msg }, 401);
     }
-    await emit({ actor, mode: "good", action: "顧客の票を受け取る", ticket: view(auth.ticket),
+    await emit({ actor, mode: "good", action: "顧客のトークンを受け取る", ticket: view(auth.ticket),
       checks: [{ name: "署名・期限", ok: true }, { name: "宛先(aud)が営業員である", ok: true }], outcome: "ok" });
     const { message } = (await c.req.json()) as { message: string };
     try {

@@ -17,7 +17,7 @@
 |---|---|---|
 | 言語、実行 | TypeScript、tsx | 全体 |
 | Web サーバー | Hono、`@hono/node-server` | 5 つのサービス |
-| 票と署名 | jose（JWT、JWS、鍵） | 認可サーバー、バックエンド、MCP、共通部品 |
+| トークンと署名 | jose（JWT、JWS、鍵） | 認可サーバー、バックエンド、MCP、共通部品 |
 | passkey | `@simplewebauthn/server`、`@simplewebauthn/browser` | 認可サーバー、バックエンド、顧客のアプリ |
 | 内容の正規化 | canonicalize（JCS） | 共通部品 |
 | MCP | `@modelcontextprotocol/sdk`、zod | MCP、営業員 |
@@ -27,10 +27,10 @@
 ## 2. フォルダ構成は、サービスごとの `packages/` と、テストである
 ```text
 packages/
-  shared/            共通部品（票、案、正規化、照合、設定）
-  insurer-auth/      認可サーバー（本人確認、票の発行と替え、登録と失効）
-  insurer-backend/   バックエンド（票と申込みの検証、契約の記録、直送）
-  insurer-mcp/       MCP（営業員が呼ぶ窓口。票を替えてバックエンドを呼ぶ）
+  shared/            共通部品（トークン、案、正規化、照合、設定）
+  insurer-auth/      認可サーバー（本人確認、トークンの発行と替え、登録と失効）
+  insurer-backend/   バックエンド（トークンと申込みの検証、契約の記録、直送）
+  insurer-mcp/       MCP（営業員が呼ぶ窓口。トークンを替えてバックエンドを呼ぶ）
   sales-agent/       営業員（Claude Agent SDK。決まった台本でも動く）
   customer-app/      顧客のアプリ（最小限。画面は未実装）
 test/                シナリオのテストと、テスト用の認証器・世界
@@ -41,16 +41,16 @@ scripts/dev.ts       5 つのサービスをまとめて起動する
 
 | ファイル | 役割 |
 |---|---|
-| `packages/shared/src/tickets.ts` | 票の検証。悪い実装を含む |
+| `packages/shared/src/tickets.ts` | トークンの検証。悪い実装を含む |
 | `packages/shared/src/canonical.ts` | JCS による正規化と、ハッシュ |
 | `packages/shared/src/offers.ts` | 保険会社が署名した案と、提示集合 |
 | `packages/shared/src/reconcile.ts` | 顧客の写しと、直送された通知の照合 |
 | `packages/shared/src/config.ts` | ポート、URL、動作モード |
-| `packages/insurer-auth/src/issuer.ts` | 票の発行。悪い発行を含む |
-| `packages/insurer-backend/src/verify/ticket.ts` | バックエンドでの票の検証 |
+| `packages/insurer-auth/src/issuer.ts` | トークンの発行。悪い発行を含む |
+| `packages/insurer-backend/src/verify/ticket.ts` | バックエンドでのトークンの検証 |
 | `packages/insurer-backend/src/verify/seal.ts` | 署名の検証 |
 | `packages/insurer-backend/src/app.ts` | 申込みの検証と、2 段の署名の連鎖 |
-| `packages/insurer-mcp/src/core-ticket.ts` | バックエンドを呼ぶ票の用意。悪い実装を含む |
+| `packages/insurer-mcp/src/core-ticket.ts` | バックエンドを呼ぶトークンの用意。悪い実装を含む |
 | `test/scenarios.test.ts` | 17 シナリオと基本の流れ |
 
 ## 3. サービスは固定ポートで動き、環境変数で設定する

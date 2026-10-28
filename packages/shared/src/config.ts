@@ -21,10 +21,10 @@ export const urls = {
   insurerBackend: `http://localhost:${ports.insurerBackend}`,
 };
 
-// 票の発行元(iss)。
+// トークンの発行元(iss)。
 export const ISSUER = "insurer-auth";
 
-// 票の宛先(aud)。窓口ごとに別の値にする。
+// トークンの宛先(aud)。窓口ごとに別の値にする。
 export const audiences = {
   sales: "sales-agent",
   mcp: "insurer-mcp",

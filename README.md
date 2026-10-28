@@ -9,11 +9,11 @@ AI エージェントが人の代わりに取引をするとき、その取引�
 
 | 順 | 知りたいこと | 読む文書 |
 |---|---|---|
-| 1 | このリポジトリの目的と、題材を選んだ理由 | [purpose.md](docs/purpose.md) |
-| 2 | 保険の窓口の流れと、従来の統制が実現したいこと | [domain.md](docs/domain.md) |
-| 3 | 採用した構成と標準仕様、窓口との対応、確かめる問い | [architecture.md](docs/architecture.md) |
+| 1 | 伝えたいこと（3 つの確認）、AI で難しくなること、例えと題材を選んだ理由 | [purpose.md](docs/purpose.md) |
+| 2 | 保険の窓口が、3 つの確認をどう行っているか | [domain.md](docs/domain.md) |
+| 3 | AI が営業員を担う構成で、3 つの確認をどう行うか。標準仕様と検証項目 | [architecture.md](docs/architecture.md) |
 | 4 | 実装の技術スタック、フォルダ構成、動かし方 | [implementation.md](docs/implementation.md) |
-| 5 | 悪い実装と良い実装の比較（17 シナリオ）と再現手順 | [scenarios.md](docs/scenarios.md) |
+| 5 | 確認を省いた実装と、確認する実装の比較（17 シナリオ） | [scenarios.md](docs/scenarios.md) |
 | 随時 | 用語の意味 | [glossary.md](docs/glossary.md) |
 | 付録 | 窓口の調査と設計の根拠、事実と出典 | [research/](docs/research/findings.md) |
 

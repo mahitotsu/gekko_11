@@ -1,0 +1,30 @@
+{
+  "kind": "compare",
+  "title": "AI が間に入ると、取り次ぎが重なる",
+  "desc": "これまでは、利用者が自分でサービスを使っていた。AI が間に入ると、利用者が AI に頼み、AI が取り次ぎのサービスを呼び、取り次ぎのサービスが保険会社のサービスを呼ぶ。代理と取り次ぎが、何段にも重なる。",
+  "before": {
+    "label": "これまで",
+    "nodes": [
+      { "id": "user", "row": 0, "col": 0, "shape": "actor", "lines": ["利用者"] },
+      { "id": "svc", "row": 0, "col": 1, "lines": ["保険会社のサービス"] }
+    ],
+    "edges": [
+      { "from": "user", "to": "svc", "label": "自分で使う" }
+    ]
+  },
+  "after": {
+    "label": "AI が間に入ると",
+    "nodes": [
+      { "id": "user", "row": 0, "col": 0, "shape": "actor", "lines": ["利用者"] },
+      { "id": "ai", "row": 0, "col": 1, "cls": "k1", "diff": "add", "lines": ["AI", "代理人"] },
+      { "id": "relay", "row": 1, "col": 1, "diff": "add", "lines": ["取り次ぎの", "サービス"] },
+      { "id": "svc", "row": 1, "col": 0, "lines": ["保険会社の", "サービス"] }
+    ],
+    "edges": [
+      { "from": "user", "to": "ai", "label": "頼む", "diff": "add" },
+      { "from": "ai", "to": "relay", "label": "取り次ぐ", "diff": "add" },
+      { "from": "relay", "to": "svc", "label": "取り次ぐ", "diff": "add" }
+    ]
+  },
+  "note": "段ごとに、相手は「この取引をしてよい」という権限の証明を受け取る。"
+}
