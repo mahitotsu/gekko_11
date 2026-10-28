@@ -1,0 +1,7 @@
+{
+  "name": "@gekko/shared",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {"canonicalize": "^5.1.0", "jose": "^6.2.0"}
+}
