@@ -1,5 +1,5 @@
 // 教材のための意図的に悪い実装を含む。本番の部品として使わないこと。
-// 事務センターを呼ぶためのトークンを用意する。
+// 保険会社のシステムを呼ぶためのトークンを用意する。
 import { actChain, audiences, urls, type Ticket } from "@gekko/shared";
 import { config } from "./config.js";
 
@@ -24,7 +24,7 @@ export async function ticketForBackend(incoming: string, ticket: Ticket): Promis
       return { token: incoming, how: "受け取ったトークンをそのまま流用" };
     case "client-credentials": {
       const token = await post({ grant_type: "client_credentials" });
-      return { token, how: "MCP 自身のトークン(利用者は含まれない)" };
+      return { token, how: "事務サービス自身のトークン(利用者は含まれない)" };
     }
     case "exchange": {
       const hit = cache.get(incoming);

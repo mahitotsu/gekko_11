@@ -1,27 +1,139 @@
 {
   "kind": "sequence",
-  "title": "AI が営業員を担う構成での、案の提示から直送までの流れ",
-  "desc": "顧客のアプリが営業員（AI）に意向を伝える。営業員は MCP に案を求め、MCP は認可サーバーに、宛先を絞ったトークンへの交換を頼む。替えたトークンには、本人と経由した営業員が残る。バックエンドは、保険会社が署名した案を返す。顧客はアプリで案を選んで署名し、営業員が署名済みの申込みを MCP 経由で回付する。バックエンドはトークンと署名の連鎖を検証して記録を作り、契約内容を営業員を通さずに顧客のアプリへ直接送る。",
+  "title": "営業 AI エージェントが顧客と保険会社の間に入る構成での、案の提示から直送までの流れ",
+  "desc": "顧客のアプリは、認可サーバーにログインして ID トークンとトークン A を受け取り、意向と A を営業 AI エージェントに伝える。営業 AI エージェントは A を B に替えて事務サービスに意向を渡し、事務サービスは B を C に替えて保険会社のシステムに渡す。保険会社が署名した案は、事務サービスと営業 AI エージェントを通って顧客に示される。顧客が選択して署名すると、営業 AI エージェントは B で代理で申し込み、事務サービスは C で保険会社のシステムに回す。保険会社のシステムは C と署名の連鎖を検証して記録を作り、契約内容を顧客のアプリへ直接送る。",
   "participants": [
-    { "id": "app", "name": "顧客のアプリ", "sub": "署名する" },
-    { "id": "agent", "name": "営業員（AI）", "sub": "案を選び、運ぶ", "cls": "k1" },
-    { "id": "mcp", "name": "MCP", "sub": "事務の受付" },
-    { "id": "auth", "name": "認可サーバー", "sub": "トークンを発行する" },
-    { "id": "back", "name": "バックエンド", "sub": "検証して記録する" }
+    {
+      "id": "app",
+      "name": "顧客のアプリ",
+      "sub": "署名する"
+    },
+    {
+      "id": "agent",
+      "name": "営業 AI",
+      "sub": "エージェント",
+      "cls": "k1"
+    },
+    {
+      "id": "mcp",
+      "name": "事務",
+      "sub": "サービス"
+    },
+    {
+      "id": "auth",
+      "name": "認可サーバー",
+      "sub": "トークンを発行する"
+    },
+    {
+      "id": "back",
+      "name": "保険会社の",
+      "sub": "システム"
+    }
   ],
   "items": [
-    { "from": "app", "to": "agent", "label": "意向を伝える" },
-    { "from": "agent", "to": "mcp", "label": "案を求める（営業員宛て）" },
-    { "from": "mcp", "to": "auth", "label": "宛先を絞って替えてもらう" },
-    { "from": "auth", "to": "mcp", "label": "本人と営業員が残る", "type": "return" },
-    { "from": "mcp", "to": "back", "label": "案を求める（替えた後）" },
-    { "from": "back", "to": "app", "label": "保険会社が署名した案", "type": "return" },
-    { "note": { "over": ["app", "agent"], "text": "営業員は案を選んで示せるが、中身は変えられない" } },
-    { "from": "app", "to": "agent", "label": "選んだ案に、顧客の鍵で署名（2 段）" },
-    { "from": "agent", "to": "mcp", "label": "署名済みの申込みを回付" },
-    { "from": "mcp", "to": "back", "label": "回付（トークンを替えて）" },
-    { "note": { "over": ["mcp", "back"], "text": "トークンと署名の連鎖を検証し、記録を作る" } },
-    { "from": "back", "to": "app", "label": "契約内容を直接送る（AI を通らない）" }
+    {
+      "from": "app",
+      "to": "auth",
+      "label": "ログインする"
+    },
+    {
+      "from": "auth",
+      "to": "app",
+      "label": "ID トークンと A",
+      "type": "return"
+    },
+    {
+      "from": "app",
+      "to": "agent",
+      "label": "意向と A を伝える"
+    },
+    {
+      "from": "agent",
+      "to": "auth",
+      "label": "A を B に替える"
+    },
+    {
+      "from": "auth",
+      "to": "agent",
+      "label": "B（本人と AI が残る）",
+      "type": "return"
+    },
+    {
+      "from": "agent",
+      "to": "mcp",
+      "label": "意向を渡す（B）"
+    },
+    {
+      "from": "mcp",
+      "to": "auth",
+      "label": "B を C に替える"
+    },
+    {
+      "from": "auth",
+      "to": "mcp",
+      "label": "C",
+      "type": "return"
+    },
+    {
+      "from": "mcp",
+      "to": "back",
+      "label": "意向を渡す（C）"
+    },
+    {
+      "from": "back",
+      "to": "mcp",
+      "label": "保険会社が署名した案",
+      "type": "return"
+    },
+    {
+      "from": "mcp",
+      "to": "agent",
+      "label": "署名つきの案",
+      "type": "return"
+    },
+    {
+      "from": "agent",
+      "to": "app",
+      "label": "案を顧客に示す"
+    },
+    {
+      "note": {
+        "over": [
+          "app",
+          "agent"
+        ],
+        "text": "AI は案を示せるが、中身は変えられない"
+      }
+    },
+    {
+      "from": "app",
+      "to": "agent",
+      "label": "選択して署名する（2 段）"
+    },
+    {
+      "from": "agent",
+      "to": "mcp",
+      "label": "代理で申し込む（B）"
+    },
+    {
+      "from": "mcp",
+      "to": "back",
+      "label": "申込みを回す（C）"
+    },
+    {
+      "note": {
+        "over": [
+          "mcp",
+          "back"
+        ],
+        "text": "C と署名の連鎖を検証し、記録を作る"
+      }
+    },
+    {
+      "from": "back",
+      "to": "app",
+      "label": "契約内容を直接送る（AI を通らない）"
+    }
   ],
   "note": "実線は依頼や受け渡し、破線は戻り。"
 }

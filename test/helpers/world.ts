@@ -1,5 +1,5 @@
-// テスト用の世界。認可サーバー・事務センター・MCP・営業員・顧客のアプリを実際に起動し、
-// 顧客と(乗っ取られた)営業員を台本で動かす。
+// テスト用の世界。認可サーバー・保険会社のシステム・事務サービス・営業 AI エージェント・顧客のアプリを実際に起動し、
+// 顧客と(乗っ取られた)営業 AI エージェントを台本で動かす。
 import { serve } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -48,7 +48,7 @@ export async function resetWorld() {
 export const TERMS: InsuranceTerms[] = [{ type: "insurance_application", kinds: ["medical", "death"], maxBenefit: 10_000_000 }];
 
 export interface OfferResult { offerJws: string; offerSet: OfferSet; offerSetId: string; nonce: string; expiresAt: number }
-// 顧客が署名した一式。営業員(AI)と MCP を経由して事務センターに届く。
+// 顧客が署名した一式。営業 AI エージェントと事務サービスを経由して保険会社のシステムに届く。
 export interface Submission {
   offerJws: string;
   intent: Intent;
@@ -58,7 +58,7 @@ export interface Submission {
   insuredAssertion?: any;
 }
 
-// 顧客の側: ログイン → パスキーの登録 → 取次ぎの範囲に同意してトークンをもらう → 案を選んで署名する
+// 顧客の側: ログイン → パスキーの登録 → 提案と申込みの許可の範囲に同意してトークンをもらう → 案を選んで署名する
 export class Customer {
   cookie = "";
   auth = new SoftAuthenticator();
@@ -126,7 +126,7 @@ export class Customer {
   }
 }
 
-// 営業員(台本): 顧客のトークンを替えてもらい、MCP の道具を呼ぶ。
+// 営業 AI エージェント(台本): 顧客のトークンを替えてもらい、事務サービスの MCP の道具を呼ぶ。
 // 「乗っ取られた AI」を模すので、渡された値を好きなように書き換えられる。
 export async function exchange(client: "sales-agent" | "insurer-mcp", subjectToken: string, audience: string, extra: Record<string, string> = {}) {
   const res = await fetch(`${urls.insurerAuth}/token`, {
@@ -150,6 +150,6 @@ export async function connectMcp(ticket: string) {
 
 export const payloadOf = (jwt: string) => JSON.parse(Buffer.from(jwt.split(".")[1]!, "base64url").toString());
 
-// 認可サーバーの管理 API(営業員の登録の失効)
+// 認可サーバーの管理 API(営業 AI エージェントの登録の失効)
 export const revokeClient = (id: string) =>
   fetch(`${urls.insurerAuth}/admin/clients/${id}/revoke`, { method: "POST", headers: { "x-internal-key": INTERNAL_KEY } });

@@ -1,5 +1,5 @@
 // シナリオ: リスク × 手口 × 防御の漏れ。全シナリオの攻撃は申込みである。
-// 台本役の「営業員」は、プロンプトインジェクションで乗っ取られた AI を模す(渡された値を好きに書き換える)。
+// 台本役の「営業 AI エージェント」は、プロンプトインジェクションで乗っ取られた AI を模す(渡された値を好きに書き換える)。
 // 各シナリオで、(1) 防御がすべてあれば被害が出ない、(2) 止める防御を 1 つずつ外しても、ほかの防御が止める、
 // (3) 最小の漏れの組を外すと被害が出る、を確かめる。
 import { CompactSign, SignJWT, generateKeyPair, importJWK } from "jose";
@@ -32,7 +32,7 @@ const WIDE = JSON.stringify([{ type: "insurance_application", kinds: ["medical",
 const FULL_ROUTE = "insurer-mcp,sales-agent"; // 正規の経路で取り次がれたときの経由の記録
 
 // ---- 補助 ----
-// 顧客が営業員の窓口に来て、替えたトークンで MCP につながるまで
+// 顧客が営業 AI エージェントの窓口に来て、替えたトークンで事務サービスにつながるまで
 async function atMcp(who: Customer = alice, terms: InsuranceTerms[] = TERMS) {
   const ticket = await who.salesTicket(terms);
   const routed = (await exchange("sales-agent", ticket, "insurer-mcp")).access_token!;
@@ -42,7 +42,7 @@ type Mcp = Awaited<ReturnType<typeof atMcp>>["mcp"];
 const getOffer = async (mcp: Mcp) => (await mcp.call<OfferResult>("get_offers")).body;
 const apply = (mcp: Mcp, sub: object, extras?: Record<string, unknown>) =>
   mcp.call("submit_application", { ...sub, ...(extras ? { extras } : {}) });
-// 事務サービスへ、直接申し込む(MCP を通らない)
+// 保険会社のシステムへ、直接申し込む(事務サービスを通らない)
 const backendPost = (token: string, body: object) => fetch(`${urls.insurerBackend}/applications`, {
   method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body),
 });
@@ -124,7 +124,7 @@ function scenario<C>(n: number, title: string, s: {
 }
 
 describe("基本の流れ(good)", () => {
-  it("営業員が案を示し、顧客が選んで署名し、事務センターが記録し、顧客へ直接通知する", async () => {
+  it("営業 AI エージェントが案を示し、顧客が選んで署名し、保険会社のシステムが記録し、顧客へ直接通知する", async () => {
     const ticket = await alice.salesTicket();
     const auth = { authorization: `Bearer ${ticket}`, "content-type": "application/json" };
     const chat = (await (await fetch(`${urls.salesAgent}/chat`, { method: "POST", headers: auth, body: JSON.stringify({ message: "医療の保険を見たい" }) })).json()) as { offer: OfferResult; engine: string };
@@ -145,7 +145,7 @@ describe("基本の流れ(good)", () => {
     expect(st.contracts[0]!.contract.plan.id).toBe("med-plus");
     expect(st.contracts[0]!.by.join()).toBe(FULL_ROUTE);
 
-    // 営業員を通らない通知と、顧客の手元の写しが一致する
+    // 営業 AI エージェントを通らない通知と、顧客の手元の写しが一致する
     const r = reconcile([sub.application], await noticesOf("alice"));
     expect(r).toEqual([{ nonce: sub.application.nonce, status: "match", diffs: [] }]);
   });
@@ -247,7 +247,7 @@ scenario(7, "R4 × A14: bob の同意なく、bob を被保険者にする", {
 });
 
 // ======== R5 本人が選んだ内容と違う契約になる ========
-// alice が「医療 ライト」に署名 → 乗っ取られた営業員が、取決めの範囲で最も保険料が高い案に書き換えて提出する
+// alice が「医療 ライト」に署名 → 乗っ取られた営業 AI エージェントが、取決めの範囲で最も保険料が高い案に書き換えて提出する
 const viaTamperingAgent = async () => {
   salesConfig.tamper = true;
   const ticket = await alice.salesTicket();
@@ -281,7 +281,7 @@ scenario(8, "R5 × A8: 署名のあとで、保険料の高い案に書き換え
 });
 
 const GOLD: Plan = { id: "med-gold", name: "医療 ゴールド", kind: "medical", benefit: 100_000, monthly: 100 };
-// 営業員が、本物の提示から nonce だけ取り、案を足した偽の提示を顧客に見せる。顧客のアプリが署名を確かめなければ、顧客は偽の案に署名する。
+// 営業 AI エージェントが、本物の提示から nonce だけ取り、案を足した偽の提示を顧客に見せる。顧客のアプリが署名を確かめなければ、顧客は偽の案に署名する。
 async function forgedOffer() {
   const offer = await offerFor(alice);
   const set: OfferSet = { customer: "alice", plans: [...offer.offerSet.plans, GOLD] };
@@ -392,9 +392,9 @@ scenario(14, "R7 × A17: トークンを替えるときに取決めを広げさ�
 });
 
 // ======== R8 権限のない者や経路から、申込みが通る ========
-// 正規の経路(営業員 → MCP → 事務センター)を通らずに記録された契約は、経由の記録が欠ける
+// 正規の経路(営業 AI エージェント → 事務サービス → 保険会社のシステム)を通らずに記録された契約は、経由の記録が欠ける
 const offRoute = () => recorded((r) => r.by.join() !== FULL_ROUTE);
-scenario(15, "R8 × A6: 営業 AI のためのトークンで、事務センターへ直接申し込む", {
+scenario(15, "R8 × A6: 営業 AI エージェントのためのトークンで、保険会社のシステムへ直接申し込む", {
   defenses: ["D7 トークンの宛先"],
   prepare: async () => ({ sub: alice.prepare(await offerFor(alice), "med-light"), token: await alice.salesTicket() }),
   attack: async ({ sub, token }) => backendPost(token, sub),
@@ -408,14 +408,14 @@ scenario(16, "R8 × A7: MCP が、受け取ったトークンをそのまま奥�
   harmed: offRoute,
 });
 
-scenario(17, "R8 × A7: 営業 AI のためのトークンを、MCP 経由で奥まで流して申し込む", {
+scenario(17, "R8 × A7: 営業 AI エージェントのためのトークンを、MCP 経由で奥まで流して申し込む", {
   defenses: ["D1 MCP の宛先確認", "D2 MCP のトークンの交換(素通し)", "D7 トークンの宛先"],
   prepare: async () => ({ sub: alice.prepare(await offerFor(alice), "med-light"), token: await alice.salesTicket() }),
   attack: async ({ sub, token }) => apply(await connectMcp(token), sub),
   harmed: offRoute,
 });
 
-scenario(18, "R8 × A17: どの窓口でも通るトークンで、事務センターへ直接申し込む", {
+scenario(18, "R8 × A17: どの窓口でも通るトークンで、保険会社のシステムへ直接申し込む", {
   defenses: ["D3 絞った発行"],
   prepare: async () => ({ sub: alice.prepare(await offerFor(alice), "med-light"), token: await alice.salesTicket() }),
   attack: async ({ sub, token }) => backendPost(token, sub),
@@ -430,7 +430,7 @@ scenario(18, "R8 × A17: どの窓口でも通るトークンで、事務セン�
 
 scenario(19, "R8 × A13: 登録の外れた営業 AI が、出済みのトークンで申し込む", {
   defenses: ["D10 発行元への問い合わせ"],
-  // トークンをもらい、案も受け取ったあとで、営業員(AI)の登録が外れる
+  // トークンをもらい、案も受け取ったあとで、営業 AI エージェントの登録が外れる
   prepare: async () => {
     const { mcp } = await atMcp();
     const sub = alice.prepare(await getOffer(mcp), "med-light");
@@ -440,7 +440,7 @@ scenario(19, "R8 × A13: 登録の外れた営業 AI が、出済みのトーク
   attack: async ({ mcp, sub }) => apply(mcp, sub),
   harmed: async () => (await backendState()).contracts.length > 0,
 }, () => {
-  it("登録が外れた営業員(AI)には、新しいトークンも出さない(D4)", async () => {
+  it("登録が外れた営業 AI エージェントには、新しいトークンも出さない(D4)", async () => {
     const ticket = await alice.salesTicket();
     await revokeClient("sales-agent");
     expect((await exchange("sales-agent", ticket, "insurer-mcp")).access_token).toBeUndefined();

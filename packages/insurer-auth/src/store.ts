@@ -17,9 +17,9 @@ export const users: Record<string, UserRec> = {
 export interface ClientRec { secret?: string; redirectUris: string[]; name: string; revoked?: boolean }
 const initialClients = (): Record<string, ClientRec> => ({
   "customer-app": { name: "顧客のアプリ", redirectUris: ["http://localhost:4000/callback"] },
-  "sales-agent": { name: "営業員(AI)", secret: "sales-agent-secret", redirectUris: [] },
-  "insurer-mcp": { name: "保険会社の MCP", secret: "insurer-mcp-secret", redirectUris: [] },
-  "insurer-backend": { name: "事務センター", secret: "insurer-backend-secret", redirectUris: [] },
+  "sales-agent": { name: "営業 AI エージェント", secret: "sales-agent-secret", redirectUris: [] },
+  "insurer-mcp": { name: "事務サービス", secret: "insurer-mcp-secret", redirectUris: [] },
+  "insurer-backend": { name: "保険会社のシステム", secret: "insurer-backend-secret", redirectUris: [] },
 });
 export const clients: Record<string, ClientRec> = initialClients();
 

@@ -1,5 +1,5 @@
 // 教材のための意図的に悪い実装を含む。本番の部品として使わないこと。
-// 事務センター(保険会社のバックエンド) = 最後の砦。トークンと申込みを照合してから契約を記録し、顧客へ直接通知する。
+// 保険会社のシステム(insurer-backend) = 最後の砦。トークンと申込みを照合してから契約を記録し、顧客へ直接通知する。
 import { Hono } from "hono";
 import {
   actChain, bearer, canonical, challengeOf, emit, modeOf, offerSetId, signOfferSet, verifyOfferSet, VerifyError,
@@ -14,7 +14,7 @@ import { verifyAgentSigned, verifyMtlsOnly, verifyNone, verifyPasskey } from "./
 const ticketView = (t?: Ticket) =>
   t ? { sub: t.sub, aud: t.aud, act: actChain(t.act), scope: t.scope, exp: t.exp } : undefined;
 
-// 提出された一式。営業員(AI)と MCP を経由して届く。経路の途中で書き換えられうるものとして扱う。
+// 提出された一式。営業 AI エージェントと事務サービスを経由して届く。経路の途中で書き換えられうるものとして扱う。
 interface Submission {
   offerJws?: string;
   intent: Intent;
@@ -22,7 +22,7 @@ interface Submission {
   application: Application;
   assertion: unknown;
   insuredAssertion?: unknown;
-  // 以下は、営業員(AI)が付け足せる欄。良い実装は使わない。
+  // 以下は、営業 AI エージェントが付け足せる欄。良い実装は使わない。
   verified_claims?: VerifiedClaims;
   contact?: string;
   contractEntry?: Partial<Contract>;
@@ -40,7 +40,7 @@ const INTROSPECT_AUTH = "Basic " + Buffer.from("insurer-backend:insurer-backend-
 
 export function createApp() {
   const app = new Hono();
-  const actor = "事務センター";
+  const actor = "保険会社のシステム";
   const mode = () => (isGood() ? "good" : "bad");
 
   // トークンを検証して返す。失敗したら理由つきでイベントを出す。
@@ -117,21 +117,21 @@ export function createApp() {
     if (!customers[customer]) return reject("トークンの利用者本人が顧客である", `sub=${ticket.sub} は顧客ではありません`);
     if (application.customer !== customer) return reject("申込みの契約者がトークンの本人", `${application.customer} は ${customer} ではありません`);
 
-    // 1. トークンを取り次いだ営業員(AI)が、今も登録されているか
+    // 1. トークンを取り次いだ営業 AI エージェントが、今も登録されているか
     if (config.registration === "introspect") {
       const r = await fetch(`${urls.insurerAuth}/introspect`, {
         method: "POST", headers: { authorization: INTROSPECT_AUTH, "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ token: a.token }),
       });
-      if (!((await r.json()) as { active?: boolean }).active) return reject("取り次いだ営業員(AI)の登録が有効", "トークンが無効か、登録が外れています");
-      pass("取り次いだ営業員(AI)の登録が有効");
-    } else skipped("取り次いだ営業員(AI)の登録が有効");
+      if (!((await r.json()) as { active?: boolean }).active) return reject("取り次いだ営業 AI エージェントの登録が有効", "トークンが無効か、登録が外れています");
+      pass("取り次いだ営業 AI エージェントの登録が有効");
+    } else skipped("取り次いだ営業 AI エージェントの登録が有効");
 
     // 2. 本人確認が済んでいるか。確認済みの属性は、トークンから取る。
     const claims = config.identity === "token" ? ticket.verified_claims : (body.verified_claims ?? ticket.verified_claims);
     if (!claims?.verification?.method) return reject("本人確認が済んでいる", "確認済みの属性がありません");
     if (config.identity === "token") pass("本人確認が済んでいる(トークンの属性)", `${claims.verification.method}`);
-    else checks.push({ name: "本人確認が済んでいる", ok: true, detail: "⚠ 営業員の申告を信じています" });
+    else checks.push({ name: "本人確認が済んでいる", ok: true, detail: "⚠ 営業 AI エージェントの申告を信じています" });
 
     // 3. 案が、保険会社の署名つきの提示に含まれるか
     if (config.offers === "verify") {
@@ -205,7 +205,7 @@ export function createApp() {
     contracts.push({ contract, by, at: Date.now(), application, intent, assertion: body.assertion, offerJws: body.offerJws });
     pass("取り次いだ窓口と署名済みの申込みを記録", by.length ? `${by.join(" ← ")}(経由)` : "経路の記録がありません");
 
-    // 10. 顧客へ直接通知する(営業員を通さない)。宛先は登録済みの連絡先。
+    // 10. 顧客へ直接通知する(営業 AI エージェントを通さない)。宛先は登録済みの連絡先。
     const to = config.notify === "registered" ? customers[customer]!.contact : (body.contact ?? customers[customer]!.contact);
     const notice: Notice = { customer, contract };
     const entry = { to, notice, delivered: false };

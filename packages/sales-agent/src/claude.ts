@@ -1,4 +1,4 @@
-// 営業員の頭脳 = Claude Agent SDK。claude.ai のサブスクリプション(CLAUDE_CODE_OAUTH_TOKEN)で動く。
+// 営業 AI エージェントの頭脳 = Claude Agent SDK。claude.ai のサブスクリプション(CLAUDE_CODE_OAUTH_TOKEN)で動く。
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { urls } from "@gekko/shared";
 
@@ -20,7 +20,7 @@ export async function chatWithClaude(message: string, mcpTicket: string): Promis
     prompt: message,
     options: {
       systemPrompt: SYSTEM,
-      // 組み込みの道具(Bash 等)は全て無効にし、保険会社の MCP の道具だけを渡す
+      // 組み込みの道具(Bash 等)は全て無効にし、事務サービスの MCP の道具だけを渡す
       tools: [],
       mcpServers: { insurer: { type: "http", url: `${urls.insurerMcp}/mcp`, headers: { Authorization: `Bearer ${mcpTicket}` } } },
       allowedTools: ["mcp__insurer__get_offers", "mcp__insurer__list_contracts"],
@@ -40,14 +40,14 @@ export async function chatWithClaude(message: string, mcpTicket: string): Promis
     } else if (m.type === "user" && Array.isArray(m.message.content)) {
       for (const b of m.message.content) {
         if (b.type === "tool_result" && names.get(b.tool_use_id) === "mcp__insurer__get_offers" && !b.is_error) {
-          // 提示は AI の文章ではなく、MCP の返した JSON そのものを使う
+          // 提示は AI の文章ではなく、事務サービスの返した JSON そのものを使う
           const text = Array.isArray(b.content) ? b.content.map((c: any) => c.text ?? "").join("") : String(b.content);
           try { offer = JSON.parse(text); } catch { /* 提示でなければ無視 */ }
         }
       }
     } else if (m.type === "result") {
       if (m.subtype === "success") reply = m.result;
-      else throw new Error(`営業員(Claude)がエラーになりました: ${m.subtype}`);
+      else throw new Error(`営業 AI エージェント(Claude)がエラーになりました: ${m.subtype}`);
     }
   }
   return { reply, offer, tools };

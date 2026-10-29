@@ -20,7 +20,7 @@ export function verifyTicket(token: string, check: TicketCheck): Promise<Ticket>
 export function ticketChecklist(check: TicketCheck) {
   return [
     { name: "署名が保険会社のものと一致する", on: check !== "no-signature" },
-    { name: "宛先(aud)が事務センターである", on: check === "good" || check === "no-exp" || check === "no-typ" },
+    { name: "宛先(aud)が保険会社のシステムである", on: check === "good" || check === "no-exp" || check === "no-typ" },
     { name: "期限内である", on: check === "good" || check === "no-aud" || check === "no-typ" },
     { name: "トークンの種類(typ)がアクセス用である", on: check === "good" || check === "no-aud" || check === "no-exp" },
   ];

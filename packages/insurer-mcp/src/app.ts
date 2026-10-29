@@ -1,5 +1,5 @@
 // 教材のための意図的に悪い実装を含む。本番の部品として使わないこと。
-// 保険会社の MCP サーバー。営業員(AI)から回ってきた提出を、打ち直さずに事務センターへ通す。
+// 事務サービス(保険会社の MCP サーバー)。営業 AI エージェントから回ってきた提出を、打ち直さずに保険会社のシステムへ通す。
 import { Hono } from "hono";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -10,7 +10,7 @@ import {
 import { config } from "./config.js";
 import { ticketForBackend } from "./core-ticket.js";
 
-const actor = "保険会社の MCP";
+const actor = "事務サービス";
 const mode = () => (config.backendAuth === "exchange" && config.incoming === "good" ? "good" : "bad");
 const view = (t: Ticket) => ({ sub: t.sub, aud: t.aud, act: actChain(t.act), scope: t.scope, exp: t.exp });
 
@@ -30,8 +30,8 @@ function buildServer(incoming: string, ticket: Ticket) {
       bt = await ticketForBackend(incoming, ticket);
     } catch (e) {
       const msg = (e as Error).message;
-      await emit({ actor, mode: mode(), action: `${action}(事務センターに出すトークンを用意できない)`, ticket: view(ticket),
-        checks: [{ name: "事務センター宛てのトークンを受け取る", ok: false, detail: msg }], outcome: "rejected" });
+      await emit({ actor, mode: mode(), action: `${action}(保険会社のシステムに出すトークンを用意できない)`, ticket: view(ticket),
+        checks: [{ name: "保険会社のシステム宛てのトークンを受け取る", ok: false, detail: msg }], outcome: "rejected" });
       return text({ error: msg }, true);
     }
     const res = await fetch(`${urls.insurerBackend}${path}`, {
@@ -40,8 +40,8 @@ function buildServer(incoming: string, ticket: Ticket) {
       body: init.body ? JSON.stringify(init.body) : undefined,
     });
     const json = await res.json();
-    await emit({ actor, mode: mode(), action: `${action}(事務センターへ: ${bt.how})`, ticket: view(ticket),
-      checks: [{ name: "事務センターの返事", ok: res.ok, detail: res.ok ? undefined : JSON.stringify(json) }], outcome: res.ok ? "ok" : "rejected" });
+    await emit({ actor, mode: mode(), action: `${action}(保険会社のシステムへ: ${bt.how})`, ticket: view(ticket),
+      checks: [{ name: "保険会社のシステムの返事", ok: res.ok, detail: res.ok ? undefined : JSON.stringify(json) }], outcome: res.ok ? "ok" : "rejected" });
     return text(json, !res.ok);
   }
 

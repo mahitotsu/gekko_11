@@ -1,6 +1,6 @@
 // 保険会社の認可サーバー(教材用の簡易版。本番では使わないこと)。
 // 本人確認、トークンの発行(認可コード + PKCE + RAR)、トークンの替え(token exchange)、
-// 営業員(AI)の登録と失効、トークンの有効性の問い合わせと失効、パスキーの登録を担当する。
+// 営業 AI エージェントの登録と失効、トークンの有効性の問い合わせと失効、パスキーの登録を担当する。
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
@@ -106,7 +106,7 @@ app.post("/passkeys/register/verify", async (c) => {
   challenges.delete(user);
   return c.json({ ok: true });
 });
-// 事務センターが、署名した人を確かめるためにパスキーの公開鍵を引く内部 API。
+// 保険会社のシステムが、署名した人を確かめるためにパスキーの公開鍵を引く内部 API。
 app.get("/internal/passkeys/:user", (c) => {
   if (c.req.header("x-internal-key") !== INTERNAL_KEY) return c.text("forbidden", 403);
   const list = (passkeys.get(c.req.param("user")) ?? []).map((p) => ({
@@ -115,7 +115,7 @@ app.get("/internal/passkeys/:user", (c) => {
   return c.json(list);
 });
 
-// ---- 営業員(AI)の登録 (RFC 7591 の最小形)。登録を外すと、新しいトークンを出さず、出したトークンも無効になる ----
+// ---- 営業 AI エージェントの登録 (RFC 7591 の最小形)。登録を外すと、新しいトークンを出さず、出したトークンも無効になる ----
 app.post("/register", async (c) => {
   if (c.req.header("x-internal-key") !== INTERNAL_KEY) return c.text("forbidden", 403);
   const b = (await c.req.json()) as { client_id: string; client_name: string };
@@ -143,16 +143,16 @@ app.get("/authorize", (c) => {
   try { terms = JSON.parse(q.authorization_details ?? "[]"); } catch { return c.text("authorization_details が不正です", 400); }
   const t = terms[0];
   const hasKey = (passkeys.get(user)?.length ?? 0) > 0;
-  return c.html(page("保険会社: 取次ぎの範囲", `
-    <p><b>${esc(users[user]!.name)}</b> さん、営業員(AI)に次の範囲で申込みの取次ぎを任せますか？</p>
-    <div class="card"><b>取次ぎの範囲</b><br>
+  return c.html(page("保険会社: 営業 AI エージェントへの許可", `
+    <p><b>${esc(users[user]!.name)}</b> さん、営業 AI エージェントに、次の範囲で、案の提案と、あなたの代理での申込みを許可しますか？</p>
+    <div class="card"><b>許可する範囲</b><br>
       ・扱える保険の種類は <b>${esc((t?.kinds ?? []).join(", ") || "なし")}</b><br>
       ・給付額は 1 件あたり <b>${t ? t.maxBenefit.toLocaleString() : 0} 円</b> まで</div>
     ${hasKey ? "" : `<p>⚠ パスキーがまだ未登録です。<a href="/passkeys" target="_blank">先に登録</a>してください。</p>`}
     <form method="post" action="/authorize/approve">
       ${["client_id", "redirect_uri", "state", "code_challenge"].map((k) => `<input type="hidden" name="${k}" value="${esc(q[k] ?? "")}">`).join("")}
       <input type="hidden" name="authorization_details" value="${esc(JSON.stringify(terms))}">
-      <button>この範囲で承認する</button></form>`));
+      <button>この範囲で許可する</button></form>`));
 });
 app.post("/authorize/approve", async (c) => {
   const user = sessionUser(c);
@@ -171,7 +171,7 @@ app.post("/authorize/approve", async (c) => {
   return c.redirect(u.toString());
 });
 
-// ---- /token: 営業員向けのトークン(authorization_code) / 替えたトークン(token-exchange) / 窓口自身のトークン(client_credentials) ----
+// ---- /token: 営業 AI エージェント向けのトークン(authorization_code) / 替えたトークン(token-exchange) / 窓口自身のトークン(client_credentials) ----
 // 窓口ごとに渡せる先。
 const EXCHANGE = { "sales-agent": audiences.mcp, "insurer-mcp": audiences.backend } as const;
 const OWN_AUD = { "sales-agent": audiences.sales, "insurer-mcp": audiences.mcp } as const;

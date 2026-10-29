@@ -8,7 +8,7 @@ const RP_ID = "localhost";
 export interface SealResult { ok: boolean; detail: string }
 export interface SealInput {
   content: unknown; // 署名の対象(意向確認、または申込み)
-  assertion: unknown; // passkey: WebAuthn assertion / agent-signed: 営業員が付けた JWS
+  assertion: unknown; // passkey: WebAuthn assertion / agent-signed: 営業 AI エージェントが付けた JWS
   user: string;
   peer?: string; // mtls-only: 通信相手の識別(リバースプロキシが mTLS で認証した結果を想定)
 }
@@ -40,7 +40,7 @@ export async function verifyPasskey({ content, assertion, user }: SealInput): Pr
   }
 }
 
-// 不十分な例1: 通信相手(MCP)が信頼できるなら、運ばれてきた中身も信じる。
+// 不十分な例1: 通信相手(事務サービス)が信頼できるなら、運ばれてきた中身も信じる。
 // 実際の mTLS は TLS 終端で相手を認証するだけ。ここでは終端した結果が peer に入る想定で再現する。
 export async function verifyMtlsOnly({ peer }: SealInput): Promise<SealResult> {
   return peer === "insurer-mcp"
@@ -48,16 +48,16 @@ export async function verifyMtlsOnly({ peer }: SealInput): Promise<SealResult> {
     : { ok: false, detail: "信頼する MCP からの通信ではありません" };
 }
 
-// 不十分な例2: 営業員(AI)が申込みに署名しているので正しいとみなす。
+// 不十分な例2: 営業 AI エージェントが申込みに署名しているので正しいとみなす。
 // 署名したのは書き換えた張本人かもしれない、という点を見ていない。
 export async function verifyAgentSigned({ content, assertion }: SealInput): Promise<SealResult> {
   try {
     const { payload } = await compactVerify(String(assertion), await importJWK(agentKey.pub, "ES256"));
     return new TextDecoder().decode(payload) === canonical(content as Application)
-      ? { ok: true, detail: "営業員の署名と申込みが一致しました(誰の意思かは見ていません)" }
-      : { ok: false, detail: "営業員の署名と申込みが一致しません" };
+      ? { ok: true, detail: "営業 AI エージェントの署名と申込みが一致しました(誰の意思かは見ていません)" }
+      : { ok: false, detail: "営業 AI エージェントの署名と申込みが一致しません" };
   } catch {
-    return { ok: false, detail: "営業員の署名が不正です" };
+    return { ok: false, detail: "営業 AI エージェントの署名が不正です" };
   }
 }
 

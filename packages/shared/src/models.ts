@@ -1,7 +1,7 @@
 // 保険の募集で扱う書類のモデル。申込みの内容は、API のパラメータに当たる。
 export type PlanKind = "medical" | "death";
 
-// 案。営業員が顧客に示す、保険の内容。
+// 案。営業 AI エージェントが顧客に示す、保険の内容。
 export interface Plan {
   id: string;
   name: string;
@@ -10,7 +10,7 @@ export interface Plan {
   monthly: number; // 月額の保険料(円)
 }
 
-// 取決め(RAR)。営業員(AI)が扱える保険の種類と、給付額の上限。
+// 取決め(RAR)。営業 AI エージェントが扱える保険の種類と、給付額の上限。
 export interface InsuranceTerms {
   type: "insurance_application";
   kinds: PlanKind[];

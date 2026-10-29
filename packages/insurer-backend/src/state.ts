@@ -1,4 +1,4 @@
-// 保険会社の事務センターの記憶。教材なのでメモリ上に置く。
+// 保険会社の保険会社のシステムの記憶。教材なのでメモリ上に置く。
 import { generateKeyPair, exportJWK, type JWK } from "jose";
 import { urls, type Application, type Contract, type Notice, type Plan } from "@gekko/shared";
 
