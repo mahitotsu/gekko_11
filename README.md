@@ -15,7 +15,7 @@ AI エージェントが人の代わりに取引をするとき、その取引�
 | 4 | 実装の技術スタック、フォルダ構成、動かし方 | [implementation.md](docs/implementation.md) |
 | 5 | 確認を省いた実装と、確認する実装の比較（21 シナリオ） | [scenarios.md](docs/scenarios.md) |
 | 随時 | 用語の意味 | [glossary.md](docs/glossary.md) |
-| 付録 | 窓口の調査と設計の根拠、事実と出典 | [research/](docs/research/findings.md) |
+| 付録 | 主張の根拠となる事実と、設計の判断（AI エージェント向けのナレッジ） | [knowledge/](docs/knowledge/README.md) |
 
 ## 動かして確かめる
 前提: Node.js 24 以上、npm 11 以上。
