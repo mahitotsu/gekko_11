@@ -6,7 +6,7 @@
   .box { fill: #ffffff; stroke: #c3c2b7; stroke-width: 1; } .grp { fill: #f4f3f0; stroke: #e1e0d9; stroke-width: 1; } .track { fill: #e1e0d9; }
   .k1 { fill: #e8f0fb; stroke: #2a78d6; stroke-width: 1.5; } .k2 { fill: #fdeee7; stroke: #eb6834; stroke-width: 1.5; }
   .kadd { fill: #e6f6ef; stroke: #1baf7a; stroke-width: 1.5; } .krem { fill: #fdeceb; stroke: #e34948; stroke-width: 1.5; stroke-dasharray: 5 3; }
-  .line { stroke: #52514e; stroke-width: 1.5; fill: none; } .dash { stroke: #9a9992; stroke-width: 1; stroke-dasharray: 4 3; fill: none; } .head { fill: #52514e; }
+  .line { stroke: #52514e; stroke-width: 1.5; fill: none; } .dash { stroke: #9a9992; stroke-width: 1; stroke-dasharray: 4 3; fill: none; } .dot { stroke: #52514e; stroke-width: 2; stroke-dasharray: 0 5; stroke-linecap: round; fill: none; } .head { fill: #52514e; }
   .ladd { stroke: #1baf7a; stroke-width: 2; fill: none; } .lrem { stroke: #e34948; stroke-width: 1.5; stroke-dasharray: 5 3; fill: none; } .hadd { fill: #1baf7a; } .hrem { fill: #e34948; }
   .l1, .l2, .l3, .lg { stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; } .l1 { stroke: #2a78d6; } .l2 { stroke: #eb6834; } .l3 { stroke: #1baf7a; } .lg { stroke: #898781; }
   .link { stroke: #c3c2b7; stroke-width: 3; stroke-linecap: round; } .ring { stroke: #fcfcfb; stroke-width: 2; } .mark { stroke: #0b0b0b; stroke-width: 1.5; } .today { stroke: #0b0b0b; stroke-width: 1.5; }
@@ -19,7 +19,7 @@
     .box { fill: #242422; stroke: #4a4a46; } .grp { fill: #20201f; stroke: #2c2c2a; } .track { fill: #2c2c2a; }
     .k1 { fill: #17263a; stroke: #3987e5; } .k2 { fill: #3a2218; stroke: #d95926; }
     .kadd { fill: #12281f; stroke: #199e70; } .krem { fill: #3a1c1c; stroke: #e66767; }
-    .line { stroke: #c3c2b7; } .dash { stroke: #7a7972; } .head { fill: #c3c2b7; }
+    .line { stroke: #c3c2b7; } .dash { stroke: #7a7972; } .dot { stroke: #c3c2b7; } .head { fill: #c3c2b7; }
     .ladd { stroke: #199e70; } .lrem { stroke: #e66767; } .hadd { fill: #199e70; } .hrem { fill: #e66767; }
     .l1 { stroke: #3987e5; } .l2 { stroke: #d95926; } .l3 { stroke: #199e70; }
     .link { stroke: #5a5a55; } .ring { stroke: #1a1a19; } .mark { stroke: #f0efec; } .today { stroke: #f0efec; }
