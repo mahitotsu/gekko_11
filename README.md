@@ -2,18 +2,17 @@
 
 AI エージェントが人の代わりに取引をするとき、その取引が確かなものかを、当事者の言い分だけでなく、第三者の情報と突き合わせて確かめる。その考え方を、保険の窓口の例えと、動く実装で見せる教材。
 
-**読み手:** OAuth や passkey などの専門用語を知らない人。立場は問わない。[目的と題材の理由](docs/purpose.md)から読める。実装を読む人と動かす人は、下の表の 3 以降を読む。
+**読み手:** OAuth や passkey などの専門用語を知らない人。立場は問わない。[目的と題材の理由](docs/purpose.md)から読める。実装を読む人と動かす人は、下の表の 2 以降を読む。
 
 ## 読む順番
-1 と 2 は、専門用語なしで読める。3 以降は、技術の言葉と標準仕様を使う。
+1 は、専門用語なしで読める。2 以降は、技術の言葉と標準仕様を使う。
 
 | 順 | 知りたいこと | 読む文書 |
 |---|---|---|
 | 1 | AI に任せる関係が窓口と同じ形であること、確かめる 3 つ、電子の仕組みで崩れること | [purpose.md](docs/purpose.md) |
-| 2 | 保険の窓口が、3 つの確認をどう行っているか | [domain.md](docs/domain.md) |
-| 3 | AI が営業員を担う構成で、3 つの確認をどう行うか。標準仕様と検証項目 | [architecture.md](docs/architecture.md) |
-| 4 | 実装の技術スタック、フォルダ構成、動かし方 | [implementation.md](docs/implementation.md) |
-| 5 | 確認を省いた実装と、確認する実装の比較（21 シナリオ） | [scenarios.md](docs/scenarios.md) |
+| 2 | AI が営業員を担う構成で、3 つの確認をどう行うか。標準仕様と検証項目 | [architecture.md](docs/architecture.md) |
+| 3 | 実装の技術スタック、フォルダ構成、動かし方 | [implementation.md](docs/implementation.md) |
+| 4 | 確認を省いた実装と、確認する実装の比較（21 シナリオ） | [scenarios.md](docs/scenarios.md) |
 | 随時 | 用語の意味 | [glossary.md](docs/glossary.md) |
 | 付録 | 主張の根拠となる事実と、設計の判断（AI エージェント向けのナレッジ） | [knowledge/](docs/knowledge/README.md) |
 
