@@ -115,15 +115,7 @@ app.get("/internal/passkeys/:user", (c) => {
   return c.json(list);
 });
 
-// ---- 営業 AI エージェントの登録 (RFC 7591 の最小形)。登録を外すと、新しいトークンを出さず、出したトークンも無効になる ----
-app.post("/register", async (c) => {
-  if (c.req.header("x-internal-key") !== INTERNAL_KEY) return c.text("forbidden", 403);
-  const b = (await c.req.json()) as { client_id: string; client_name: string };
-  if (clients[b.client_id]) return c.json({ error: "invalid_client_metadata", error_description: "登録済みです" }, 400);
-  const secret = randomUUID();
-  clients[b.client_id] = { name: b.client_name, secret, redirectUris: [] };
-  return c.json({ client_id: b.client_id, client_secret: secret }, 201);
-});
+// ---- 営業 AI エージェントの登録の失効。営業 AI エージェントは、保険会社が事前に登録する(store.ts)。登録を外すと、新しいトークンを出さず、出したトークンも無効になる ----
 app.post("/admin/clients/:id/revoke", (c) => {
   if (c.req.header("x-internal-key") !== INTERNAL_KEY) return c.text("forbidden", 403);
   const rec = clients[c.req.param("id")];
