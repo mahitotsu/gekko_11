@@ -45,7 +45,7 @@ export async function resetWorld() {
   await fetch(`${urls.customerApp}/api/reset`, { method: "POST" });
 }
 
-export const TERMS: InsuranceTerms[] = [{ type: "insurance_application", kinds: ["medical", "death"], maxBenefit: 10_000_000 }];
+export const TERMS: InsuranceTerms[] = [{ type: "insurance_application", kinds: ["fixed", "lifetime"], maxBenefit: 1_200_000 }];
 
 export interface OfferResult { offerJws: string; offerSet: OfferSet; offerSetId: string; nonce: string; expiresAt: number }
 // 顧客が署名した一式。営業 AI エージェントと事務サービスを経由して保険会社のシステムに届く。
@@ -55,7 +55,6 @@ export interface Submission {
   intentAssertion: any;
   application: Application;
   assertion: any;
-  insuredAssertion?: any;
 }
 
 // 顧客の側: ログイン → パスキーの登録 → 提案と申込みの許可の範囲に同意してトークンをもらう → 案を選んで署名する
@@ -111,17 +110,16 @@ export class Customer {
     return this.auth.sign(challengeOf(content), urls.customerApp);
   }
   // 案を選んで、意向確認と申込みに署名する。
-  prepare(offer: OfferResult, planId: string, opts: { insured?: Customer } = {}): Submission {
+  prepare(offer: OfferResult, planId: string): Submission {
     const plan = offer.offerSet.plans.find((p) => p.id === planId)!;
-    const intent: Intent = { customer: this.user, offerSetId: offer.offerSetId, planId, wish: "入院に備えたい", nonce: offer.nonce, expiresAt: offer.expiresAt };
+    const intent: Intent = { customer: this.user, offerSetId: offer.offerSetId, planId, wish: "老後の生活費に備えたい", nonce: offer.nonce, expiresAt: offer.expiresAt };
     const intentAssertion = this.sign(intent);
     const application: Application = {
-      customer: this.user, insured: opts.insured?.user ?? this.user, plan, offerSetId: offer.offerSetId,
+      customer: this.user, plan, offerSetId: offer.offerSetId,
       intentSignature: intentAssertion.response.signature, nonce: offer.nonce, expiresAt: offer.expiresAt,
     };
     return {
       offerJws: offer.offerJws, intent, intentAssertion, application, assertion: this.sign(application),
-      insuredAssertion: opts.insured?.sign(application),
     };
   }
 }

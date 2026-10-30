@@ -2,12 +2,12 @@
 import { generateKeyPair, exportJWK, type JWK } from "jose";
 import { urls, type Application, type Contract, type Notice, type Plan } from "@gekko/shared";
 
-// 案の一覧。保険会社が出せる商品。
+// 案の一覧。保険会社が出せる商品(無選択型の個人年金保険)。
 export const catalog: Plan[] = [
-  { id: "med-light", name: "医療 ライト", kind: "medical", benefit: 50_000, monthly: 1_200 },
-  { id: "med-plus", name: "医療 プラス", kind: "medical", benefit: 100_000, monthly: 2_400 },
-  { id: "life-1000", name: "死亡 1,000万円", kind: "death", benefit: 10_000_000, monthly: 3_800 },
-  { id: "life-3000", name: "死亡 3,000万円", kind: "death", benefit: 30_000_000, monthly: 9_500 },
+  { id: "fixed-60", name: "確定年金 10年・年額60万円", kind: "fixed", benefit: 600_000, monthly: 20_000 },
+  { id: "fixed-120", name: "確定年金 10年・年額120万円", kind: "fixed", benefit: 1_200_000, monthly: 40_000 },
+  { id: "life-120", name: "終身年金・年額120万円", kind: "lifetime", benefit: 1_200_000, monthly: 60_000 },
+  { id: "life-240", name: "終身年金・年額240万円", kind: "lifetime", benefit: 2_400_000, monthly: 120_000 },
 ];
 
 // 顧客と、登録済みの連絡先(通知の宛先)。本人確認のときに届け出たものを想定する。

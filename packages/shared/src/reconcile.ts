@@ -17,9 +17,8 @@ export function reconcile(mine: Application[], notices: Notice[]): Reconciled[] 
       const c = n.contract;
       const diffs: string[] = [];
       if (c.customer !== app.customer) diffs.push("契約者");
-      if (c.insured !== app.insured) diffs.push("被保険者");
       if (c.plan.id !== app.plan.id) diffs.push("案");
-      if (c.plan.benefit !== app.plan.benefit) diffs.push("給付額");
+      if (c.plan.benefit !== app.plan.benefit) diffs.push("年金の年額");
       if (c.plan.monthly !== app.plan.monthly) diffs.push("保険料");
       if (c.offerSetId !== app.offerSetId) diffs.push("提示集合");
       out.push({ nonce: app.nonce, status: diffs.length ? "mismatch" : "match", diffs });

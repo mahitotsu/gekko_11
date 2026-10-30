@@ -147,7 +147,7 @@ app.get("/authorize", (c) => {
     <p><b>${esc(users[user]!.name)}</b> さん、営業 AI エージェントに、次の範囲で、案の提案と、あなたの代理での申込みを許可しますか？</p>
     <div class="card"><b>許可する範囲</b><br>
       ・扱える保険の種類は <b>${esc((t?.kinds ?? []).join(", ") || "なし")}</b><br>
-      ・給付額は 1 件あたり <b>${t ? t.maxBenefit.toLocaleString() : 0} 円</b> まで</div>
+      ・年金の年額は 1 件あたり <b>${t ? t.maxBenefit.toLocaleString() : 0} 円</b> まで</div>
     ${hasKey ? "" : `<p>⚠ パスキーがまだ未登録です。<a href="/passkeys" target="_blank">先に登録</a>してください。</p>`}
     <form method="post" action="/authorize/approve">
       ${["client_id", "redirect_uri", "state", "code_challenge"].map((k) => `<input type="hidden" name="${k}" value="${esc(q[k] ?? "")}">`).join("")}

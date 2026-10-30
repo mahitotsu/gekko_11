@@ -21,7 +21,6 @@ interface Submission {
   intentAssertion: any;
   application: Application;
   assertion: unknown;
-  insuredAssertion?: unknown;
   // 以下は、営業 AI エージェントが付け足せる欄。良い実装は使わない。
   verified_claims?: VerifiedClaims;
   contact?: string;
@@ -32,7 +31,7 @@ interface Submission {
 export function deriveContract(a: Application): Contract {
   return {
     contractId: `C-${challengeOf(a).slice(0, 12)}`,
-    customer: a.customer, insured: a.insured, plan: a.plan, offerSetId: a.offerSetId, nonce: a.nonce,
+    customer: a.customer, plan: a.plan, offerSetId: a.offerSetId, nonce: a.nonce,
   };
 }
 
@@ -154,17 +153,7 @@ export function createApp() {
     if (config.seal === "passkey") pass("契約者のパスキーによる署名(誰が)と、内容の一致(何を)", seal.detail);
     else checks.push({ name: "申込みの署名の照合", ok: true, detail: `⚠ ${seal.detail}` });
 
-    // 5. 被保険者が別人なら、その人の署名
-    if (application.insured !== customer) {
-      if (config.insured === "required") {
-        if (!customers[application.insured]) return reject("被保険者が顧客である", `${application.insured} は顧客ではありません`);
-        const r = await verifyPasskey({ content: application, assertion: body.insuredAssertion, user: application.insured });
-        if (!r.ok) return reject("被保険者の署名", r.detail);
-        pass("被保険者自身の署名");
-      } else skipped("被保険者自身の署名");
-    }
-
-    // 6. 意向確認と申込みの署名の連鎖
+    // 5. 意向確認と申込みの署名の連鎖
     if (config.chain === "verify") {
       const r = await verifyPasskey({ content: intent, assertion: body.intentAssertion, user: customer });
       if (!r.ok) return reject("意向確認の署名", r.detail);
@@ -175,7 +164,7 @@ export function createApp() {
       pass("意向確認の署名と申込みがつながる");
     } else skipped("意向確認の署名と申込みがつながる");
 
-    // 7. 取決め(扱える保険の種類、給付額の上限)との照合
+    // 6. 取決め(扱える保険の種類、年金の年額の上限)との照合
     if (serviceTicket) {
       skipped("取決めとの照合");
     } else if (config.range === "rar") {
@@ -183,11 +172,11 @@ export function createApp() {
       const terms = ticket.authorization_details?.[0];
       if (!terms) return reject("取決め(RAR)", "取決めがありません");
       if (!terms.kinds.includes(application.plan.kind)) return reject("扱える保険の種類", `${application.plan.kind} は取決めの範囲外です`);
-      if (application.plan.benefit > terms.maxBenefit) return reject("給付額の上限以内", `${application.plan.benefit} 円は上限 ${terms.maxBenefit} 円を超えています`);
+      if (application.plan.benefit > terms.maxBenefit) return reject("年金の年額の上限以内", `${application.plan.benefit} 円は上限 ${terms.maxBenefit} 円を超えています`);
       pass("取決めの範囲内");
     } else skipped("取決め(scope と RAR)の範囲内");
 
-    // 8. 一度しか受け付けない
+    // 7. 一度しか受け付けない
     const n = nonces.get(application.nonce);
     if (config.nonce === "once") {
       if (!n || n.used || n.customer !== customer || n.expiresAt < Date.now() / 1000 || application.expiresAt < Date.now() / 1000)
@@ -196,7 +185,7 @@ export function createApp() {
     } else skipped("申込みは未使用で期限内");
     if (n) n.used = true;
 
-    // 9. 契約の記録。署名済みの申込みから導出する。悪い実装は、人が入力した内容を信じる。
+    // 8. 契約の記録。署名済みの申込みから導出する。悪い実装は、人が入力した内容を信じる。
     const derived = deriveContract(application);
     const contract: Contract = config.ingest === "derive" ? derived : { ...derived, ...body.contractEntry };
     if (config.ingest === "derive") pass("契約の記録は署名済みの申込みから導出");
@@ -205,7 +194,7 @@ export function createApp() {
     contracts.push({ contract, by, at: Date.now(), application, intent, assertion: body.assertion, offerJws: body.offerJws });
     pass("取り次いだ窓口と署名済みの申込みを記録", by.length ? `${by.join(" ← ")}(経由)` : "経路の記録がありません");
 
-    // 10. 顧客へ直接通知する(営業 AI エージェントを通さない)。宛先は登録済みの連絡先。
+    // 9. 顧客へ直接通知する(営業 AI エージェントを通さない)。宛先は登録済みの連絡先。
     const to = config.notify === "registered" ? customers[customer]!.contact : (body.contact ?? customers[customer]!.contact);
     const notice: Notice = { customer, contract };
     const entry = { to, notice, delivered: false };

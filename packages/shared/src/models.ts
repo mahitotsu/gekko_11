@@ -1,16 +1,16 @@
 // 保険の募集で扱う書類のモデル。申込みの内容は、API のパラメータに当たる。
-export type PlanKind = "medical" | "death";
+export type PlanKind = "fixed" | "lifetime"; // 確定年金、終身年金
 
-// 案。営業 AI エージェントが顧客に示す、保険の内容。
+// 案。営業 AI エージェントが顧客に示す、個人年金保険の内容。契約者が被保険者で、年金を自分で受け取る。
 export interface Plan {
   id: string;
   name: string;
   kind: PlanKind;
-  benefit: number; // 給付額(円)
+  benefit: number; // 年金の年額(円)
   monthly: number; // 月額の保険料(円)
 }
 
-// 取決め(RAR)。営業 AI エージェントが扱える保険の種類と、給付額の上限。
+// 取決め(RAR)。営業 AI エージェントが扱える保険の種類と、年金の年額の上限。
 export interface InsuranceTerms {
   type: "insurance_application";
   kinds: PlanKind[];
@@ -28,15 +28,14 @@ export interface Intent {
   customer: string;
   offerSetId: string;
   planId: string;
-  wish: string; // 顧客の意向(例: 入院に備えたい)
+  wish: string; // 顧客の意向(例: 老後の生活費に備えたい)
   nonce: string;
   expiresAt: number; // epoch 秒
 }
 
 // 申込み。意向確認の署名の値を含めて、署名の連鎖を作る。
 export interface Application {
-  customer: string; // 契約者
-  insured: string; // 被保険者
+  customer: string; // 契約者(被保険者と年金の受取人を兼ねる)
   plan: Plan;
   offerSetId: string;
   intentSignature: string; // 意向確認の署名の値
@@ -48,7 +47,6 @@ export interface Application {
 export interface Contract {
   contractId: string;
   customer: string;
-  insured: string;
   plan: Plan;
   offerSetId: string;
   nonce: string;

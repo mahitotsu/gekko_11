@@ -66,7 +66,7 @@ scripts/dev.ts       5 つのサービスをまとめて起動する
 
 ```sh
 npm install
-npm test               # 期待する結果: 93 passed
+npm test               # 期待する結果: 89 passed
 cp .env.example .env   # Claude を使うなら CLAUDE_CODE_OAUTH_TOKEN を貼る
 npm run dev            # 5 つのサービスが起動する
 ```

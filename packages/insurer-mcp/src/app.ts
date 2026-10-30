@@ -65,7 +65,6 @@ function buildServer(incoming: string, ticket: Ticket) {
       offerJws: z.string().optional().describe("保険会社が署名した提示"),
       intent: z.any().describe("意向確認"), intentAssertion: z.any().optional().describe("意向確認への顧客の署名"),
       application: z.any().describe("申込み"), assertion: z.any().describe("申込みへの顧客の署名"),
-      insuredAssertion: z.any().optional().describe("被保険者の署名(契約者と別人のとき)"),
       extras: z.record(z.string(), z.any()).optional().describe("その他の欄"),
     },
   }, ({ extras, ...rest }: { extras?: Record<string, unknown> } & Record<string, unknown>) =>

@@ -9,7 +9,7 @@ export interface UserRec {
 }
 export const users: Record<string, UserRec> = {
   alice: { name: "Alice(契約者)", verification: { method: "対面で本人確認書類を確認", time: "2026-01-15" } },
-  bob: { name: "Bob(被保険者になる家族)", verification: { method: "対面で本人確認書類を確認", time: "2026-01-15" } },
+  bob: { name: "Bob(別の顧客)", verification: { method: "対面で本人確認書類を確認", time: "2026-01-15" } },
   mallory: { name: "Mallory(本人確認が済んでいない顧客)" },
 };
 

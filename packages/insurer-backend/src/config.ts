@@ -26,10 +26,9 @@ export interface BackendConfig {
   trustFromUser: boolean; // ツール引数の for_user を信じる(本人が消える実装)
   offers: "verify" | "none"; // 案が、保険会社の署名つきの提示に含まれるか
   chain: "verify" | "none"; // 意向確認と申込みの署名の連鎖
-  range: "rar" | "none"; // 取決め(scope、扱える保険の種類、給付額の上限)との照合
+  range: "rar" | "none"; // 取決め(scope、扱える保険の種類、年金の年額の上限)との照合
   registration: "introspect" | "none"; // トークンを取り次いだ営業 AI エージェントの登録の有効性
   nonce: "once" | "none"; // 申込みは一度だけ
-  insured: "required" | "none"; // 別人が被保険者なら、その人の署名
   identity: "token" | "agent-claim"; // 本人確認の済んだ属性を、トークンから取るか、営業 AI エージェントの申告から取るか
   ingest: "derive" | "manual"; // 契約の記録を、署名済み申込から導出するか、人が入力するか
   notify: "registered" | "from-application"; // 通知先を、登録済みの連絡先にするか、申込みに書かれた連絡先にするか
@@ -48,7 +47,6 @@ export const config: BackendConfig = {
   range: pick("RANGE_CHECK", "rar", "none"),
   registration: pick("REGISTRATION_CHECK", "introspect", "none"),
   nonce: pick("NONCE_CHECK", "once", "none"),
-  insured: pick("INSURED_CHECK", "required", "none"),
   identity: pick("IDENTITY_SOURCE", "token", "agent-claim"),
   ingest: pick("INGEST", "derive", "manual"),
   notify: pick("NOTIFY", "registered", "from-application"),
@@ -62,6 +60,6 @@ export function resetConfig() {
 }
 const GOOD: BackendConfig = {
   ticket: "good", seal: "passkey", trustFromUser: false, offers: "verify", chain: "verify", range: "rar",
-  registration: "introspect", nonce: "once", insured: "required", identity: "token", ingest: "derive", notify: "registered",
+  registration: "introspect", nonce: "once", identity: "token", ingest: "derive", notify: "registered",
 };
 export const isGood = () => (Object.keys(GOOD) as (keyof BackendConfig)[]).every((k) => config[k] === GOOD[k]);
