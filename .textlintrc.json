@@ -1,0 +1,48 @@
+{
+  "filters": {
+    "comments": true
+  },
+  "rules": {
+    "preset-ja-technical-writing": {
+      "sentence-length": false,
+      "no-doubled-joshi": {
+        "allow": [
+          "も",
+          "にも"
+        ]
+      },
+      "no-mix-dearu-desumasu": {
+        "preferInHeader": "",
+        "preferInBody": "である",
+        "preferInList": "である",
+        "strict": false
+      },
+      "max-kanji-continuous-len": {
+        "max": 6,
+        "allow": [
+          "所属保険会社等",
+          "特定保険募集人",
+          "電子帳簿保存法",
+          "募集担当者以外",
+          "契約内容案内書",
+          "特定大規模乗合保険募集人",
+          "生命保険募集人",
+          "損害保険代理店",
+          "少額短期保険募集人",
+          "傷害疾病定額保険契約",
+          "犯罪収益移転防止法",
+          "戸籍法施行規則"
+        ]
+      }
+    },
+    "@textlint-ja/preset-ai-writing": {
+      "no-ai-list-formatting": {
+        "disableBoldListItems": true
+      },
+      "no-ai-emphasis-patterns": {
+        "disableInfoPatterns": true
+      },
+      "ai-tech-writing-guideline": false
+    }
+  }
+}

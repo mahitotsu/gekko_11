@@ -79,7 +79,7 @@ npm run dev            # 5 つのサービスが起動する
 `INSURER_MODE=bad` が全体、`INSURER_MODE_BACKEND=bad`、`INSURER_MODE_MCP=bad`、`INSURER_MODE_AUTH=bad` がサービス単位である。シナリオごとの細かい切り替え（`BACKEND_TICKET_CHECK=no-aud` など）は、[scenarios.md](scenarios.md) の一覧にある。コードの冒頭に、悪い実装を含む旨を書く。
 
 ## 5. 簡略化した点
-- **mTLS は模擬である:** `mtls-only` は、事務サービスが付けるヘッダー `x-peer` を、通信相手の認証結果とみなす。実際の TLS は使わない。
+- **mTLS は模擬である:** `mtls-only` では、事務サービスが付けるヘッダー `x-peer` を、通信相手の認証結果とみなす。実際の TLS は使わない。
 - **替えるときに `actor_token` を使わない:** 替えを頼む窓口は、クライアント認証（Basic）で自分を示す。RFC 8693 の `actor_token` は省いた。
 - **証明を送信者の鍵に結ばない:** DPoP と mTLS での結び付けと、証明書によるクライアント認証（[アーキテクチャ](architecture.md)の 4-3）は、まだない。替えを頼む窓口は、共有の秘密で自分を示す。盗んだトークンと秘密があれば、替えられる。
 - **ログインは固定ユーザーである:** alice、bob、mallory が、パスワード `demo` で入れる。
