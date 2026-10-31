@@ -1,6 +1,6 @@
 node_modules/
 .env
 *.log
-services/insurer-auth/target/
+services/*/target/
 __pycache__/
 *.pyc

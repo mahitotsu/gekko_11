@@ -15,8 +15,9 @@
   "include": [
     "packages/*/src",
     "packages/*/test",
-    "scripts",
     "test",
-    "deploy"
+    "deploy",
+    "vitest.config.ts",
+    "vitest.cluster.config.ts"
   ]
 }

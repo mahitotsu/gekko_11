@@ -5,11 +5,7 @@ FROM node:24-slim
 ARG VARIANT=secure
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/shared/package.json packages/shared/
 COPY packages/customer-app/package.json packages/customer-app/
-COPY packages/insurer-auth/package.json packages/insurer-auth/
-COPY packages/insurer-backend/package.json packages/insurer-backend/
-COPY packages/insurer-mcp/package.json packages/insurer-mcp/
 COPY packages/sales-agent/package.json packages/sales-agent/
 COPY test/cluster/probe/package.json test/cluster/probe/
 COPY packages/token-guard/package.json packages/token-guard/

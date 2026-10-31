@@ -1,7 +1,0 @@
-{
-  "name": "@gekko/insurer-backend",
-  "private": true,
-  "type": "module",
-  "scripts": { "dev": "tsx src/server.ts" },
-  "dependencies": { "@gekko/shared": "*", "@hono/node-server": "^2.1.0", "@simplewebauthn/server": "^14.0.0", "hono": "^4.13.0", "jose": "^6.2.0" }
-}

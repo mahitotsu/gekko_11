@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# k3d のクラスタを組み立て、確かめる（段 0）。使い方: deploy/cluster.sh up|deploy|verify|down
+# k3d のクラスタを組み立てる。使い方: deploy/cluster.sh up|deploy|down（確かめは npm run cluster:test）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -72,7 +72,6 @@ deploy() {
 case "${1:-}" in
   up) up ;;
   deploy) deploy ;;
-  verify) node deploy/verify/verify.ts ;;
   down) k3d cluster delete "$CLUSTER" ;;
-  *) echo "使い方: $0 up|deploy|verify|down" >&2; exit 2 ;;
+  *) echo "使い方: $0 up|deploy|down" >&2; exit 2 ;;
 esac

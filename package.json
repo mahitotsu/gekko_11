@@ -7,13 +7,11 @@
     "test/cluster/probe"
   ],
   "scripts": {
-    "dev": "tsx scripts/dev.ts",
-    "test": "vitest run",
+    "test": "vitest run && scripts/unit-tests.sh",
     "typecheck": "tsc --noEmit",
     "lint:text": "textlint README.md docs",
     "cluster:up": "deploy/cluster.sh up",
     "cluster:deploy": "deploy/cluster.sh deploy",
-    "cluster:verify": "deploy/cluster.sh verify",
     "cluster:down": "deploy/cluster.sh down",
     "cluster:test": "vitest run --config vitest.cluster.config.ts"
   },

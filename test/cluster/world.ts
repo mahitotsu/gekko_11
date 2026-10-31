@@ -36,10 +36,13 @@ export class Customer {
   dpopKey: Json = {};
   authenticator!: AuthenticatorState;
 
-  constructor(
-    readonly ns: Ns,
-    readonly user: string,
-  ) {}
+  readonly ns: Ns;
+  readonly user: string;
+
+  constructor(ns: Ns, user: string) {
+    this.ns = ns;
+    this.user = user;
+  }
 
   get origin() {
     return `https://customer-app.${this.ns}.svc:8443`;
@@ -164,3 +167,50 @@ export async function setTamper(on: boolean): Promise<void> {
   const now = await probe("vulnerable", "probe-intruder", "admin", { service: "sales-agent", port: 9091, path: "/tamper" });
   if (now.body?.on !== on) throw new Error(`書き換えの設定が効いていない: ${JSON.stringify(now.body)}`);
 }
+
+// ---- 乗っ取られた窓口と、攻撃者の役 ----
+
+/** 窓口の役が、自分の SVID で、トークンを替える（actor_token は自分のトークン）。 */
+export async function exchangeAs(ns: Ns, who: Role, subject: string, audience: string, terms?: unknown): Promise<Json> {
+  const actor = (await probe(ns, who, "client-credentials")).body?.access_token;
+  return probe(ns, who, "exchange", { subject, actor, audience, terms });
+}
+
+/** 乗っ取られた営業 AI エージェント: 顧客の A を、事務サービス宛ての B に替える。 */
+export async function atMcp(customer: Customer, terms?: unknown): Promise<string> {
+  const r = await exchangeAs(customer.ns, "probe-sales-agent", customer.token, "insurer-mcp", terms);
+  if (r.status !== 200) throw new Error(`B を受け取れない: ${JSON.stringify(r)}`);
+  return r.body.access_token;
+}
+
+/** 事務サービスの MCP の道具を、トークンを付けて呼ぶ。 */
+export const mcpCall = (ns: Ns, token: string, tool: string, args: Json = {}, who: Role = "probe-sales-agent") =>
+  probe(ns, who, "mcp", { token, tool, args });
+
+/** 申込みを、事務サービスの道具の引数の形にする。extras は、窓口が足せる欄。 */
+export const applyArgs = (s: Submission, extras?: Json) => ({
+  intent: s.intent,
+  intent_assertion: s.intentAssertion,
+  application: s.application,
+  assertion: s.assertion,
+  offer_jws: s.offerJws,
+  ...(extras ? { extras } : {}),
+});
+
+/** 攻撃の材料として、正規の経路で、顧客宛ての提示を受け取る（防御の設定に左右されない）。 */
+export async function offerFor(customer: Customer): Promise<Offer> {
+  const r = await mcpCall(customer.ns, await atMcp(customer), "get_offers");
+  if (!r.body?.offerJws) throw new Error(`提示を受け取れない: ${JSON.stringify(r)}`);
+  return r.body as Offer;
+}
+
+/** 保険会社のシステムへ、事務サービスを通らずに直接申し込む。 */
+export const backendPost = (ns: Ns, token: string, body: unknown, who: Role = "probe-mcp-1") =>
+  probe(ns, who, "call-service", { service: "insurer-backend", path: "/applications", token, body });
+
+/** 監査の記録に、その nonce の契約があるか。 */
+export async function contractsOf(ns: Ns, nonce: string): Promise<Json[]> {
+  return (await records(ns)).contracts.filter((c) => c.contract.nonce === nonce);
+}
+
+export const ISSUER = (ns: Ns) => `https://insurer-auth.${ns}.svc:8443`;
