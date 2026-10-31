@@ -1,0 +1,5 @@
+gekko:
+  issuer: ${ISSUER:http://localhost}
+  trust-domain: ${TRUST_DOMAIN:gekko11.internal}
+  namespace: ${NAMESPACE:secure}
+  customer-redirect-uri: ${CUSTOMER_REDIRECT_URI:http://127.0.0.1:4000/callback}

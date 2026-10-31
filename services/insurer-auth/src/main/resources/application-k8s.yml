@@ -1,0 +1,18 @@
+# クラスタの中では、SVID で TLS を受ける。サービスは SVID の証明書を示し、ブラウザ役は示さない（client-auth: want）。
+# spiffe-helper が SVID_DIR に書き出し、入れ替わったら読み直す。
+server:
+  port: 8443
+  ssl:
+    bundle: svid
+    client-auth: want
+spring:
+  ssl:
+    bundle:
+      pem:
+        svid:
+          reload-on-update: true
+          keystore:
+            certificate: file:${SVID_DIR}/svid.pem
+            private-key: file:${SVID_DIR}/svid_key.pem
+          truststore:
+            certificate: file:${SVID_DIR}/svid_bundle.pem
