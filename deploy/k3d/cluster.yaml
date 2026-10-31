@@ -1,0 +1,20 @@
+# k3d のクラスタ（architecture の 5 章、D-20）。
+# 外への公開は kubectl port-forward で行うので、Traefik と servicelb は使わない。
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: gekko11
+servers: 1
+agents: 1
+options:
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+      - arg: --disable=servicelb
+        nodeFilters:
+          - server:*
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true

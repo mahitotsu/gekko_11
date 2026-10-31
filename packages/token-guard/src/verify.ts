@@ -1,0 +1,124 @@
+// 受け口の確かめ（architecture の 2-2 の token-guard、scenarios の D26、D27）。
+import { createHash } from "node:crypto";
+import {
+  calculateJwkThumbprint,
+  createRemoteJWKSet,
+  decodeProtectedHeader,
+  importJWK,
+  jwtVerify,
+  type JWK,
+  type JWTPayload,
+} from "jose";
+import { config } from "./config.ts";
+import { enabled } from "./defenses.ts";
+
+export class Refusal extends Error {
+  readonly status: 401 | 403;
+  constructor(status: 401 | 403, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export interface Peer {
+  spiffeId?: string;
+  /** 相手の証明書の SHA-256（16 進）。Envoy の XFCC の Hash。 */
+  hash?: string;
+}
+
+export interface Checked {
+  token: string;
+  claims: JWTPayload & { cnf?: { jkt?: string; "x5t#S256"?: string }; act?: unknown };
+  peer: Peer;
+}
+
+export interface IngressRequest {
+  method: string;
+  url: string;
+  authorization?: string;
+  dpop?: string;
+  xfcc?: string;
+}
+
+const jwks = createRemoteJWKSet(new URL(`${config.authUrl}/oauth2/jwks`), { cooldownDuration: 0 });
+const b64url = (bytes: Buffer) => bytes.toString("base64url");
+
+/** Envoy が付ける XFCC（SANITIZE_SET）から、相手の SPIFFE ID と証明書のハッシュを読む。 */
+export function parseXfcc(header: string | undefined): Peer {
+  if (!header) return {};
+  const peer: Peer = {};
+  for (const part of header.split(",")[0]!.split(";")) {
+    const i = part.indexOf("=");
+    const key = part.slice(0, i);
+    const value = part.slice(i + 1).replace(/^"|"$/g, "");
+    if (key === "URI") peer.spiffeId = value;
+    if (key === "Hash") peer.hash = value;
+  }
+  return peer;
+}
+
+export async function checkIngress(req: IngressRequest): Promise<Checked> {
+  const peer = parseXfcc(req.xfcc);
+  if (config.ingress === "mtls") {
+    if (!peer.spiffeId) throw new Refusal(401, "相手の証明書がない");
+    if (enabled("D27") && !config.allowedCallers.includes(peer.spiffeId)) {
+      throw new Refusal(403, `呼んでよい相手ではない: ${peer.spiffeId}`);
+    }
+  }
+
+  const scheme = config.ingress === "dpop" ? "DPoP" : "Bearer";
+  const token = req.authorization?.match(new RegExp(`^${scheme} (.+)$`))?.[1];
+  if (!token) throw new Refusal(401, `Authorization: ${scheme} がない`);
+
+  let claims: Checked["claims"];
+  try {
+    ({ payload: claims } = await jwtVerify(token, jwks, {
+      algorithms: ["RS256"],
+      issuer: config.issuer,
+      audience: config.service,
+      typ: "at+jwt",
+      requiredClaims: ["exp", "sub"],
+    }));
+  } catch (e) {
+    throw new Refusal(401, `トークンを確かめられない: ${(e as Error).message}`);
+  }
+
+  if (enabled("D26")) {
+    if (config.ingress === "mtls") {
+      const bound = claims.cnf?.["x5t#S256"];
+      if (!bound || !peer.hash || bound !== b64url(Buffer.from(peer.hash, "hex"))) {
+        throw new Refusal(401, "トークンが、相手の証明書に結ばれていない");
+      }
+    } else {
+      await checkDpop(req, token, claims.cnf?.jkt);
+    }
+  }
+  return { token, claims, peer };
+}
+
+const seenJti = new Map<string, number>();
+
+/** DPoP の proof を確かめる（RFC 9449 の 4.3）。 */
+async function checkDpop(req: IngressRequest, token: string, jkt: string | undefined): Promise<void> {
+  if (!req.dpop) throw new Refusal(401, "DPoP の proof がない");
+  if (!jkt) throw new Refusal(401, "トークンが、DPoP の鍵に結ばれていない");
+  try {
+    const header = decodeProtectedHeader(req.dpop);
+    const jwk = header.jwk as JWK | undefined;
+    if (!jwk || !header.alg) throw new Error("jwk がない");
+    const { payload } = await jwtVerify(req.dpop, await importJWK(jwk, header.alg), {
+      typ: "dpop+jwt",
+      maxTokenAge: "60s",
+    });
+    if (payload.htm !== req.method) throw new Error("htm が違う");
+    if (payload.htu !== req.url) throw new Error(`htu が違う: ${String(payload.htu)}`);
+    if (payload.ath !== b64url(createHash("sha256").update(token).digest())) throw new Error("ath が違う");
+    if ((await calculateJwkThumbprint(jwk)) !== jkt) throw new Error("鍵が、トークンの cnf.jkt と違う");
+    const now = Date.now();
+    for (const [k, exp] of seenJti) if (exp < now) seenJti.delete(k);
+    if (!payload.jti || seenJti.has(payload.jti)) throw new Error("jti が使い回された");
+    seenJti.set(payload.jti, now + 120_000);
+  } catch (e) {
+    throw new Refusal(401, `DPoP の proof を確かめられない: ${(e as Error).message}`);
+  }
+}

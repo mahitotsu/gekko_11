@@ -9,7 +9,11 @@
     "dev": "tsx scripts/dev.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint:text": "textlint README.md docs"
+    "lint:text": "textlint README.md docs",
+    "cluster:up": "deploy/cluster.sh up",
+    "cluster:deploy": "deploy/cluster.sh deploy",
+    "cluster:verify": "deploy/cluster.sh verify",
+    "cluster:down": "deploy/cluster.sh down"
   },
   "devDependencies": {
     "@textlint-ja/textlint-rule-preset-ai-writing": "^1.7.0",

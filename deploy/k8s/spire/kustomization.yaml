@@ -1,0 +1,8 @@
+# SVID の発行基盤（SPIRE）。両方の名前空間に SVID を配る（D-16、D-20）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - accounts.yaml
+  - server.yaml
+  - agent.yaml

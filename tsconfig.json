@@ -7,7 +7,15 @@
     "skipLibCheck": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "allowImportingTsExtensions": true
   },
-  "include": ["packages/*/src", "scripts", "test"]
+  "include": [
+    "packages/*/src",
+    "scripts",
+    "test",
+    "deploy/verify"
+  ]
 }
