@@ -1,0 +1,108 @@
+{
+  "kind": "grid",
+  "title": "各サービスの前で、プロキシと token-guard がトークンを確かめ、アプリは内容だけを確かめる",
+  "desc": "呼ぶ側のサービスは、SPIFFE の mTLS とトークンで、プロキシを呼ぶ。プロキシは、SVID の発行基盤の agent から受け取った SVID で mTLS を受け、token-guard に確かめを頼む。token-guard は、相手の SPIFFE ID、トークン、DPoP、送信者の鍵への結び付けを確かめる。プロキシは、確かめた主張だけをアプリに渡す。アプリが次のサービスを呼ぶときは、token-guard が認可サーバーでトークンを替える（点線）。",
+  "nodes": [
+    {
+      "id": "spire",
+      "row": 0,
+      "col": 2,
+      "lines": [
+        "SVID の発行基盤",
+        "agent（ノードごと）"
+      ]
+    },
+    {
+      "id": "caller",
+      "row": 1,
+      "col": 4,
+      "lines": [
+        "呼ぶ側の",
+        "サービス"
+      ]
+    },
+    {
+      "id": "envoy",
+      "row": 1,
+      "col": 2,
+      "cls": "k1",
+      "lines": [
+        "プロキシ",
+        "mTLS を受ける"
+      ]
+    },
+    {
+      "id": "app",
+      "row": 1,
+      "col": 0,
+      "lines": [
+        "アプリ",
+        "内容を確かめる"
+      ]
+    },
+    {
+      "id": "guard",
+      "row": 2,
+      "col": 2,
+      "cls": "k1",
+      "lines": [
+        "token-guard",
+        "トークンを確かめる"
+      ]
+    },
+    {
+      "id": "auth",
+      "row": 3,
+      "col": 2,
+      "lines": [
+        "認可サーバー"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "spire",
+      "to": "envoy",
+      "label": "SVID を渡す",
+      "dashed": true
+    },
+    {
+      "from": "caller",
+      "to": "envoy",
+      "label": "mTLS とトークン"
+    },
+    {
+      "from": "envoy",
+      "to": "guard",
+      "label": "確かめを頼む"
+    },
+    {
+      "from": "envoy",
+      "to": "app",
+      "label": "確かめた主張"
+    },
+    {
+      "from": "guard",
+      "to": "auth",
+      "label": "出口でトークンを替える",
+      "dotted": true
+    }
+  ],
+  "groups": [
+    {
+      "label": "1 つのサービスの Pod",
+      "nodes": [
+        "envoy",
+        "app",
+        "guard"
+      ]
+    }
+  ],
+  "legend": [
+    {
+      "cls": "k1",
+      "name": "アプリの前に置く部品（サイドカー）"
+    }
+  ],
+  "note": "アプリは、トークンも証明書も持たない。認可サーバーは、替えを頼む者の証明書を自分で確かめるため、mTLS を自分で受ける。"
+}
