@@ -15,6 +15,7 @@ import {
   type InsuranceTerms, type Ticket, type VerifiedClaims,
 } from "@gekko/shared";
 import { clients, codes, challenges, passkeys, revokedJti, sessions, users } from "./store.js";
+import { authConfig } from "./config.js";
 import { issue, issueIdToken, jwk, publicKey } from "./issuer.js";
 import { esc, page } from "./html.js";
 
@@ -188,7 +189,7 @@ function verifiedOf(user: string): VerifiedClaims | undefined {
 // 替えるときに取決めを狭める。良い発行は広げさせない。
 function narrow(orig: InsuranceTerms[] | undefined, req: InsuranceTerms[] | undefined): InsuranceTerms[] | undefined {
   if (!req) return orig;
-  if (modeOf("auth") === "bad") return req; // 悪い発行: 要求どおり(広げられる)
+  if (authConfig().terms === "as-requested") return req; // 悪い発行: 要求どおり(広げられる)
   const o = orig?.[0];
   const r = req[0];
   if (!o || !r) return orig;
@@ -218,7 +219,9 @@ app.post("/token", async (c) => {
   if (clients[client]!.revoked) return err("invalid_client", "登録が外れています", 401);
 
   if (f.grant_type === "urn:ietf:params:oauth:grant-type:token-exchange") {
-    const target = EXCHANGE[client as Exchanger];
+    // 悪い発行は、求められた宛先にそのまま替える(事務サービスを飛ばして、保険会社のシステム宛てを取れる)
+    const anyTarget = authConfig().target === "any" && (Object.values(audiences) as string[]).includes(f.audience ?? "");
+    const target = anyTarget ? f.audience! : EXCHANGE[client as Exchanger];
     if (!target || (f.audience && f.audience !== target)) return err("invalid_target", "この窓口から渡せない宛先です");
     let subject: Ticket;
     try { subject = await verifyTicketGood(f.subject_token ?? "", OWN_AUD[client as Exchanger]); }

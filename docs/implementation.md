@@ -47,12 +47,13 @@ scripts/dev.ts       5 つのサービスをまとめて起動する
 | `packages/shared/src/reconcile.ts` | 顧客の写しと、直送された通知の照合 |
 | `packages/shared/src/config.ts` | ポート、URL、動作モード |
 | `packages/insurer-auth/src/issuer.ts` | トークンの発行。悪い発行を含む |
+| `packages/insurer-auth/src/config.ts` | 発行の仕方の切り替え（項目ごとの悪い発行） |
 | `packages/insurer-auth/src/server.ts` | トークンの替え、有効性の問い合わせ、失効 |
 | `packages/insurer-backend/src/verify/ticket.ts` | 保険会社のシステムでのトークンの検証 |
 | `packages/insurer-backend/src/verify/seal.ts` | 署名の検証 |
 | `packages/insurer-backend/src/app.ts` | 申込みの検証と、2 段の署名の連鎖 |
 | `packages/insurer-mcp/src/core-ticket.ts` | 保険会社のシステムを呼ぶトークンの用意。悪い実装を含む |
-| `test/scenarios.test.ts` | 20 のシナリオと基本の流れ |
+| `test/scenarios.test.ts` | 21 のシナリオ、基本の流れ、補足のテスト |
 
 ## 3. サービスは固定ポートで動き、環境変数で設定する
 | サービス | ポート | 環境変数 |
@@ -67,7 +68,7 @@ scripts/dev.ts       5 つのサービスをまとめて起動する
 
 ```sh
 npm install
-npm test               # 期待する結果: 89 passed
+npm test               # 期待する結果: 94 passed
 cp .env.example .env   # Claude を使うなら CLAUDE_CODE_OAUTH_TOKEN を貼る
 npm run dev            # 5 つのサービスが起動する
 ```
@@ -88,9 +89,8 @@ npm run dev            # 5 つのサービスが起動する
 ## 6. まだ確かめていないこと
 - 本物の Claude（Agent SDK）での動作と、ブラウザのパスキー（Windows Hello 等）での署名は、実行して確かめていない。テストは、台本の営業 AI エージェントとソフトウェア認証器で通っている。
 - 顧客のアプリの画面は、まだない。顧客の操作は、テストの中でソフトウェア認証器と台本が行う。
-- [シナリオ](scenarios.md)の防御のうち、次の 7 つは、再現するテストがない。
+- [シナリオ](scenarios.md)の防御のうち、次の 5 つは、再現するテストがない。
   - **画面とともに未実装:** 顧客のアプリが ID トークンを確かめる（D21）、案の署名を確かめてから示す（D22）、確認画面を署名する内容から作る（D23）。
   - **設計だけで未実装:** 送信者の鍵への結び付け（D26）。替えを頼む者の証明書による認証（D4 の設計）も、まだない（5 章）。
-  - **実装はあるが、外す設定とテストがない:** 営業 AI エージェントがトークン A を確かめる（D20）、トークンを URL に入れない（D24）。
   - **運用で行う:** 記録による監査（D25）。
-- 防御 D3 は、`INSURER_MODE_AUTH=bad` でまとめて外す。細目ごと（宛先、期間、`typ`、`act`、範囲、替える宛先）には外せない。替える宛先の限定と、`iss` の確認（D5）は、テストがない。
+- 種類の違うトークンで鍵と `iss` を分けること（D3c の一部）は、未実装である。ID トークンとアクセストークンは、同じ鍵と `iss` で出す。

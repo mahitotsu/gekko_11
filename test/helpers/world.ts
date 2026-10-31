@@ -41,6 +41,7 @@ export async function resetWorld() {
   resetAuthState();
   setMcp({ backendAuth: "exchange", incoming: "good" });
   process.env.INSURER_MODE_AUTH = "good";
+  for (const k of Object.keys(process.env)) if (k.startsWith("AUTH_")) delete process.env[k]; // 発行の項目ごとの切り替え
   salesConfig.tamper = false;
   await fetch(`${urls.customerApp}/api/reset`, { method: "POST" });
 }

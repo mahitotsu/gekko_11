@@ -9,6 +9,7 @@ import {
   type Contract, type InsuranceTerms, type Notice, type OfferSet, type Plan,
 } from "@gekko/shared";
 import { deriveContract } from "../packages/insurer-backend/src/app.js";
+import { privateKey as issuerKey } from "../packages/insurer-auth/src/issuer.js";
 import {
   Customer, TERMS, connectMcp, exchange, payloadOf, resetWorld, revokeClient, salesConfig, setBackend, setMcp, startWorld,
   type OfferResult, type Submission,
@@ -81,7 +82,11 @@ const D = {
   "D1 事務サービスの宛先確認": () => setMcp({ incoming: "no-aud" }),
   "D2 事務サービスのトークンの交換(素通し)": () => setMcp({ backendAuth: "passthrough" }),
   "D2 事務サービスのトークンの交換(自分の資格)": () => setMcp({ backendAuth: "client-credentials" }),
-  "D3 絞った発行": () => { process.env.INSURER_MODE_AUTH = "bad"; },
+  "D3a 宛先を絞った発行": () => { process.env.AUTH_AUD = "all"; },
+  "D3c ID トークンの宛先の分離": () => { process.env.AUTH_ID_TOKEN_AUD = "shared"; },
+  "D3d 経由を積む発行": () => { process.env.AUTH_ACT = "drop"; },
+  "D3e 取決めを狭める替え": () => { process.env.AUTH_TERMS = "as-requested"; },
+  "D3f 替えてよい宛先の限定": () => { process.env.AUTH_EXCHANGE_TARGET = "any"; },
   "D5 トークンの署名": () => setBackend({ ticket: "no-signature" }),
   "D6 トークンの期限": () => setBackend({ ticket: "no-exp" }),
   "D7 トークンの宛先": () => setBackend({ ticket: "no-aud" }),
@@ -204,8 +209,8 @@ scenario(4, "R2 × A4: 期限切れのトークンで、alice の署名のない
 });
 
 scenario(5, "R2 × A5: 別の用途のトークン(ID トークン)で、alice の署名のない申込みを出す", {
-  defenses: ["D3 絞った発行", "D7 トークンの宛先", "D8 トークンの種類", "D11 本人確認の属性をトークンから読む", "D13 顧客の署名と内容の照合", "D14 署名の連鎖", "D15 取決め"],
-  minimal: ["D3 絞った発行", "D8 トークンの種類", "D11 本人確認の属性をトークンから読む", "D13 顧客の署名と内容の照合", "D14 署名の連鎖", "D15 取決め"],
+  defenses: ["D3c ID トークンの宛先の分離", "D7 トークンの宛先", "D8 トークンの種類", "D11 本人確認の属性をトークンから読む", "D13 顧客の署名と内容の照合", "D14 署名の連鎖", "D15 取決め"],
+  minimal: ["D3c ID トークンの宛先の分離", "D8 トークンの種類", "D11 本人確認の属性をトークンから読む", "D13 顧客の署名と内容の照合", "D14 署名の連鎖", "D15 取決め"],
   prepare: async () => ({
     sub: unsigned(alice.prepare(await offerFor(alice), "life-120")), claims: await claimsOf(alice), token: (await alice.tokens()).id_token,
   }),
@@ -362,7 +367,7 @@ scenario(12, "R6 × A12: 取決めの範囲外の案で申し込む", {
 });
 
 scenario(13, "R6 × A16: トークンを替えるときに取決めを広げさせ、範囲外の案で申し込む", {
-  defenses: ["D3 絞った発行"],
+  defenses: ["D3e 取決めを狭める替え"],
   prepare: async () => {
     const routed = (await exchange("sales-agent", await alice.salesTicket(), "insurer-mcp", { authorization_details: WIDE })).access_token!;
     return { routed, sub: alice.prepare(await offerFor(alice), "life-240") };
@@ -396,16 +401,27 @@ scenario(16, "R7 × A7: 営業 AI エージェントのためのトークンを�
 });
 
 scenario(17, "R7 × A16: どの窓口でも通るトークンで、保険会社のシステムへ直接申し込む", {
-  defenses: ["D3 絞った発行"],
+  defenses: ["D3a 宛先を絞った発行"],
   prepare: async () => ({ sub: alice.prepare(await offerFor(alice), "fixed-60"), token: await alice.salesTicket() }),
   attack: async ({ sub, token }) => backendPost(token, sub),
   harmed: offRoute,
 }, () => {
-  it("雑な発行は、有効期間も長い(盗まれたトークンが長く使える)", async () => {
-    process.env.INSURER_MODE_AUTH = "bad";
-    const p = payloadOf(await alice.salesTicket());
-    expect(p.exp - p.iat).toBe(24 * 3600);
+  it("有効期間は短い(D3b)。外すと 24 時間になり、盗まれたトークンが長く使える", async () => {
+    const life = async () => { const p = payloadOf(await alice.salesTicket()); return p.exp - p.iat; };
+    expect(await life()).toBe(600);
+    process.env.AUTH_TTL = "long";
+    expect(await life()).toBe(24 * 3600);
   });
+});
+
+scenario(21, "R7 × A17: 営業 AI エージェントが、保険会社のシステム宛てのトークンに替えさせ、事務サービスを飛ばして申し込む", {
+  defenses: ["D3f 替えてよい宛先の限定"],
+  prepare: async () => ({ sub: alice.prepare(await offerFor(alice), "fixed-60"), ticket: await alice.salesTicket() }),
+  attack: async ({ sub, ticket }) => {
+    const direct = (await exchange("sales-agent", ticket, "insurer-backend")).access_token;
+    if (direct) await backendPost(direct, sub);
+  },
+  harmed: offRoute,
 });
 
 scenario(18, "R7 × A13: 登録の外れた営業 AI エージェントが、出済みのトークンで申し込む", {
@@ -461,11 +477,47 @@ scenario(19, "R8 × A15: 契約内容の通知先を、営業 AI エージェン
 
 // ======== R9 誰が取り次いだかを、後から追えない(事後) ========
 scenario(20, "R9 × A16: 経由を残さない発行で、取り次いだ窓口が記録に残らない", {
-  defenses: ["D3 絞った発行"],
+  defenses: ["D3d 経由を積む発行"],
   prepare: async () => {
     const { mcp } = await atMcp(alice);
     return { mcp, sub: alice.prepare(await getOffer(mcp), "fixed-60") };
   },
   attack: async ({ mcp, sub }) => apply(mcp, sub),
   harmed: offRoute,
+});
+
+// ======== 補足: シナリオにしない防御 ========
+describe("補足: 攻撃側が営業 AI エージェントでない防御と、発行元の確認", () => {
+  it("営業 AI エージェントは、自分宛てでないトークンを受け付けない(D20)", async () => {
+    const routed = (await exchange("sales-agent", await alice.salesTicket(), "insurer-mcp")).access_token!; // 事務サービス宛て
+    const res = await fetch(`${urls.salesAgent}/chat`, {
+      method: "POST", headers: { authorization: `Bearer ${routed}`, "content-type": "application/json" }, body: JSON.stringify({ message: "見たい" }),
+    });
+    expect(res.status).toBe(401);
+  });
+  it("保険会社のシステムは、正しい鍵の署名でも、発行元(iss)が違うトークンを受け付けない(D5)", async () => {
+    const sub = alice.prepare(await offerFor(alice), "fixed-60");
+    const token = await new SignJWT({ scope: "consult apply", authorization_details: TERMS, client_id: "insurer-mcp", act: { sub: "insurer-mcp", act: { sub: "sales-agent" } }, verified_claims: await claimsOf(alice) })
+      .setProtectedHeader({ alg: "ES256", kid: "insurer-auth-key-1", typ: "at+jwt" }).setIssuer("https://other-issuer.example").setSubject("alice")
+      .setAudience("insurer-backend").setIssuedAt().setExpirationTime("10m").sign(issuerKey);
+    expect((await backendPost(token, sub)).status).toBe(401);
+    expect(await recorded(() => true)).toBe(false);
+  });
+  it("トークンを URL に入れない(D24): 基本の流れで、どの呼び出しの URL にもトークンが現れない", async () => {
+    const urlsSeen: string[] = [];
+    const orig = globalThis.fetch;
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      urlsSeen.push(input instanceof Request ? input.url : String(input));
+      return orig(input, init);
+    });
+    try {
+      const ticket = await alice.salesTicket();
+      const auth = { authorization: `Bearer ${ticket}`, "content-type": "application/json" };
+      const chat = (await (await fetch(`${urls.salesAgent}/chat`, { method: "POST", headers: auth, body: JSON.stringify({ message: "見たい" }) })).json()) as { offer: OfferResult };
+      const sub = alice.prepare(chat.offer, "fixed-60");
+      expect((await fetch(`${urls.salesAgent}/submit`, { method: "POST", headers: auth, body: JSON.stringify({ ...sub, offerSet: chat.offer.offerSet }) })).status).toBe(200);
+    } finally { spy.mockRestore(); }
+    expect(urlsSeen.length).toBeGreaterThan(3);
+    expect(urlsSeen.filter((u) => /eyJ[\w-]+\.eyJ/.test(u))).toEqual([]);
+  });
 });

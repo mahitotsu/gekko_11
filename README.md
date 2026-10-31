@@ -24,4 +24,4 @@ npm install
 npm test
 ```
 
-期待する結果: `89 passed`。全シナリオで、悪い実装では被害が出て、良い実装では出ない。サービスの起動と環境変数は、[implementation.md](docs/implementation.md) にある。
+期待する結果: `94 passed`。全シナリオで、悪い実装では被害が出て、良い実装では出ない。サービスの起動と環境変数は、[implementation.md](docs/implementation.md) にある。
