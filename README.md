@@ -17,11 +17,14 @@ AI エージェントが人の代わりに取引をするとき、その取引�
 | 付録 | 主張の根拠は何か（AI エージェント向け） | [ナレッジの索引と使い方](docs/knowledge/README.md) |
 
 ## 動かして確かめる
-前提: Node.js 24 以上、npm 11 以上。
+前提: Docker（cgroup v2）、k3d、kubectl、Node.js 24 以上、npm 11 以上。Java と Python は、Docker の中で使う。
 
 ```sh
 npm install
-npm test
+npm test                 # サービスごとの単体テスト（TypeScript、Java、Python）
+npm run cluster:up       # k3d のクラスタを作る
+npm run cluster:deploy   # secure と vulnerable の名前空間に、全てのサービスを置く
+npm run cluster:test     # 全シナリオを確かめる（20 分ほど）
 ```
 
-期待する結果: `94 passed`。全シナリオで、悪い実装では被害が出て、良い実装では出ない。サービスの起動と環境変数は、[implementation.md](docs/implementation.md) にある。
+期待する結果: どちらのテストも、全て通る。防御を外した vulnerable の名前空間では被害が出て、secure の名前空間では出ない。クラスタの構成と環境変数、Claude の認証情報の置き方は、[implementation.md](docs/implementation.md) にある。
