@@ -1,5 +1,6 @@
 // 出口の替え（D-7 の替える段の手順）。認可サーバーへは、Envoy の出口が SVID で mTLS をかける。
 import { config } from "./config.ts";
+import { enabled, variant } from "./defenses.ts";
 import { Refusal } from "./verify.ts";
 
 const ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
@@ -23,6 +24,12 @@ async function tokenRequest(params: Record<string, string>): Promise<string> {
  */
 export async function exchangeForNext(subjectToken: string): Promise<string> {
   if (!config.next) throw new Refusal(403, "次の段がない");
+  const d2 = config.checks.exchange;
+  if (d2 && !enabled(d2)) {
+    // 悪い実装: 受け取ったトークンをそのまま流す（素通し）か、自分の名前のトークンで呼ぶ（本人が消える）
+    if (variant(d2) === "client-credentials") return tokenRequest({ grant_type: "client_credentials" });
+    return subjectToken;
+  }
   const actorToken = await tokenRequest({ grant_type: "client_credentials" });
   return tokenRequest({
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -31,5 +38,7 @@ export async function exchangeForNext(subjectToken: string): Promise<string> {
     actor_token: actorToken,
     actor_token_type: ACCESS_TOKEN,
     audience: config.next,
+    // A の範囲（openid を含む）のうち、取り次ぎに要る範囲だけを求める
+    scope: "apply",
   });
 }

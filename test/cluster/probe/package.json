@@ -1,0 +1,6 @@
+{
+  "name": "@gekko/probe",
+  "private": true,
+  "type": "module",
+  "dependencies": { "canonicalize": "^5.1.0", "jose": "^6.2.0" }
+}

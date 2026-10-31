@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 CLUSTER=gekko11
 TRUST_DOMAIN=gekko11.internal
 NAMESPACES=(secure vulnerable)
-SERVICE_ACCOUNTS=(insurer-auth sales-agent insurer-mcp insurer-backend intruder)
+SERVICE_ACCOUNTS=(insurer-auth sales-agent insurer-mcp insurer-backend customer-app intruder operator auditor)
 # SVID の有効期間（秒）。入れ替わりを観察できるよう、短くする。
 SVID_TTL=600
 
@@ -37,11 +37,27 @@ deploy() {
     done
   done
 
-  docker build -q -t gekko11/insurer-auth:dev services/insurer-auth
+  # secure と vulnerable で、防御を外す受け口を含むかが違う（D-20）
+  local images=(gekko11/insurer-mcp:dev)
+  docker build -q -t gekko11/insurer-mcp:dev services/insurer-mcp
   for ns in "${NAMESPACES[@]}"; do
+    docker build -q --build-arg VARIANT="$ns" -t "gekko11/insurer-auth:$ns" services/insurer-auth
+    docker build -q --build-arg VARIANT="$ns" -t "gekko11/insurer-backend:$ns" services/insurer-backend
     docker build -q -f deploy/node.Dockerfile --build-arg VARIANT="$ns" -t "gekko11/node:$ns" .
+    images+=("gekko11/insurer-auth:$ns" "gekko11/insurer-backend:$ns" "gekko11/node:$ns")
   done
-  k3d image import -c "$CLUSTER" gekko11/insurer-auth:dev gekko11/node:secure gekko11/node:vulnerable
+  k3d image import -c "$CLUSTER" "${images[@]}"
+
+  # 営業 AI エージェントの Claude の認証情報は、secure の名前空間にだけ置く（D-23）。値は .env から読み、どこにも書かない
+  kubectl create namespace secure --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  local token
+  token=$(grep -s '^CLAUDE_CODE_OAUTH_TOKEN=' .env | cut -d= -f2- || true)
+  if [ -n "$token" ]; then
+    printf %s "$token" | kubectl -n secure create secret generic claude --from-file=token=/dev/stdin --dry-run=client -o yaml \
+      | kubectl apply -f - >/dev/null
+  else
+    echo "注意: .env に CLAUDE_CODE_OAUTH_TOKEN がないので、secure の営業 AI エージェントは台本で動く"
+  fi
 
   for ns in "${NAMESPACES[@]}"; do
     node deploy/render.ts "$ns" | kubectl apply -f -

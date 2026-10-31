@@ -14,8 +14,9 @@
   },
   "include": [
     "packages/*/src",
+    "packages/*/test",
     "scripts",
     "test",
-    "deploy/verify"
+    "deploy"
   ]
 }

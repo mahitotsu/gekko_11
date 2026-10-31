@@ -2,6 +2,6 @@
   "name": "@gekko/customer-app",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "tsx src/server.ts" },
-  "dependencies": { "@gekko/shared": "*", "@hono/node-server": "^2.1.0", "@simplewebauthn/browser": "^14.0.0", "hono": "^4.13.0" }
+  "scripts": { "start": "node src/server.ts" },
+  "dependencies": { "@hono/node-server": "^2.1.0", "hono": "^4.13.0" }
 }

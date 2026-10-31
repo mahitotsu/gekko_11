@@ -38,15 +38,7 @@ import org.springframework.web.util.UriComponentsBuilder;
  * 段 0 の Q1 と Q2 を、TLS の層を除いて確かめる。証明書は、TLS の層が確かめた後の形（要求の属性）で渡す。
  * A（DPoP）→ B（営業 AI エージェントの証明書）→ C（事務サービスの証明書）と結び直し、act を積む。
  */
-@SpringBootTest(properties = { "gekko.issuer=http://localhost", "gekko.namespace=secure" })
-@AutoConfigureMockMvc
-class ExchangeFlowTest {
-
-	private static final String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
-
-	private static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
-
-	private static final String REDIRECT = "http://127.0.0.1:4000/callback";
+class ExchangeFlowTest extends AuthTestSupport {
 
 	private static final X509Certificate SALES_AGENT = TestCertificates
 		.svid("spiffe://gekko11.internal/ns/secure/sa/sales-agent");
@@ -62,11 +54,6 @@ class ExchangeFlowTest {
 
 	private static final X509Certificate OTHER_NAMESPACE = TestCertificates
 		.svid("spiffe://gekko11.internal/ns/vulnerable/sa/sales-agent");
-
-	@Autowired
-	MockMvc mvc;
-
-	private final ObjectMapper json = new ObjectMapper();
 
 	@Test
 	void tokenAIsBoundToTheDpopKeyAndMayBeActedOnBySalesAgent() throws Exception {
@@ -147,127 +134,6 @@ class ExchangeFlowTest {
 		// 他人の actor_token を使う
 		assertThat(refusal(SALES_AGENT, "sales-agent", a, mcpActor, "insurer-mcp"))
 			.contains("actor_token is not bound to the requester certificate");
-	}
-
-	private String customerToken(ECKey dpopKey) throws Exception {
-		String verifier = UUID.randomUUID() + "-" + UUID.randomUUID();
-		MvcResult result = this.mvc
-			.perform(post("/oauth2/token").param("grant_type", "authorization_code")
-				.param("client_id", "customer-app")
-				.param("code", authorizationCode(verifier))
-				.param("redirect_uri", REDIRECT)
-				.param("code_verifier", verifier)
-				.header("DPoP", dpopProof(dpopKey)))
-			.andReturn();
-		assertThat(result.getResponse().getStatus()).as(result.getResponse().getContentAsString()).isEqualTo(200);
-		Map<?, ?> body = this.json.readValue(result.getResponse().getContentAsString(), Map.class);
-		assertThat(body.get("token_type")).isEqualTo("DPoP");
-		return (String) body.get("access_token");
-	}
-
-	private String authorizationCode(String verifier) throws Exception {
-		MvcResult result = this.mvc
-			.perform(get(UriComponentsBuilder.fromPath("/oauth2/authorize")
-				.queryParam("response_type", "code")
-				.queryParam("client_id", "customer-app")
-				.queryParam("scope", "apply")
-				.queryParam("redirect_uri", REDIRECT)
-				.queryParam("state", "s")
-				.queryParam("code_challenge", challenge(verifier))
-				.queryParam("code_challenge_method", "S256")
-				.build()
-				.toUriString()).with(user("alice")))
-			.andReturn();
-		String location = result.getResponse().getRedirectedUrl();
-		assertThat(location).startsWith(REDIRECT);
-		return UriComponentsBuilder.fromUriString(location).build().getQueryParams().getFirst("code");
-	}
-
-	private String actorToken(X509Certificate cert, String clientId) throws Exception {
-		MvcResult result = clientCredentials(cert, clientId);
-		assertThat(result.getResponse().getStatus()).as(result.getResponse().getContentAsString()).isEqualTo(200);
-		return (String) this.json.readValue(result.getResponse().getContentAsString(), Map.class).get("access_token");
-	}
-
-	private MvcResult clientCredentials(X509Certificate cert, String clientId) throws Exception {
-		return this.mvc
-			.perform(post("/oauth2/token").param("grant_type", "client_credentials")
-				.param("client_id", clientId)
-				.with(x509(cert)))
-			.andReturn();
-	}
-
-	private String exchange(X509Certificate cert, String clientId, String subject, String actor, String audience)
-			throws Exception {
-		MvcResult result = this.mvc.perform(exchangeRequest(cert, clientId, subject, actor, audience)).andReturn();
-		assertThat(result.getResponse().getStatus()).as(result.getResponse().getContentAsString()).isEqualTo(200);
-		return (String) this.json.readValue(result.getResponse().getContentAsString(), Map.class).get("access_token");
-	}
-
-	private String refusal(X509Certificate cert, String clientId, String subject, String actor, String audience)
-			throws Exception {
-		MvcResult result = this.mvc.perform(exchangeRequest(cert, clientId, subject, actor, audience)).andReturn();
-		assertThat(result.getResponse().getStatus()).isEqualTo(400);
-		return result.getResponse().getContentAsString();
-	}
-
-	private static MockHttpServletRequestBuilder exchangeRequest(X509Certificate cert, String clientId,
-			String subject, String actor, String audience) {
-		MockHttpServletRequestBuilder request = post("/oauth2/token").param("grant_type", TOKEN_EXCHANGE)
-			.param("client_id", clientId)
-			.param("subject_token", subject)
-			.param("subject_token_type", ACCESS_TOKEN_TYPE)
-			.param("audience", audience)
-			.with(x509(cert));
-		if (actor != null) {
-			request.param("actor_token", actor).param("actor_token_type", ACCESS_TOKEN_TYPE);
-		}
-		return request;
-	}
-
-	private static String dpopProof(ECKey key) throws Exception {
-		SignedJWT proof = new SignedJWT(
-				new JWSHeader.Builder(JWSAlgorithm.ES256).type(new JOSEObjectType("dpop+jwt"))
-					.jwk(key.toPublicJWK())
-					.build(),
-				new JWTClaimsSet.Builder().claim("htm", "POST")
-					.claim("htu", "http://localhost/oauth2/token")
-					.issueTime(new Date())
-					.jwtID(UUID.randomUUID().toString())
-					.build());
-		proof.sign(new ECDSASigner(key));
-		return proof.serialize();
-	}
-
-	private static Map<String, Object> claims(String jwt) throws Exception {
-		SignedJWT parsed = SignedJWT.parse(jwt);
-		assertThat(parsed.getHeader().getType().getType()).isEqualTo("at+jwt");
-		return parsed.getJWTClaimsSet().toJSONObject();
-	}
-
-	private static Map<String, Object> cnf(Map<String, Object> claims) {
-		return map(claims.get("cnf"));
-	}
-
-	/** 宛先が 1 つだけなら、JWT の aud は文字列になる。 */
-	private static Object audience(Map<String, Object> claims) {
-		Object aud = claims.get("aud");
-		return (aud instanceof java.util.List<?> list && list.size() == 1) ? list.get(0) : aud;
-	}
-
-	@SuppressWarnings("unchecked")
-	private static Map<String, Object> map(Object value) {
-		return (Map<String, Object>) value;
-	}
-
-	private static String challenge(String verifier) throws Exception {
-		byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
-		return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-	}
-
-	private static String thumbprint(X509Certificate cert) throws Exception {
-		byte[] digest = MessageDigest.getInstance("SHA-256").digest(cert.getEncoded());
-		return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
 	}
 
 }

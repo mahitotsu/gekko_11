@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
-import { ports, urls } from "@gekko/shared";
-import { createApp } from "./app.js";
-import { hasClaude } from "./config.js";
+import { createApp, engine } from "./app.ts";
+import { startAdmin } from "./tamper.ts";
 
-serve({ fetch: createApp().fetch, port: ports.salesAgent }, () =>
-  console.log(`[sales-agent] ${urls.salesAgent} (頭脳: ${hasClaude() ? "Claude Agent SDK" : "台本(.env に CLAUDE_CODE_OAUTH_TOKEN が無いため)"})`));
+serve({ fetch: createApp().fetch, hostname: "127.0.0.1", port: Number(process.env.APP_PORT ?? 8080) });
+startAdmin(Number(process.env.TAMPER_ADMIN_PORT ?? 9091));
+console.log(JSON.stringify({ service: "sales-agent", engine: engine() }));

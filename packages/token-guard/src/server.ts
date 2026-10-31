@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { config } from "./config.ts";
+import { startAdmin } from "./defenses.ts";
 import { exchangeForNext } from "./exchange.ts";
 import { checkIngress, Refusal } from "./verify.ts";
 
@@ -61,4 +62,5 @@ app.all("/egress/*", async (c) => {
 });
 
 serve({ fetch: app.fetch, hostname: "127.0.0.1", port: config.port });
+startAdmin(config.adminPort, config.defenseIds);
 console.log(JSON.stringify({ service: config.service, ingress: config.ingress, next: config.next ?? null }));

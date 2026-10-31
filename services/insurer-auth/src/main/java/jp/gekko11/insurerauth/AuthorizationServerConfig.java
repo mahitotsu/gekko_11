@@ -28,6 +28,7 @@ import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenExchangeAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenIntrospectionAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.X509ClientCertificateAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
@@ -54,8 +55,8 @@ public class AuthorizationServerConfig {
 
 	@Bean
 	@Order(1)
-	SecurityFilterChain authorizationServerChain(HttpSecurity http, OAuth2AuthorizationService authorizationService)
-			throws Exception {
+	SecurityFilterChain authorizationServerChain(HttpSecurity http, OAuth2AuthorizationService authorizationService,
+			Defenses defenses, ClientRevocation revocation) throws Exception {
 		OAuth2AuthorizationServerConfigurer server = OAuth2AuthorizationServerConfigurer.authorizationServer();
 		http.securityMatcher(server.getEndpointsMatcher())
 			.with(server, (s) -> s
@@ -65,12 +66,16 @@ public class AuthorizationServerConfig {
 								? new SpiffeCertificateConverter() : v))
 					.authenticationProviders((providers) -> providers.forEach((p) -> {
 						if (p instanceof X509ClientCertificateAuthenticationProvider x509) {
-							x509.setCertificateVerifier(new SpiffeCertificateVerifier());
+							x509.setCertificateVerifier(new SpiffeCertificateVerifier(revocation));
 						}
 					})))
 				.tokenEndpoint((t) -> t.authenticationProviders((providers) -> providers
 					.replaceAll((p) -> (p instanceof OAuth2TokenExchangeAuthenticationProvider)
-							? new ExchangeGuard(p, authorizationService) : p))))
+							? new ExchangeGuard(p, authorizationService, defenses) : p)))
+				.tokenIntrospectionEndpoint((i) -> i.authenticationProviders((providers) -> providers
+					.replaceAll((p) -> (p instanceof OAuth2TokenIntrospectionAuthenticationProvider)
+							? new IntrospectionGuard(p, revocation) : p)))
+				.oidc(Customizer.withDefaults()))
 			.authorizeHttpRequests((a) -> a.anyRequest().authenticated())
 			.exceptionHandling((e) -> e
 				.defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
@@ -83,17 +88,23 @@ public class AuthorizationServerConfig {
 	@Bean
 	@Order(2)
 	SecurityFilterChain loginChain(HttpSecurity http) throws Exception {
-		http.authorizeHttpRequests((a) -> a.anyRequest().authenticated()).formLogin(Customizer.withDefaults());
+		// 運用と内部の受け口は、相手の SPIFFE ID を各受け口で確かめる（AdminController、PasskeyController）
+		http.authorizeHttpRequests((a) -> a.requestMatchers("/admin/**", "/internal/**")
+			.permitAll()
+			.anyRequest()
+			.authenticated())
+			.csrf((c) -> c.ignoringRequestMatchers("/admin/**", "/internal/**", "/passkeys/**"))
+			.formLogin(Customizer.withDefaults());
 		return http.build();
 	}
 
 	/** ログインは固定ユーザー（implementation の 5 章）。 */
 	@Bean
-	UserDetailsService users() {
-		return new InMemoryUserDetailsManager(
-				User.withUsername("alice").password("{noop}demo").roles("CUSTOMER").build(),
-				User.withUsername("bob").password("{noop}demo").roles("CUSTOMER").build(),
-				User.withUsername("mallory").password("{noop}demo").roles("CUSTOMER").build());
+	UserDetailsService users(UserDirectory directory) {
+		return new InMemoryUserDetailsManager(directory.names()
+			.stream()
+			.map((name) -> User.withUsername(name).password("{noop}demo").roles("CUSTOMER").build())
+			.toList());
 	}
 
 	@Bean
@@ -103,12 +114,22 @@ public class AuthorizationServerConfig {
 			.clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
 			.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
 			.redirectUri(props.customerRedirectUri())
+			.scope("openid")
 			.scope("apply")
 			.clientSettings(ClientSettings.builder().requireProofKey(true).requireAuthorizationConsent(false).build())
 			.tokenSettings(TokenSettings.builder().accessTokenTimeToLive(ACCESS_TOKEN_TTL).build())
 			.build();
+		// 保険会社のシステムは、有効性の問い合わせのために、クライアントとして認証する（D10）
+		RegisteredClient backend = RegisteredClient.withId(ExchangePolicy.INSURER_BACKEND)
+			.clientId(ExchangePolicy.INSURER_BACKEND)
+			.clientAuthenticationMethod(ClientAuthenticationMethod.TLS_CLIENT_AUTH)
+			.authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
+			.clientSettings(ClientSettings.builder()
+				.setting(SpiffeCertificateVerifier.SPIFFE_ID, props.spiffeId(ExchangePolicy.INSURER_BACKEND))
+				.build())
+			.build();
 		return new InMemoryRegisteredClientRepository(customerApp, service(props, ExchangePolicy.SALES_AGENT),
-				service(props, ExchangePolicy.INSURER_MCP));
+				service(props, ExchangePolicy.INSURER_MCP), backend);
 	}
 
 	/** 替えを頼む窓口。SPIFFE ID の mTLS で認証し、出すトークンをその証明書に結ぶ（D-7、D-16）。 */
@@ -135,8 +156,8 @@ public class AuthorizationServerConfig {
 	}
 
 	@Bean
-	OAuth2TokenCustomizer<JwtEncodingContext> tokenShapeCustomizer() {
-		return new TokenShapeCustomizer();
+	OAuth2TokenCustomizer<JwtEncodingContext> tokenShapeCustomizer(Defenses defenses, UserDirectory users) {
+		return new TokenShapeCustomizer(defenses, users);
 	}
 
 	/** トークンの発行の鍵。起動ごとにメモリ上に作る（implementation の 5 章）。 */

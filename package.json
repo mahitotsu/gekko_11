@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "test/cluster/probe"
   ],
   "scripts": {
     "dev": "tsx scripts/dev.ts",
@@ -13,7 +14,8 @@
     "cluster:up": "deploy/cluster.sh up",
     "cluster:deploy": "deploy/cluster.sh deploy",
     "cluster:verify": "deploy/cluster.sh verify",
-    "cluster:down": "deploy/cluster.sh down"
+    "cluster:down": "deploy/cluster.sh down",
+    "cluster:test": "vitest run --config vitest.cluster.config.ts"
   },
   "devDependencies": {
     "@textlint-ja/textlint-rule-preset-ai-writing": "^1.7.0",

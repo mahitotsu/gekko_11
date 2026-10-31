@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   calculateJwkThumbprint,
   createRemoteJWKSet,
+  decodeJwt,
   decodeProtectedHeader,
   importJWK,
   jwtVerify,
@@ -59,9 +60,10 @@ export function parseXfcc(header: string | undefined): Peer {
 
 export async function checkIngress(req: IngressRequest): Promise<Checked> {
   const peer = parseXfcc(req.xfcc);
+  const { checks } = config;
   if (config.ingress === "mtls") {
     if (!peer.spiffeId) throw new Refusal(401, "相手の証明書がない");
-    if (enabled("D27") && !config.allowedCallers.includes(peer.spiffeId)) {
+    if (enabled(checks.caller) && !config.allowedCallers.includes(peer.spiffeId)) {
       throw new Refusal(403, `呼んでよい相手ではない: ${peer.spiffeId}`);
     }
   }
@@ -72,18 +74,14 @@ export async function checkIngress(req: IngressRequest): Promise<Checked> {
 
   let claims: Checked["claims"];
   try {
-    ({ payload: claims } = await jwtVerify(token, jwks, {
-      algorithms: ["RS256"],
-      issuer: config.issuer,
-      audience: config.service,
-      typ: "at+jwt",
-      requiredClaims: ["exp", "sub"],
-    }));
+    claims = await verifyToken(token);
   } catch (e) {
     throw new Refusal(401, `トークンを確かめられない: ${(e as Error).message}`);
   }
 
-  if (enabled("D26")) {
+  if (checks.introspect && enabled(checks.introspect)) await introspect(token);
+
+  if (enabled(checks.binding)) {
     if (config.ingress === "mtls") {
       const bound = claims.cnf?.["x5t#S256"];
       if (!bound || !peer.hash || bound !== b64url(Buffer.from(peer.hash, "hex"))) {
@@ -94,6 +92,49 @@ export async function checkIngress(req: IngressRequest): Promise<Checked> {
     }
   }
   return { token, claims, peer };
+}
+
+const HUNDRED_YEARS = 60 * 60 * 24 * 365 * 100;
+
+/**
+ * トークンの署名・iss・aud・exp・typ を確かめる。vulnerable では、防御の ID ごとに外せる。
+ * 署名を外すと、中身を読むだけになる（alg=none も通る）。
+ */
+async function verifyToken(token: string): Promise<Checked["claims"]> {
+  const { checks } = config;
+  if (checks.verify && !enabled(checks.verify)) return decodeJwt(token);
+  const signature = checks.signature === undefined || enabled(checks.signature);
+  const aud = checks.aud === undefined || enabled(checks.aud);
+  const exp = checks.exp === undefined || enabled(checks.exp);
+  const typ = checks.typ === undefined || enabled(checks.typ);
+  if (signature) {
+    const { payload } = await jwtVerify(token, jwks, {
+      algorithms: ["RS256"],
+      issuer: config.issuer,
+      audience: aud ? config.service : undefined,
+      typ: typ ? "at+jwt" : undefined,
+      requiredClaims: ["sub"],
+      clockTolerance: exp ? 0 : HUNDRED_YEARS,
+    });
+    return payload;
+  }
+  const payload = decodeJwt(token);
+  const auds = [payload.aud ?? []].flat();
+  if (aud && !auds.includes(config.service)) throw new Error("aud が違う");
+  if (exp && (payload.exp ?? 0) * 1000 < Date.now()) throw new Error("期限切れ");
+  if (typ && decodeProtectedHeader(token).typ !== "at+jwt") throw new Error("typ が違う");
+  return payload;
+}
+
+/** 取り次いだ窓口とトークンを受け取ったクライアントが、全て登録されていて外れていないか（D10、P-13）。 */
+async function introspect(token: string): Promise<void> {
+  const res = await fetch(`${config.authUrl}/oauth2/introspect`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    body: new URLSearchParams({ token, client_id: config.service }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { active?: boolean };
+  if (!body.active) throw new Refusal(403, "トークンが無効か、取り次いだ窓口の登録が外れている");
 }
 
 const seenJti = new Map<string, number>();

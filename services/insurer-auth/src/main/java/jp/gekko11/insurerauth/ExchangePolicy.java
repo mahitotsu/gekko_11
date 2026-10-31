@@ -19,7 +19,15 @@ final class ExchangePolicy {
 	/** 替えを頼む窓口ごとに、替えてよい宛先。 */
 	private static final Map<String, String> NEXT = Map.of(SALES_AGENT, INSURER_MCP, INSURER_MCP, INSURER_BACKEND);
 
+	/** トークンの宛先になりうるサービス。 */
+	static final java.util.List<String> SERVICES = java.util.List.of(SALES_AGENT, INSURER_MCP, INSURER_BACKEND);
+
 	private ExchangePolicy() {
+	}
+
+	/** 替えを頼む窓口が、次に呼ぶ宛先。 */
+	static String next(String requester) {
+		return NEXT.get(requester);
 	}
 
 	static boolean mayExchangeTo(String requester, String audience) {

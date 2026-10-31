@@ -14,12 +14,19 @@ import org.springframework.security.oauth2.server.authorization.authentication.O
 /**
  * tls_client_auth で、証明書の SAN の URI（SPIFFE ID）を、登録した SPIFFE ID と照らす（D-16）。
  * 既定の照合は Subject DN を見るので、差し替える。証明書の連鎖は、TLS の層が SPIRE の bundle で確かめる。
+ * 登録を外した窓口は、ここで拒む。
  */
 final class SpiffeCertificateVerifier implements Consumer<OAuth2ClientAuthenticationContext> {
 
 	static final String SPIFFE_ID = "spiffe_id";
 
 	private static final int URI_NAME = 6;
+
+	private final ClientRevocation revocation;
+
+	SpiffeCertificateVerifier(ClientRevocation revocation) {
+		this.revocation = revocation;
+	}
 
 	@Override
 	public void accept(OAuth2ClientAuthenticationContext context) {
@@ -29,6 +36,11 @@ final class SpiffeCertificateVerifier implements Consumer<OAuth2ClientAuthentica
 		if (expected == null || uris.size() != 1 || !expected.equals(uris.get(0))) {
 			throw new OAuth2AuthenticationException(
 					new OAuth2Error(OAuth2ErrorCodes.INVALID_CLIENT, "Client authentication failed: spiffe_id", null));
+		}
+		// 登録を外した窓口には、新しいトークンを出さない（D4）
+		if (this.revocation.isRevoked(context.getRegisteredClient().getClientId())) {
+			throw new OAuth2AuthenticationException(
+					new OAuth2Error(OAuth2ErrorCodes.INVALID_CLIENT, "Client registration is revoked", null));
 		}
 	}
 

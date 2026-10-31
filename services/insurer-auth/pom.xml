@@ -15,6 +15,16 @@
   <properties>
     <java.version>21</java.version>
   </properties>
+  <dependencyManagement>
+    <dependencies>
+      <!-- webauthn4j が使う Jackson 3 は、jackson-annotations 2.22 を求める。annotations は後方互換を保つので、ここだけ上げる -->
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-annotations</artifactId>
+        <version>2.22</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -23,6 +33,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-oauth2-authorization-server</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.webauthn4j</groupId>
+      <artifactId>webauthn4j-core</artifactId>
+      <version>0.31.11.RELEASE</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -41,6 +56,28 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <profiles>
+    <!-- vulnerable の名前空間のビルドだけ、防御を外す受け口（src/vulnerable/java）を足す（D-20） -->
+    <profile>
+      <id>vulnerable</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>add-vulnerable-source</id>
+                <phase>generate-sources</phase>
+                <goals><goal>add-source</goal></goals>
+                <configuration><sources><source>src/vulnerable/java</source></sources></configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
   <build>
     <finalName>insurer-auth</finalName>
     <plugins>

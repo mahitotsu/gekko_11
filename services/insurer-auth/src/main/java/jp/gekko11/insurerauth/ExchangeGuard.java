@@ -35,9 +35,13 @@ final class ExchangeGuard implements AuthenticationProvider {
 
 	private final OAuth2AuthorizationService authorizationService;
 
-	ExchangeGuard(AuthenticationProvider delegate, OAuth2AuthorizationService authorizationService) {
+	private final Defenses defenses;
+
+	ExchangeGuard(AuthenticationProvider delegate, OAuth2AuthorizationService authorizationService,
+			Defenses defenses) {
 		this.delegate = delegate;
 		this.authorizationService = authorizationService;
+		this.defenses = defenses;
 	}
 
 	@Override
@@ -55,7 +59,10 @@ final class ExchangeGuard implements AuthenticationProvider {
 		}
 
 		Set<String> audiences = exchange.getAudiences();
-		if (audiences.size() != 1 || !ExchangePolicy.mayExchangeTo(requester, audiences.iterator().next())) {
+		// 悪い発行（D3f を外す）: 求められた宛先にそのまま替える。段を飛ばした宛先も取れる
+		boolean anyTarget = !this.defenses.enabled(Defenses.FIXED_TARGET);
+		if (audiences.size() != 1 || !(ExchangePolicy.mayExchangeTo(requester, audiences.iterator().next())
+				|| anyTarget && ExchangePolicy.SERVICES.contains(audiences.iterator().next()))) {
 			throw reject("invalid_target", "audience is not allowed for the requester");
 		}
 
