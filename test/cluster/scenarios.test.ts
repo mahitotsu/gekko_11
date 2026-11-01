@@ -207,12 +207,11 @@ scenario(7, "R4 × A8: 営業 AI エージェントが、署名のあとで申�
   // secure には、書き換えを再現する受け口がない（D-20）
   secure: false,
   prepare: async (ns) => ({ alice: await customer(ns, "alice") }),
+  // 顧客は確定年金 60 万円を選んで 2 つの書類に署名する。乗っ取られた営業 AI エージェントは、提出の直前に書き換える
   attack: async (_ns, { alice }) => {
     await setTamper(true);
-    const chat = await alice.salesAgent("/chat", { message: "案を見たい" });
-    const offer = chat.body.offer as Offer;
-    (alice as Customer & { last?: string }).last = offer.nonce;
-    return alice.salesAgent("/submit", { ...alice.prepare(offer, "fixed-60"), offerSet: offer.offerSet });
+    const r = await alice.converse("fixed-60");
+    (alice as Customer & { last?: string }).last = r.nonce;
   },
   harmed: async (ns, { alice }) => recorded(ns, (alice as Customer & { last?: string }).last!, (c) => c.contract.plan.id !== "fixed-60"),
 }, () => {
@@ -220,10 +219,8 @@ scenario(7, "R4 × A8: 営業 AI エージェントが、署名のあとで申�
     await setDefenses({ D13: "mtls-only", D14: "off" });
     const alice = await customer("vulnerable", "alice");
     await setTamper(true);
-    const chat = await alice.salesAgent("/chat", { message: "案を見たい" });
-    const offer = chat.body.offer as Offer;
-    await alice.salesAgent("/submit", { ...alice.prepare(offer, "fixed-60"), offerSet: offer.offerSet });
-    expect(await recorded("vulnerable", offer.nonce, (c) => c.contract.plan.id !== "fixed-60")).toBe(true);
+    const { nonce } = await alice.converse("fixed-60");
+    expect(await recorded("vulnerable", nonce, (c) => c.contract.plan.id !== "fixed-60")).toBe(true);
   });
 });
 
@@ -448,8 +445,11 @@ scenario(21, "R7 × A17: 営業 AI エージェントが、事務サービスを
 scenario(22, "R10 × A18: 盗んだ A を、DPoP の鍵なしで使い、契約を照会させる", {
   defenses: ["D26 営業 AI エージェント"],
   prepare: async (ns) => ({ alice: await customer(ns, "alice"), r: {} as Json }),
-  attack: async (_ns, c) => (c.r = await c.alice.salesAgent("/chat", { message: "契約の一覧を見せて" }, "none")),
-  harmed: async (_ns, { r }) => r.status === 200 && /契約は \d+ 件/.test(String(r.body?.reply)),
+  attack: async (_ns, c) => {
+    const input = { threadId: crypto.randomUUID(), runId: crypto.randomUUID(), messages: [{ id: "m1", role: "user", content: "契約の一覧を見せて" }], tools: [], state: {}, context: [], forwardedProps: {} };
+    c.r = await c.alice.agui(input, "none");
+  },
+  harmed: async (_ns, { r }) => r.status === 200 && /契約は \d+ 件/.test(String(r.body)),
 });
 
 scenario(23, "R10 × A19: 盗んだ B を、別のサービスの SVID で使い、契約を照会する", {
@@ -464,7 +464,8 @@ describe("補足", () => {
   it("secure: 営業 AI エージェントは、自分宛てでないトークン（B）を受け付けない（D20）", async () => {
     const alice = await customer("secure", "alice");
     const b = await atMcp(alice);
-    const r = await probe("secure", "probe-sales-agent", "call-sales-agent", { path: "/chat", body: { message: "見たい" }, token: b, dpopKey: alice.dpopKey });
+    const input = { threadId: crypto.randomUUID(), runId: crypto.randomUUID(), messages: [{ id: "m1", role: "user", content: "見たい" }], tools: [], state: {}, context: [], forwardedProps: {} };
+    const r = await probe("secure", "probe-sales-agent", "call-sales-agent", { path: "/agui", body: input, token: b, dpopKey: alice.dpopKey });
     expect(r.status).toBe(401);
   });
 

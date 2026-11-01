@@ -1,8 +1,14 @@
 // 顧客のアプリの画面（D-18）。ブラウザで動く公開クライアントで、トークンと鍵は端末の中に置く。
-// ログイン → passkey と受信箱の登録 → 相談 → 案の選択 → 確認 → 署名 → 提出 → 直送の照合、の順に進む（architecture の 3 章）。
-import { createRemoteJWKSet, createLocalJWKSet, type JSONWebKeySet } from "jose";
+// ログインと passkey と受信箱の登録の後は、営業 AI エージェントと AG-UI で会話する（D-29）。営業 AI エージェントが、
+// 質問、案の提示、意向確認書面、申込書を、画面側の道具として呼び、この画面が顧客の答え（選択と署名）を返す。
+// 契約内容は、営業 AI エージェントを通らずに受信箱へ届き、端末に残した写しと照合する（architecture の 3 章）。
+import { createLocalJWKSet, createRemoteJWKSet, type JSONWebKeySet } from "jose";
+import type { Message } from "@ag-ui/core";
 import { reconcile, type Copy } from "../src/reconcile.ts";
-import { applicationRowsOf, intentRowsOf, termsRowsOf, verifyIdToken, verifyOffer, type Draft, type Offer, type Plan, type Row } from "./checks.ts";
+import { FRONTEND_TOOLS, runOnce, type AgentEvent } from "./agui.ts";
+import {
+  applicationRowsOf, intentRowsOf, termsRowsOf, verifyIdToken, verifyOffer, type Application, type Intent, type Offer, type Row,
+} from "./checks.ts";
 import { b64u, challengeOf, randomB64u, sha256 } from "./codec.ts";
 import { loadDefenses } from "./defenses.ts";
 import { createPasskey, dpopProof, signWithPasskey } from "./keys.ts";
@@ -29,6 +35,11 @@ interface Device {
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const show = (id: string, on = true) => $(id).toggleAttribute("hidden", !on);
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, testid?: string) => {
+  const e = Object.assign(document.createElement(tag), props);
+  if (testid) e.setAttribute("data-testid", testid);
+  return e;
+};
 const store = {
   get: <T>(s: Storage, key: string): T | undefined => {
     const v = s.getItem(key);
@@ -45,13 +56,20 @@ function fail(e: unknown) {
       ? "passkey の操作が取り消されたか、時間切れになりました。もう一度ボタンを押してください。"
       : (err?.message ?? String(e));
   show("error");
-  if ($("agent-reply").textContent === "（考えています）") $("agent-reply").textContent = "（答えを受け取れませんでした）";
+  setBusy(false);
 }
 
 const clearError = () => show("error", false);
 
+/** 営業 AI エージェントが考えている間は、送るボタンを止め、状態を示す。 */
+function setBusy(busy: boolean) {
+  $("agent-status").textContent = busy ? "営業 AI エージェントが考えています…" : "";
+  $("agent-status").dataset.state = busy ? "busy" : "idle";
+  $<HTMLButtonElement>("chat-send").disabled = busy;
+}
+
 function table(rows: Row[], prefix: string): HTMLTableElement {
-  const t = document.createElement("table");
+  const t = el("table");
   for (const row of rows) {
     const tr = t.insertRow();
     tr.insertCell().textContent = row.label;
@@ -71,7 +89,6 @@ const redirectUri = `${cfg.appOrigin}/callback`;
 async function startLogin() {
   const login = { verifier: randomB64u(), state: randomB64u(16), nonce: randomB64u(16) };
   store.set(sessionStorage, "login", login);
-  const challenge = b64u(await sha256(login.verifier));
   const q = new URLSearchParams({
     response_type: "code",
     client_id: cfg.clientId,
@@ -79,7 +96,7 @@ async function startLogin() {
     redirect_uri: redirectUri,
     state: login.state,
     nonce: login.nonce,
-    code_challenge: challenge,
+    code_challenge: b64u(await sha256(login.verifier)),
     code_challenge_method: "S256",
     authorization_details: JSON.stringify(cfg.terms),
   });
@@ -136,138 +153,195 @@ async function registerDevice(session: Session) {
   store.set(localStorage, `device:${session.sub}`, { credentialId: credential.rawId, inbox } satisfies Device);
 }
 
-// ---- 4〜6. 営業 AI エージェントとのやりとり（A と DPoP の proof を付ける） ----
+// ---- 4. 営業 AI エージェントとの会話（AG-UI） ----
 
-async function agent<T>(session: Session, path: string, body: unknown): Promise<T> {
-  const url = `${cfg.agentOrigin}${path}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `DPoP ${session.token}`, dpop: await dpopProof("POST", url, session.token) },
-    body: JSON.stringify(body),
-  });
-  const out = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(`営業 AI エージェントが断った: ${out.error ?? JSON.stringify(out)}`);
-  return out;
+const conversation = {
+  threadId: crypto.randomUUID(),
+  messages: [] as Message[],
+  /** 直前に署名を確かめた提示（意向確認書面の案の名前を引く）。 */
+  offer: undefined as Offer | undefined,
+  /** 営業 AI エージェントの直前の文（D23 を外したときに、確認画面に出す）。 */
+  lastText: "",
+};
+
+/** 1 回分を走らせ、営業 AI エージェントの文と、画面側の道具の呼び出しを、会話の欄に足していく。 */
+async function run(session: Session, device: Device) {
+  setBusy(true);
+  const url = `${cfg.agentOrigin}/agui`;
+  const texts = new Map<string, string>();
+  const calls = new Map<string, { name: string; args: string }>();
+  await runOnce(
+    url,
+    { authorization: `DPoP ${session.token}`, dpop: await dpopProof("POST", url, session.token) },
+    { threadId: conversation.threadId, runId: crypto.randomUUID(), messages: conversation.messages, tools: FRONTEND_TOOLS, state: {}, context: [], forwardedProps: {} },
+    (e: AgentEvent) => {
+      if (e.type === "TEXT_MESSAGE_START") texts.set(e.messageId, "");
+      if (e.type === "TEXT_MESSAGE_CONTENT") texts.set(e.messageId, (texts.get(e.messageId) ?? "") + e.delta);
+      if (e.type === "TEXT_MESSAGE_END") {
+        const content = texts.get(e.messageId) ?? "";
+        conversation.messages.push({ id: e.messageId, role: "assistant", content });
+        conversation.lastText = content;
+        addAgentText(content);
+      }
+      if (e.type === "TOOL_CALL_START") calls.set(e.toolCallId, { name: e.toolCallName, args: "" });
+      if (e.type === "TOOL_CALL_ARGS") calls.get(e.toolCallId)!.args += e.delta;
+      if (e.type === "TOOL_CALL_END") {
+        const call = calls.get(e.toolCallId)!;
+        conversation.messages.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          toolCalls: [{ id: e.toolCallId, type: "function", function: { name: call.name, arguments: call.args } }],
+        });
+        void showTool(session, device, e.toolCallId, call.name, JSON.parse(call.args)).catch(fail);
+      }
+      if (e.type === "RUN_ERROR") fail(new Error(e.message));
+    },
+  );
+  setBusy(false);
 }
 
-let current: Offer | undefined;
-let draft: Draft | undefined;
-
-async function chat(session: Session) {
-  const message = $<HTMLTextAreaElement>("chat-input").value;
+/** 顧客の答えを tool message にして、次の回を走らせる。 */
+async function answer(session: Session, device: Device, toolCallId: string, content: unknown) {
+  conversation.messages.push({ id: crypto.randomUUID(), role: "tool", toolCallId, content: typeof content === "string" ? content : JSON.stringify(content) });
   clearError();
-  $("agent-reply").textContent = "（考えています）";
-  const r = await agent<{ reply: string; offer?: Offer; engine: string }>(session, "/chat", { message });
-  // 説明文は、HTML の特別な文字を置き換えてから、表と箇条書きを整える
-  $("agent-reply").innerHTML = markdownToHtml(r.reply);
-  $("engine").textContent = `（${r.engine === "claude" ? "Claude" : "台本"}）`;
-  show("offer-warning", false);
-  if (!r.offer?.offerJws) return;
+  await run(session, device);
+}
+
+async function say(session: Session, device: Device) {
+  const content = $<HTMLTextAreaElement>("chat-input").value.trim();
+  if (!content) return;
+  clearError();
+  conversation.messages.push({ id: crypto.randomUUID(), role: "user", content });
+  addItem(el("p", { className: "user", textContent: content }));
+  await run(session, device);
+}
+
+function addItem(node: HTMLElement) {
+  $("conversation").append(node);
+  node.scrollIntoView({ block: "nearest" });
+}
+
+function addAgentText(text: string) {
+  const div = el("div", { className: "agent" });
+  div.innerHTML = markdownToHtml(text); // HTML の特別な文字を置き換えてから整える
+  addItem(div);
+}
+
+/** 同じ種類の古い道具の画面から、テストの目印を外す（目印は、最新の画面にだけ付ける）。 */
+function retire(kind: string) {
+  for (const old of document.querySelectorAll(`[data-tool="${kind}"] [data-testid], [data-tool="${kind}"][data-testid]`)) old.removeAttribute("data-testid");
+}
+
+function card(kind: string, title: string): HTMLElement {
+  retire(kind);
+  const box = el("section", { className: "tool" });
+  box.dataset.tool = kind;
+  box.append(el("h3", { textContent: title }));
+  addItem(box);
+  return box;
+}
+
+async function showTool(session: Session, device: Device, id: string, name: string, args: Record<string, any>) {
+  if (name === "ask_customer") return askCustomer(session, device, id, args as { question: string; options: string[] });
+  if (name === "present_offers") return presentOffers(session, device, id, args as { message?: string; offer: Offer });
+  if (name === "present_intent") return presentDocument(session, device, id, "intent", args.intent as Intent);
+  if (name === "present_application") return presentDocument(session, device, id, "application", args.application as Application);
+  await answer(session, device, id, { error: `この画面にない道具: ${name}` });
+}
+
+function askCustomer(session: Session, device: Device, id: string, args: { question: string; options: string[] }) {
+  const box = card("ask", "営業 AI エージェントからの質問");
+  box.append(el("p", { textContent: args.question }));
+  const buttons = args.options.map((option, i) =>
+    el("button", { type: "button", textContent: option, onclick: () => {
+      for (const b of buttons) b.disabled = true;
+      buttons[i]!.classList.add("chosen");
+      answer(session, device, id, option).catch(fail);
+    } }, `ask-option-${i}`),
+  );
+  box.append(...buttons);
+}
+
+async function presentOffers(session: Session, device: Device, id: string, args: { message?: string; offer: Offer }) {
+  const box = card("offers", "保険会社の案");
+  box.dataset.nonce = args.offer.nonce;
+  box.dataset.testid = "offers";
+  if (args.message) box.append(el("p", { textContent: args.message }));
+  let offer = args.offer;
   if (enabled("D22")) {
     // 案は、保険会社の署名を確かめた中身から描く
     const keys = createLocalJWKSet((await (await fetch("/offers-jwks.json")).json()) as JSONWebKeySet);
-    const v = await verifyOffer(r.offer, keys, session.sub).catch((e: Error) => {
+    const v = await verifyOffer(args.offer, keys, session.sub).catch(async (e: Error) => {
+      await answer(session, device, id, { declined: true, reason: "提示の署名を確かめられない" });
       throw new Error(`提示の署名を確かめられない: ${e.message}`);
     });
     if (v.tampered) {
-      $("offer-warning").textContent = "営業 AI エージェントが示した案が、保険会社が署名した提示と違います。署名された案だけを表示しています。";
-      show("offer-warning");
+      box.append(el("p", { className: "warning", textContent: "営業 AI エージェントが示した案が、保険会社が署名した提示と違います。署名された案だけを表示しています。" }, "offer-warning"));
     }
-    current = v.offer;
-  } else {
-    // 悪い実装: 営業 AI エージェントが運んだ案を、そのまま示す
-    current = r.offer;
+    offer = v.offer;
   }
-  renderPlans(current.offerSet.plans);
+  // D22 を外すと、営業 AI エージェントが運んだ案を、そのまま示す（悪い実装）
+  conversation.offer = offer;
+  const list = el("ul");
+  for (const p of offer.offerSet.plans) {
+    const li = el("li", {}, `plan-${p.id}`);
+    li.append(el("strong", { textContent: p.name }), el("span", { textContent: ` 年金の年額 ${p.benefit.toLocaleString("ja-JP")} 円・月額 ${p.monthly.toLocaleString("ja-JP")} 円 ` }));
+    li.append(el("button", { type: "button", textContent: "この案を選ぶ", onclick: () => {
+      for (const b of list.querySelectorAll("button")) b.disabled = true;
+      li.classList.add("chosen");
+      answer(session, device, id, { planId: p.id, plan: p }).catch(fail);
+    } }, `choose-${p.id}`));
+    list.append(li);
+  }
+  box.append(list);
 }
 
-function renderPlans(plans: Plan[]) {
-  const list = $("plans");
-  list.replaceChildren(
-    ...plans.map((p) => {
-      const li = document.createElement("li");
-      li.dataset.testid = `plan-${p.id}`;
-      li.innerHTML = `<strong></strong><span></span><button type="button">この案を選ぶ</button>`;
-      li.querySelector("strong")!.textContent = p.name;
-      li.querySelector("span")!.textContent = ` 年金の年額 ${p.benefit.toLocaleString("ja-JP")} 円・月額 ${p.monthly.toLocaleString("ja-JP")} 円 `;
-      const button = li.querySelector("button")!;
-      button.dataset.testid = `choose-${p.id}`;
-      button.onclick = () => choose(p.id).catch(fail);
-      return li;
-    }),
-  );
-  show("offer");
-}
+const GUIDE = {
+  intent: ["意向確認書面", "署名 1/2", "営業 AI エージェントから届いた意向確認書面です。内容を確かめて、署名してください。"],
+  application: ["申込書", "署名 2/2", "営業 AI エージェントから届いた申込書です。内容を確かめて、署名し、営業 AI エージェントに提出を任せます。"],
+} as const;
 
-let intentAssertion: Awaited<ReturnType<typeof signWithPasskey>> | undefined;
-
-const GUIDE = { intent: "選んだ案と意向を確かめて、署名してください。", application: "申し込む内容を確かめて、署名してください。" };
-
-/** 書類の署名が済んだら、案内文を「署名済み」に置き換え、署名とやめるのボタンを隠す。 */
-function setSigned(step: "intent" | "application", signed: boolean) {
-  $(`${step}-guide`).textContent = signed ? "✓ 署名済み" : GUIDE[step];
-  $(`${step}-guide`).classList.toggle("signed", signed);
-  show(`${step}-actions`, !signed);
-}
-
-/** 署名の画面に、署名する内容（D23）か、営業 AI エージェントの説明文（D23 を外したとき）を描く。 */
-function drawSigning(box: string, rows: Row[], prefix: string) {
+/** 書類を示し、署名してもらう。画面は、署名する内容そのものから描く（D23）。署名すると、案内文を「署名済み」に置き換えて残す。 */
+function presentDocument(session: Session, device: Device, id: string, step: "intent" | "application", doc: Intent | Application) {
+  const [title, count, guide] = GUIDE[step];
+  const box = card(step, `${title}（${count}）`);
+  const note = el("p", { textContent: guide }, `${step}-guide`);
+  box.append(note);
   if (enabled("D23")) {
-    $(box).replaceChildren(table(rows, prefix));
+    box.append(table(step === "intent" ? intentRowsOf(doc as Intent, conversation.offer?.offerSet.plans ?? []) : applicationRowsOf(doc as Application), step));
   } else {
     // 悪い実装: 営業 AI エージェントの説明文を、確認画面に出す
-    const p = document.createElement("p");
-    p.textContent = draft!.summary;
-    p.dataset.testid = `${prefix}-summary`;
-    $(box).replaceChildren(p);
+    box.append(el("p", { textContent: conversation.lastText }, `${step}-summary`));
   }
+  box.dataset.testid = `${step}-confirm`;
+  const actions = el("p");
+  const sign = el("button", { type: "button", textContent: `${title}に passkey で署名する（${count}）`, onclick: async () => {
+    try {
+      clearError();
+      const assertion = await signWithPasskey(await challengeOf(doc), cfg.rpId, device.credentialId);
+      actions.remove();
+      note.textContent = "✓ 署名済み";
+      note.className = "signed";
+      if (step === "application") {
+        // 顧客が承認した申込みの写しを、端末に残す（事後の照合に使う）
+        const copies = store.get<Copy[]>(localStorage, `copies:${session.sub}`) ?? [];
+        store.set(localStorage, `copies:${session.sub}`, [...copies, doc as unknown as Copy]);
+      }
+      await answer(session, device, id, { [step]: doc, assertion });
+    } catch (e) {
+      fail(e);
+    }
+  } }, `sign-${step}`);
+  const cancel = el("button", { type: "button", textContent: "やめる", onclick: () => {
+    actions.remove();
+    note.textContent = "署名しませんでした";
+    answer(session, device, id, { declined: true }).catch(fail);
+  } }, `cancel-${step}`);
+  actions.append(sign, cancel);
+  box.append(actions);
 }
 
-async function choose(planId: string) {
-  const session = store.get<Session>(sessionStorage, "session")!;
-  clearError();
-  draft = await agent<Draft>(session, "/prepare", { offer: current, planId, wish: $<HTMLInputElement>("wish").value });
-  intentAssertion = undefined;
-  // 署名の 1/2: 意向確認書面
-  drawSigning("intent-body", intentRowsOf(draft, current!.offerSet.plans), "intent");
-  setSigned("intent", false);
-  show("application-confirm", false);
-  show("intent-confirm");
-  $("submit-result").textContent = "";
-}
-
-async function signIntent(device: Device) {
-  if (!draft) throw new Error("確認する意向確認書面がない");
-  clearError();
-  intentAssertion = await signWithPasskey(await challengeOf(draft.intent), cfg.rpId, device.credentialId);
-  // 署名の 2/2: 申込書。署名を終えた意向確認書面は、署名済みとして上に残す（手続きが進んだことが見える）
-  setSigned("intent", true);
-  drawSigning("application-body", applicationRowsOf(draft), "application");
-  setSigned("application", false);
-  show("application-confirm");
-}
-
-async function signApplication(session: Session, device: Device) {
-  if (!draft || !current || !intentAssertion) throw new Error("確認する申込書がない");
-  clearError();
-  const application = { ...draft.application, intentSignature: intentAssertion.response.signature };
-  const assertion = await signWithPasskey(await challengeOf(application), cfg.rpId, device.credentialId);
-  const r = await agent<{ contract?: { contractId: string } }>(session, "/submit", {
-    intent: draft.intent,
-    intentAssertion,
-    application,
-    assertion,
-    offerJws: current.offerJws,
-    offerSet: current.offerSet,
-  });
-  // 署名済みの申込みの写しを、端末に残す（事後の照合に使う）
-  const copies = store.get<Copy[]>(localStorage, `copies:${session.sub}`) ?? [];
-  store.set(localStorage, `copies:${session.sub}`, [...copies, application]);
-  $("submit-result").textContent = `申し込みました（${r.contract?.contractId ?? ""}）`;
-  setSigned("application", true);
-}
-
-// ---- 7. 直送の照合（D19） ----
+// ---- 5. 直送の照合（D19） ----
 
 async function checkInbox(session: Session, device: Device) {
   type Notice = { contract: { contractId?: string; nonce: string; plan: { name: string } } };
@@ -283,10 +357,8 @@ async function checkInbox(session: Session, device: Device) {
   const label = { match: "一致", mismatch: "食い違い", missing: "未着", unexpected: "覚えのない契約" };
   $("reconcile").replaceChildren(
     ...results.map((r) => {
-      const li = document.createElement("li");
-      li.dataset.testid = `reconcile-${r.nonce}`;
+      const li = el("li", { textContent: `${which(r.nonce)} — ${r.status === "match" ? label.match : `${label[r.status]}: ${r.diffs.join("、")}`}` }, `reconcile-${r.nonce}`);
       li.dataset.status = r.status;
-      li.textContent = `${which(r.nonce)} — ${r.status === "match" ? label.match : `${label[r.status]}: ${r.diffs.join("、")}`}`;
       return li;
     }),
   );
@@ -307,9 +379,8 @@ async function render() {
   show("register", !device);
   show("chat", Boolean(device));
   if (!device) return;
-  $("chat-send").onclick = () => chat(session).catch(fail);
-  $("sign-intent").onclick = () => signIntent(device).catch(fail);
-  $("sign-application").onclick = () => signApplication(session, device).catch(fail);
+  setBusy(false);
+  $("chat-send").onclick = () => say(session, device).catch(fail);
   $("check-inbox").onclick = () => checkInbox(session, device).catch(fail);
 }
 
@@ -322,13 +393,4 @@ $("register-button").onclick = async () => {
     fail(e);
   }
 };
-for (const id of ["cancel-intent", "cancel-application"]) {
-  $(id).onclick = () => {
-    draft = undefined;
-    intentAssertion = undefined;
-    show("intent-confirm", false);
-    show("application-confirm", false);
-    $("submit-result").textContent = "申し込みをやめました";
-  };
-}
 render().catch(fail);

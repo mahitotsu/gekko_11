@@ -1,6 +1,7 @@
 // 画面のテストの部品。ブラウザの顧客を演じる。passkey は、CDP の仮想の認証器が持つ（D-28）。
 // ブラウザは、入口（http://app.<ns>.localhost）から、ほかの利用者と同じ経路で画面を使う。
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright-core";
+import { parseSse } from "../../packages/customer-app/web/agui.ts";
 import { publicOrigin, type Json, type Ns } from "../cluster/world.ts";
 
 export const PLAYWRIGHT_VERSION = "1.64.1";
@@ -37,9 +38,6 @@ export class BrowserCustomer {
   readonly user: string;
   context!: BrowserContext;
   page!: Page;
-  /** 画面が受け取った提示の nonce（被害の判定に使う）。 */
-  nonce = "";
-
   constructor(ns: Ns, user: string) {
     this.ns = ns;
     this.user = user;
@@ -56,13 +54,6 @@ export class BrowserCustomer {
     await cdp.send("WebAuthn.enable");
     await cdp.send("WebAuthn.addVirtualAuthenticator", {
       options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
-    });
-    // 営業 AI エージェントの返答から、提示の nonce を控える
-    this.page.on("response", async (res) => {
-      if (res.url() === `${publicOrigin(this.ns, "agent")}/chat` && res.ok()) {
-        const nonce = ((await res.json().catch(() => ({}))) as Json).offer?.nonce;
-        if (nonce) this.nonce = nonce;
-      }
     });
     await this.page.goto(this.app);
     return this;
@@ -104,15 +95,37 @@ export class BrowserCustomer {
     return this;
   }
 
-  /** 相談して、案が出るまで待つ。Claude が道具を呼ばなかったときは、1 度だけ頼み直す。 */
-  async chat(message = "老後に備えて、個人年金保険の案を見せてください。") {
-    for (const text of [message, "get_offers を使って、案を示してください。"]) {
+  /** 営業 AI エージェントの番が終わるまで待つ。 */
+  async idle(timeout = 120_000) {
+    await this.page.locator("[data-testid=agent-status][data-state=idle]").waitFor({ state: "attached", timeout });
+  }
+
+  /** 画面が受け取った提示の nonce（被害の判定に使う）。 */
+  get nonce(): Promise<string> {
+    return this.page.getByTestId("offers").getAttribute("data-nonce").then((n) => n ?? "");
+  }
+
+  /**
+   * 相談して、案が示されるまで会話を進める。営業 AI エージェントの質問には、最初の選択肢で答える。
+   * Claude が案を示さずに番を終えたときは、1 度だけ頼み直す。
+   */
+  async chat(message = "老後に備えて、個人年金保険を考えています。") {
+    for (const text of [message, "保険会社の案を示して、選ばせてください。"]) {
       await this.page.getByTestId("chat-input").fill(text);
       await this.page.getByTestId("chat-send").click();
-      const shown = this.page.locator("[data-testid^=plan-]").first();
-      await this.page.locator("[data-testid^=plan-]:visible, [data-testid=error]:visible").first().waitFor({ timeout: 120_000 }).catch(() => undefined);
-      if (await shown.isVisible()) return;
-      if (await this.page.getByTestId("error").isVisible()) return;
+      for (let i = 0; i < 6; i++) {
+        await this.page.locator("[data-testid^=plan-]:visible, [data-testid=ask-option-0]:visible:enabled, [data-testid=error]:visible, [data-testid=agent-status][data-state=idle]")
+          .first().waitFor({ timeout: 120_000 }).catch(() => undefined);
+        if (await this.page.locator("[data-testid^=plan-]").first().isVisible()) return;
+        if (await this.page.getByTestId("error").isVisible()) return;
+        const ask = this.page.locator("[data-testid=ask-option-0]:enabled");
+        if (await ask.count()) {
+          await ask.click();
+          await this.page.waitForTimeout(300);
+          continue;
+        }
+        if ((await this.page.getByTestId("agent-status").getAttribute("data-state")) === "idle") break;
+      }
     }
   }
 
@@ -127,7 +140,27 @@ export class BrowserCustomer {
   /** 案を選び、意向確認書面の画面（署名 1/2）が出るまで待つ。 */
   async choose(planId: string) {
     await this.page.getByTestId(`choose-${planId}`).click({ timeout: 5_000 });
-    await this.page.getByTestId("sign-intent").waitFor();
+    // Claude は、選んだ後にもう 1 つ質問することがある。質問には最初の選択肢で答え、書類を示さずに番を終えたら、1 度だけ頼む
+    let asked = false;
+    for (let i = 0; i < 6; i++) {
+      await this.page.locator("[data-testid=sign-intent]:visible, [data-testid=ask-option-0]:visible:enabled, [data-testid=error]:visible, [data-testid=agent-status][data-state=idle]")
+        .first().waitFor({ timeout: 120_000 }).catch(() => undefined);
+      if (await this.page.getByTestId("sign-intent").isVisible()) return;
+      if (await this.page.getByTestId("error").isVisible()) break;
+      const ask = this.page.locator("[data-testid=ask-option-0]:enabled");
+      if (await ask.count()) {
+        await ask.click();
+        await this.page.waitForTimeout(300);
+        continue;
+      }
+      if (!asked && (await this.page.getByTestId("agent-status").getAttribute("data-state")) === "idle") {
+        asked = true;
+        await this.page.getByTestId("chat-input").fill("選んだ案で、意向確認書面を示してください。");
+        await this.page.getByTestId("chat-send").click();
+        await this.page.waitForTimeout(300);
+      }
+    }
+    await this.page.getByTestId("sign-intent").waitFor({ timeout: 5_000 });
   }
 
   /** 画面に出ている確認の内容（意向確認書面か申込書）。 */
@@ -155,30 +188,36 @@ export class BrowserCustomer {
       return false;
     }
     await this.page.getByTestId("sign-application").click();
-    await this.page.locator("[data-testid=submit-result]:has-text('申し込みました'), [data-testid=error]:visible").first().waitFor();
+    // 営業 AI エージェントが提出して、番を終えるまで待つ
+    await this.page.waitForTimeout(300);
+    await this.idle();
     return true;
   }
 
-  async submitResult(): Promise<string> {
-    return (await this.page.getByTestId("submit-result").textContent()) ?? "";
-  }
-
   /** 受信箱を照合し、その nonce の結果を返す。 */
-  async reconcile(nonce = this.nonce): Promise<string | undefined> {
+  async reconcile(nonce?: string): Promise<string | undefined> {
+    nonce ??= await this.nonce;
     await this.page.getByTestId("check-inbox").click();
     const item = this.page.getByTestId(`reconcile-${nonce}`);
     await item.waitFor({ timeout: 10_000 }).catch(() => undefined);
     return (await item.count()) ? ((await item.getAttribute("data-status")) ?? undefined) : undefined;
   }
 
-  /** 営業 AI エージェントの返答を書き換える（乗っ取られた営業 AI エージェントの役）。 */
-  async rewriteAgent(path: "/chat" | "/prepare", edit: (body: Json) => Json) {
-    await this.page.route(`${publicOrigin(this.ns, "agent")}${path}`, async (route: Route) => {
+  /**
+   * 営業 AI エージェントの返答（AG-UI の SSE）の中の、画面側の道具の引数を書き換える（乗っ取られた営業 AI エージェントの役）。
+   * edit は、道具の名前と引数を受け取り、新しい引数を返す。
+   */
+  async rewriteTool(edit: (name: string, args: Json) => Json) {
+    await this.page.route(`${publicOrigin(this.ns, "agent")}/agui`, async (route: Route) => {
       if (route.request().method() !== "POST") return route.continue();
       try {
         const res = await route.fetch();
-        const body = (await res.json()) as Json;
-        await route.fulfill({ response: res, json: res.ok() ? edit(body) : body });
+        const events = parseSse(await res.text());
+        const names = new Map(events.filter((e) => e.type === "TOOL_CALL_START").map((e) => [e.toolCallId, e.toolCallName]));
+        const out = events.map((e) =>
+          e.type === "TOOL_CALL_ARGS" && names.has(e.toolCallId) ? { ...e, delta: JSON.stringify(edit(names.get(e.toolCallId)!, JSON.parse(e.delta))) } : e,
+        );
+        await route.fulfill({ response: res, body: out.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") });
       } catch (e) {
         // 書き換えに失敗したら、要求を止めて、画面に失敗を出す（待ち続けない）
         console.error(`返答を書き換えられない: ${(e as Error).message}`);

@@ -8,10 +8,15 @@
   :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
   body { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
   section { border: 1px solid #8884; border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
-  #offer-warning { color: #b00; }
+  .warning { color: #b00; }
+  .user { text-align: right; background: #8881; padding: .4rem .8rem; border-radius: .4rem; }
+  .agent table, .tool table { border-collapse: collapse; margin: .4rem 0; }
+  .tool { border-left: 4px solid #8886; }
+  .tool h3 { margin: 0 0 .4rem; font-size: 1rem; }
+  .chosen { font-weight: bold; outline: 2px solid #1a7f37; }
+  #agent-status { color: #888; }
   #error { position: sticky; top: 0; z-index: 1; color: #fff; background: #b00; padding: .6rem 1rem; border-radius: .4rem; }
   td, th { padding: .2rem .6rem; border-bottom: 1px solid #8883; text-align: left; }
-  #agent-reply table { border-collapse: collapse; margin: .4rem 0; }
   .step { font-size: .9rem; color: #888; }
   .signed { color: #1a7f37; font-weight: bold; }
   li { margin: .4rem 0; }
@@ -38,36 +43,13 @@
 </section>
 
 <section id="chat" hidden>
-  <h2>営業 AI エージェントに相談する<span id="engine"></span></h2>
-  <textarea id="chat-input" data-testid="chat-input" rows="2" cols="50">老後に備えて、個人年金保険の案を見せてください。</textarea>
+  <h2>営業 AI エージェントと相談する</h2>
+  <p>営業 AI エージェントが、質問をし、案を示し、書類を用意して、署名をお願いします。署名した書類は、営業 AI エージェントが保険会社へ取り次ぎます。</p>
+  <div id="conversation" data-testid="conversation"></div>
+  <p id="agent-status" data-testid="agent-status" data-state="idle"></p>
+  <textarea id="chat-input" data-testid="chat-input" rows="2" cols="50">老後に備えて、個人年金保険を考えています。</textarea>
   <button id="chat-send" data-testid="chat-send" type="button">送る</button>
-  <p>営業 AI エージェントの説明:</p>
-  <div id="agent-reply" data-testid="agent-reply"></div>
-  <div id="offer" hidden>
-    <p id="offer-warning" data-testid="offer-warning" hidden></p>
-    <label>意向: <input id="wish" data-testid="wish" value="老後の生活費に備えたい" size="30"></label>
-    <ul id="plans"></ul>
-  </div>
-  <div id="intent-confirm" hidden>
-    <h2>意向確認書面 <span class="step">署名 1/2</span></h2>
-    <p id="intent-guide" data-testid="intent-guide">選んだ案と意向を確かめて、署名してください。</p>
-    <div id="intent-body" data-testid="intent-confirm"></div>
-    <p id="intent-actions">
-      <button id="sign-intent" data-testid="sign-intent" type="button">意向確認書面に passkey で署名する（1/2）</button>
-      <button id="cancel-intent" data-testid="cancel-intent" type="button">やめる</button>
-    </p>
-  </div>
-  <div id="application-confirm" hidden>
-    <h2>申込書 <span class="step">署名 2/2</span></h2>
-    <p id="application-guide" data-testid="application-guide">申し込む内容を確かめて、署名してください。</p>
-    <div id="application-body" data-testid="application-confirm"></div>
-    <p id="application-actions">
-      <button id="sign-application" data-testid="sign-application" type="button">申込書に passkey で署名して申し込む（2/2）</button>
-      <button id="cancel-application" data-testid="cancel-application" type="button">やめる</button>
-    </p>
-  </div>
-  <p id="submit-result" data-testid="submit-result"></p>
-  <h2>保険会社から直接届いた契約内容</h2>
+  <h2>保険会社から直接届いた契約内容（営業 AI エージェントを通らない）</h2>
   <button id="check-inbox" data-testid="check-inbox" type="button">受信箱を照合する</button>
   <ul id="reconcile"></ul>
 </section>

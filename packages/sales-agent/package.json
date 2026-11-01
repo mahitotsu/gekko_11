@@ -2,6 +2,15 @@
   "name": "@gekko/sales-agent",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node src/server.ts" },
-  "dependencies": { "@anthropic-ai/claude-agent-sdk": "^0.3.0", "@hono/node-server": "^2.1.0", "@modelcontextprotocol/sdk": "^1.32.0", "hono": "^4.13.0" }
+  "scripts": {
+    "start": "node src/server.ts"
+  },
+  "dependencies": {
+    "@ag-ui/core": "1.0.3",
+    "@anthropic-ai/claude-agent-sdk": "0.3.302",
+    "@hono/node-server": "^2.1.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "hono": "^4.13.0",
+    "zod": "4.6.7"
+  }
 }

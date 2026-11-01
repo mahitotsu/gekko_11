@@ -56,11 +56,24 @@ export async function verifyOffer(offer: Offer, keys: JWTVerifyGetKey, sub: stri
   return { offer: verified, tampered };
 }
 
-/** 営業 AI エージェントが作った申込書の案（/prepare の結果）。 */
-export interface Draft {
-  intent: { customer: string; offerSetId: string; planId: string; wish: string; nonce: string; expiresAt: number };
-  application: { customer: string; plan: Plan; offerSetId: string; nonce: string; expiresAt: number };
-  summary: string;
+/** 営業 AI エージェントが示す意向確認書面（present_intent の引数）。 */
+export interface Intent {
+  customer: string;
+  offerSetId: string;
+  planId: string;
+  wish: string;
+  nonce: string;
+  expiresAt: number;
+}
+
+/** 営業 AI エージェントが示す申込書（present_application の引数）。 */
+export interface Application {
+  customer: string;
+  plan: Plan;
+  offerSetId: string;
+  intentSignature: string;
+  nonce: string;
+  expiresAt: number;
 }
 
 /** 確認画面の 1 行。 */
@@ -76,8 +89,7 @@ const yen = (n: number) => `${n.toLocaleString("ja-JP")} 円`;
  * D23: 意向確認書面の画面（署名の 1/2）は、意向確認の内容そのものから作る。営業 AI エージェントの説明文は使わない。
  * 案の名前は、意向確認の案の番号で、署名を確かめた提示（D22）から引く。
  */
-export function intentRowsOf(draft: Draft, plans: Plan[]): Row[] {
-  const { intent } = draft;
+export function intentRowsOf(intent: Intent, plans: Plan[]): Row[] {
   return [
     { key: "customer", label: "契約者", value: intent.customer },
     { key: "plan-name", label: "選んだ案", value: plans.find((p) => p.id === intent.planId)?.name ?? "（示された案にない）" },
@@ -87,8 +99,7 @@ export function intentRowsOf(draft: Draft, plans: Plan[]): Row[] {
 }
 
 /** D23: 申込書の画面（署名の 2/2）は、申込みの内容そのものから作る。 */
-export function applicationRowsOf(draft: Draft): Row[] {
-  const { application } = draft;
+export function applicationRowsOf(application: Application): Row[] {
   return [
     { key: "customer", label: "契約者", value: application.customer },
     { key: "plan-name", label: "申し込む案", value: application.plan.name },

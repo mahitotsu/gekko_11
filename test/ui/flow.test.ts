@@ -21,9 +21,10 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
 
     await alice.choose("fixed-60");
     expect(await alice.approveIfShows(PLANS["fixed-60"]!)).toBe(true);
-    expect(await alice.submitResult()).toContain("申し込みました");
+    expect(await alice.error()).toBeNull();
 
-    const record = (await records(ns)).contracts.find((c) => c.contract.nonce === alice!.nonce);
+    const nonce = await alice.nonce;
+    const record = (await records(ns)).contracts.find((c) => c.contract.nonce === nonce);
     expect(record?.by).toEqual(["insurer-mcp", "sales-agent"]);
     expect(record?.contract.plan.id).toBe("fixed-60");
     expect(await alice.reconcile()).toBe("match");

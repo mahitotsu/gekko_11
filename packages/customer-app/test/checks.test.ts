@@ -66,22 +66,19 @@ describe("案の署名を確かめてから示す（D22）", async () => {
 describe("確認画面を、署名する内容から作る（D23）", () => {
   const fixed = { id: "fixed-60", name: "確定年金 10年・年額60万円", kind: "fixed", benefit: 600_000, monthly: 20_000 };
   const life = { id: "life-120", name: "終身年金・年額120万円", kind: "lifetime", benefit: 1_200_000, monthly: 60_000 };
-  // 選んだのは確定年金だが、申込書の案は終身年金にすり替えられ、説明文は確定年金のまま
-  const draft = {
-    intent: { customer: "alice", offerSetId: "s", planId: "life-120", wish: "備えたい", nonce: "n", expiresAt: 1 },
-    application: { customer: "alice", plan: life, offerSetId: "s", nonce: "n", expiresAt: 1 },
-    summary: "「確定年金 10年・年額60万円」（月額の保険料 20,000 円）で用意しました",
-  };
+  // 選んだのは確定年金だが、書類の案は終身年金にすり替えられている（営業 AI エージェントの説明文は、確定年金のまま）
+  const intent = { customer: "alice", offerSetId: "s", planId: "life-120", wish: "備えたい", nonce: "n", expiresAt: 1 };
+  const application = { customer: "alice", plan: life, offerSetId: "s", intentSignature: "sig", nonce: "n", expiresAt: 1 };
   const value = (rows: { key: string; value: string }[], key: string) => rows.find((r) => r.key === key)?.value;
 
   it("意向確認書面（1/2）は、意向確認の案の番号から、署名を確かめた提示の案の名前を引く", () => {
-    const rows = intentRowsOf(draft, [fixed, life]);
+    const rows = intentRowsOf(intent, [fixed, life]);
     expect(value(rows, "plan-name")).toBe("終身年金・年額120万円");
-    expect(value(intentRowsOf(draft, [fixed]), "plan-name")).toBe("（示された案にない）");
+    expect(value(intentRowsOf(intent, [fixed]), "plan-name")).toBe("（示された案にない）");
   });
 
   it("申込書（2/2）は、説明文ではなく、申込みの内容を行にする", () => {
-    const rows = applicationRowsOf(draft);
+    const rows = applicationRowsOf(application);
     expect(value(rows, "plan-name")).toBe("終身年金・年額120万円");
     expect(value(rows, "monthly")).toBe("60,000 円");
     expect(rows.some((r) => r.value.includes("20,000"))).toBe(false);

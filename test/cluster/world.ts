@@ -1,7 +1,9 @@
 // クラスタのシナリオのテストの基盤。手元から kubectl exec で probe を動かし、署名は手元で作る。
 // secure は全ての防御が有効で、切り替えの受け口がない。vulnerable は、防御を 1 つずつ外せる（D-20）。
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+import { parseSse } from "../../packages/customer-app/web/agui.ts";
 import { challengeOf, sign, type AuthenticatorState } from "./probe/webauthn.ts";
 
 const run = promisify(execFile);
@@ -60,9 +62,42 @@ export class Customer {
     return this;
   }
 
-  /** 営業 AI エージェントを、A と DPoP の proof で呼ぶ。 */
-  salesAgent(path: string, body: unknown, proof: "good" | "none" | "other-key" = "good") {
-    return probe(this.ns, "probe-sales-agent", "call-sales-agent", { path, body, token: this.token, dpopKey: this.dpopKey, proof });
+  /** 営業 AI エージェントの AG-UI の受け口に、1 回分（RunAgentInput）を、A と DPoP の proof で出す。返すのは、SSE のイベントの列。 */
+  async agui(input: Json, proof: "good" | "none" | "other-key" = "good"): Promise<{ status: number; events: Json[]; body: unknown }> {
+    const r = await probe(this.ns, "probe-sales-agent", "call-sales-agent", { path: "/agui", body: input, token: this.token, dpopKey: this.dpopKey, proof });
+    return { status: r.status, events: typeof r.body === "string" ? parseSse(r.body) : [], body: r.body };
+  }
+
+  /**
+   * 顧客のアプリの役で、営業 AI エージェントと会話を進める（D-29）。質問には最初の選択肢で答え、案は planId を選び、
+   * 2 つの書類には、示された内容そのものに署名する。返すのは、提示の nonce と、全てのイベント。
+   */
+  async converse(planId: string, message = "案を見たい"): Promise<{ nonce: string; events: Json[] }> {
+    const threadId = randomUUID();
+    const messages: Json[] = [{ id: randomUUID(), role: "user", content: message }];
+    const all: Json[] = [];
+    let nonce = "";
+    for (let i = 0; i < 8; i++) {
+      const r = await this.agui({ threadId, runId: randomUUID(), messages, tools: [], state: {}, context: [], forwardedProps: {} });
+      if (r.status !== 200) throw new Error(`営業 AI エージェントが断った: ${JSON.stringify(r.body)}`);
+      all.push(...r.events);
+      const error = r.events.find((e) => e.type === "RUN_ERROR");
+      if (error) throw new Error(`営業 AI エージェントが止まった: ${error.message}`);
+      const start = r.events.find((e) => e.type === "TOOL_CALL_START");
+      if (!start) return { nonce, events: all };
+      const args = JSON.parse(r.events.filter((e) => e.type === "TOOL_CALL_ARGS" && e.toolCallId === start.toolCallId).map((e) => e.delta).join(""));
+      messages.push({ id: randomUUID(), role: "assistant", toolCalls: [{ id: start.toolCallId, type: "function", function: { name: start.toolCallName, arguments: JSON.stringify(args) } }] });
+      let content: unknown;
+      if (start.toolCallName === "ask_customer") content = args.options[0];
+      if (start.toolCallName === "present_offers") {
+        nonce = args.offer.nonce;
+        content = { planId, plan: args.offer.offerSet.plans.find((p: Plan) => p.id === planId) };
+      }
+      if (start.toolCallName === "present_intent") content = { intent: args.intent, assertion: this.sign(args.intent) };
+      if (start.toolCallName === "present_application") content = { application: args.application, assertion: this.sign(args.application) };
+      messages.push({ id: randomUUID(), role: "tool", toolCallId: start.toolCallId, content: JSON.stringify(content) });
+    }
+    throw new Error("会話が終わらない");
   }
 
   /** 内容に署名する（顧客のアプリの画面で passkey を使う操作に当たる）。 */
