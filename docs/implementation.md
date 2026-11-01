@@ -8,7 +8,7 @@
 - **構成:** サービスごとに言語を選び、k3d の 1 つのクラスタの secure と vulnerable の名前空間で動かす（D-22）。保険会社のシステムと認可サーバーは Java、事務サービスは Python、それ以外は TypeScript である。
 - **動かし方:** `npm test` が 3 つの言語の単体テストを回す。`npm run cluster:deploy` がクラスタを組み立て、`npm run cluster:test` が全シナリオと画面のテストを確かめる。画面は、ブラウザで `http://app.secure.localhost:8081` を開いて使う。
 - **防御を外す受け口は、vulnerable のイメージだけにある:** 防御の ID ごとに、管理のポートで実行中に外す。教材のための意図的な実装で、本番の部品として使わない（D-24）。
-- **営業 AI エージェント:** secure では、本物の Claude（既定は Haiku）で動く。vulnerable では台本で動く（D-23）。
+- **営業 AI エージェント:** 顧客と AG-UI 1.0 で会話する（D-29）。secure では本物の Claude（既定は Haiku）、vulnerable では台本で動く（D-23）。
 - **まだ確かめていないこと:** passkey は、Windows Hello と VS Code に内蔵されたブラウザの組み合わせでだけ確かめた。監査サービスと記録の集約は、段 3 で作る。
 
 ## 1. 技術スタックは、サービスごとに選んだ言語と、k3d の基盤である
@@ -17,9 +17,9 @@
 | 認可サーバー | Java 21、Spring Boot 3.5、Spring Authorization Server 1.5、webauthn4j | `services/insurer-auth` |
 | 保険会社のシステム | Java 21、Spring Boot 3.5、nimbus-jose-jwt、java-json-canonicalization（JCS）、webauthn4j | `services/insurer-backend` |
 | 事務サービス | Python 3.12、FastMCP 4.1、httpx2 | `services/insurer-mcp` |
-| 営業 AI エージェント | TypeScript、Claude Agent SDK、MCP の SDK、Hono | `packages/sales-agent` |
+| 営業 AI エージェント | TypeScript、Claude Agent SDK 0.3.302、@ag-ui/core 1.0.3（AG-UI の型と確かめ）、MCP の SDK、Hono | `packages/sales-agent` |
 | token-guard | TypeScript、Hono、jose | `packages/token-guard` |
-| 顧客のアプリ | TypeScript、jose、canonicalize（JCS）、WebCrypto、WebAuthn。画面は esbuild 0.28 でまとめ、配信元は Hono | `packages/customer-app` |
+| 顧客のアプリ | TypeScript、jose、canonicalize（JCS）、@ag-ui/core（型だけ）、WebCrypto、WebAuthn。画面は esbuild 0.28 でまとめ、配信元は Hono | `packages/customer-app` |
 | クラスタと基盤 | k3d 5.9（k3s 1.35）、SPIRE 1.15、spiffe-helper 0.12、Envoy 1.31、NetworkPolicy | `deploy/` |
 | テスト | JUnit、pytest、vitest、Playwright 1.64（Docker のブラウザに playwright-core でつなぐ） | 各サービスの `test`、`test/cluster/`、`test/ui/` |
 
@@ -32,7 +32,7 @@ services/
   insurer-backend/   保険会社のシステム（案の署名、申込みの検証、契約の記録、直送、監査の役への記録）
   insurer-mcp/       事務サービス（MCP の道具と、ツールの呼び出しの記録）
 packages/
-  sales-agent/       営業 AI エージェント（Claude Agent SDK。台本でも動く）
+  sales-agent/       営業 AI エージェント（AG-UI の受け口、Claude Agent SDK。台本でも動く）
   customer-app/      顧客のアプリ（web/ が画面、src/ が配信元と受信箱と照合）
   token-guard/       各 Pod で、Envoy から呼ばれ、トークンを確かめ、替える
 deploy/              クラスタの構成（k3d、SPIRE）、マニフェストの生成（入口を含む）、組み立てのスクリプト、Node のイメージ
@@ -52,7 +52,11 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `packages/token-guard/src/exchange.ts` | 出口の交換（D2） |
 | `packages/customer-app/web/checks.ts` | 画面の確かめ（D21〜D23） |
 | `packages/customer-app/web/main.ts` | 画面の流れ（ログイン、登録、相談、確認、署名、照合） |
-| `packages/sales-agent/src/draft.ts` | 意向確認と申込みの案（D-27） |
+| `packages/sales-agent/src/agui.ts` | AG-UI の受け口（`POST /agui`。RunAgentInput を確かめ、SSE でイベントを返す） |
+| `packages/sales-agent/src/thread.ts` | 会話ごとの状態と、画面側の道具の呼び出しと待ち合わせ（D-29） |
+| `packages/sales-agent/src/claude.ts`、`scripted.ts` | Claude と台本。同じ道具を呼ぶ |
+| `packages/sales-agent/src/draft.ts`、`submit.ts` | 書類の組み立てと、署名の揃った書類の提出（D-27） |
+| `packages/customer-app/web/agui.ts` | 画面の側の AG-UI の受け手と、画面側の道具の定義 |
 | `packages/*/src/*.secure.ts`、`packages/customer-app/web/defenses.secure.ts` | secure のビルドで、防御を外す受け口と置き換えるファイル |
 | `deploy/render.ts` | 名前空間ごとのマニフェスト（Envoy の設定、NetworkPolicy を含む） |
 | `test/cluster/scenarios.test.ts`、`test/cluster/expiry.test.ts` | probe で確かめるシナリオと補足のテスト |
@@ -79,7 +83,7 @@ npm run cluster:down     # クラスタを消す
 |---|---|
 | `app.<名前空間>.localhost` | 顧客のアプリの配信元（画面、設定、提示の公開鍵、受信箱） |
 | `auth.<名前空間>.localhost` | 認可サーバー（ブラウザに出す経路だけ）。issuer も、この名前である |
-| `agent.<名前空間>.localhost` | 営業 AI エージェント（相談、申込書の案、提出） |
+| `agent.<名前空間>.localhost` | 営業 AI エージェント（AG-UI の受け口 `POST /agui`） |
 
 | 動くもの | ポート | 主な環境変数 |
 |---|---|---|
@@ -107,6 +111,7 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **`actor_token` は、替えるたびに取り直す:** SVID が入れ替わると、前の証明書に結んだ `actor_token` は使えないためである（F-G54）。
 - **入口は、TLS なしの localhost である:** ブラウザと入口の間は、利用者の端末の中のループバックで、http で受ける。ブラウザは localhost を安全な文脈として扱うので、passkey と WebCrypto が動く（F-G62、F-G63）。本番では、信頼された証明書の HTTPS にする。issuer も http になる。
 - **受信箱の番号は、端末の保存領域にある:** 番号を持つ者は、その受信箱を読める（D-26）。署名済み申込の写しも、同じ保存領域に置く。
+- **会話の状態は、営業 AI エージェントのメモリにある:** threadId ごとの会話（Claude の会話、直前の提示、署名した書類）を、1 つの複製のメモリに持つ。再起動で消え、15 分使われなければ捨てる。トークン A は 5 分で切れるので、会話はその間に終える。
 - **probe の顧客の役も残る:** 多くのシナリオは、クラスタの中の probe が顧客を演じる。署名と DPoP の proof には、入口の公開名を使う。
 
 ## 6. まだ確かめていないこと
@@ -114,4 +119,4 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - 顧客のアプリは、保険会社が署名した登録情報から、営業 AI エージェントの名称、所属、扱える範囲を示す（P-12）。この表示は、未実装である。画面は、取決めの範囲だけを示す。
 - [シナリオ](scenarios.md)の防御のうち、記録による監査（D25）は、運用で行い、再現するテストがない。監査サービスと記録の集約は、段 3 で作る。
 - 種類の違うトークンで鍵と `iss` を分けること（D3c の一部）は、未実装である。ID トークンとアクセストークンは、同じ鍵と `iss` で出す。
-- secure の営業 AI エージェント（Claude）が、相談に応じて道具を呼ぶことは、基本の流れで確かめた。Claude の答え方そのものの良し悪しは、確かめていない。
+- secure の営業 AI エージェント（Claude）が、質問から提出まで道具を呼んで進めることは、画面の基本の流れで確かめた。Claude の答え方そのものの良し悪しと、道具の順を外れる頻度は、確かめていない。
