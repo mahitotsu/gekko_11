@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 CLUSTER=gekko11
 TRUST_DOMAIN=gekko11.internal
 NAMESPACES=(secure vulnerable)
-SERVICE_ACCOUNTS=(insurer-auth sales-agent insurer-mcp insurer-backend customer-app intruder operator auditor)
+SERVICE_ACCOUNTS=(insurer-auth sales-agent insurer-mcp insurer-backend customer-app entrance intruder operator auditor)
 # SVID の有効期間（秒）。入れ替わりを観察できるよう、短くする。
 SVID_TTL=600
 

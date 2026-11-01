@@ -2,6 +2,10 @@
   "name": "@gekko/customer-app",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node src/server.ts" },
-  "dependencies": { "@hono/node-server": "^2.1.0", "hono": "^4.13.0" }
+  "scripts": {
+    "start": "node src/server.ts",
+    "build": "esbuild web/main.ts --bundle --format=esm --target=es2022 --outfile=dist/app.js"
+  },
+  "dependencies": { "@hono/node-server": "^2.1.0", "canonicalize": "^5.1.0", "hono": "^4.13.0", "jose": "^6.2.0" },
+  "devDependencies": { "esbuild": "0.28.2" }
 }

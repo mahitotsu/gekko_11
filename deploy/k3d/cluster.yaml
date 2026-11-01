@@ -1,11 +1,19 @@
 # k3d のクラスタ（architecture の 5 章、D-20）。
-# 外への公開は kubectl port-forward で行うので、Traefik と servicelb は使わない。
+# ブラウザからの入口は、名前空間ごとの入口の NodePort へ、k3d の loadbalancer からつなぐ（D-25）。
+# secure は 8081、vulnerable は 8082。Traefik と servicelb は使わない。
 apiVersion: k3d.io/v1alpha5
 kind: Simple
 metadata:
   name: gekko11
 servers: 1
 agents: 1
+ports:
+  - port: 127.0.0.1:8081:30081
+    nodeFilters:
+      - loadbalancer
+  - port: 127.0.0.1:8082:30082
+    nodeFilters:
+      - loadbalancer
 options:
   k3s:
     extraArgs:

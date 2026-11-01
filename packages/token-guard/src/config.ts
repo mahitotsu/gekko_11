@@ -42,6 +42,8 @@ export const config = {
   /** このサービスの名前。受け取るトークンの aud で、替えるときの client_id。 */
   service,
   issuer: env("ISSUER"),
+  /** 顧客が呼ぶ公開名（入口の名前）。DPoP の htu は、この名前とパスで照らす。 */
+  publicOrigin: process.env.PUBLIC_ORIGIN,
   /** 受け口で求める証明: 顧客のアプリからは DPoP、サービスからは mTLS の証明書（D-7）。 */
   ingress: env("INGRESS_PROOF") as "dpop" | "mtls",
   /** このサービスを呼んでよい者（D27）。 */

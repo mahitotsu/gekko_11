@@ -27,6 +27,9 @@ export async function probe(ns: Ns, who: Role, command: string, args: object = {
   }
 }
 
+/** ブラウザが入口を通って呼ぶ公開名（D-25）。 */
+export const publicOrigin = (ns: Ns, name: "app" | "auth" | "agent") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
+
 export const TERMS = [{ type: "insurance_application", kinds: ["fixed", "lifetime"], maxBenefit: 1_200_000 }];
 
 /** 顧客。ログイン、passkey の登録、A の受け取りは probe が行い、署名は手元で行う。 */
@@ -35,6 +38,8 @@ export class Customer {
   idToken = "";
   dpopKey: Json = {};
   authenticator!: AuthenticatorState;
+  /** passkey と一緒に登録した受信箱の番号（直送の宛先）。 */
+  inbox = "";
 
   readonly ns: Ns;
   readonly user: string;
@@ -45,13 +50,13 @@ export class Customer {
   }
 
   get origin() {
-    return `https://customer-app.${this.ns}.svc:8443`;
+    return publicOrigin(this.ns, "app");
   }
 
   async setup(terms: unknown = TERMS): Promise<this> {
     const r = await probe(this.ns, "probe-sales-agent", "customer-setup", { user: this.user, terms });
     if (r.status !== 200) throw new Error(`顧客の準備に失敗: ${JSON.stringify(r)}`);
-    Object.assign(this, { token: r.token, idToken: r.idToken, dpopKey: r.dpopKey, authenticator: r.authenticator });
+    Object.assign(this, { token: r.token, idToken: r.idToken, dpopKey: r.dpopKey, authenticator: r.authenticator, inbox: r.inbox });
     return this;
   }
 
@@ -62,7 +67,7 @@ export class Customer {
 
   /** 内容に署名する（顧客のアプリの画面で passkey を使う操作に当たる）。 */
   sign(content: unknown) {
-    return sign(this.authenticator, `customer-app.${this.ns}.svc`, challengeOf(content), this.origin);
+    return sign(this.authenticator, `app.${this.ns}.localhost`, challengeOf(content), this.origin);
   }
 
   /** 案を選んで、意向確認と申込みに署名する（3 章の 3 段）。 */
@@ -81,7 +86,7 @@ export class Customer {
   }
 
   async notices(): Promise<Json[]> {
-    return (await probe(this.ns, "probe-sales-agent", "notices", { customer: this.user })).body as Json[];
+    return (await probe(this.ns, "probe-sales-agent", "notices", { inbox: this.inbox })).body as Json[];
   }
 }
 
@@ -126,6 +131,7 @@ own(["D9", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18"], "insurer-bac
 own(["D5", "D6", "D7", "D8", "D10", "D26", "D27"], "insurer-backend", 9090);
 own(["D1", "D2", "D26", "D27"], "insurer-mcp", 9090);
 own(["D20", "D26"], "sales-agent", 9090);
+own(["D21", "D22", "D23"], "customer-app", 9091);
 
 /** 外す防御。値は外し方（多くは "off"）。D26 と D27 は、サービスを付けて "D26@insurer-backend" のようにも書ける。 */
 export type Gaps = Record<string, string>;
@@ -136,6 +142,7 @@ const PARTS = [
   { service: "insurer-backend", port: 9090 },
   { service: "insurer-mcp", port: 9090 },
   { service: "sales-agent", port: 9090 },
+  { service: "customer-app", port: 9091 },
 ];
 
 export async function setDefenses(gaps: Gaps): Promise<void> {
@@ -172,8 +179,14 @@ export async function setTamper(on: boolean): Promise<void> {
 
 /** 窓口の役が、自分の SVID で、トークンを替える（actor_token は自分のトークン）。 */
 export async function exchangeAs(ns: Ns, who: Role, subject: string, audience: string, terms?: unknown): Promise<Json> {
-  const actor = (await probe(ns, who, "client-credentials")).body?.access_token;
-  return probe(ns, who, "exchange", { subject, actor, audience, terms });
+  const once = async () => {
+    const actor = (await probe(ns, who, "client-credentials")).body?.access_token;
+    return probe(ns, who, "exchange", { subject, actor, audience, terms });
+  };
+  const r = await once();
+  // actor_token を受け取ってから替えるまでの間に SVID が入れ替わると、前の証明書に結んだ actor_token は拒まれる（F-G54）。
+  // token-guard と同じく、actor_token を取り直して 1 度だけやり直す
+  return String(r.body?.error_description ?? "").includes("not bound to the requester certificate") ? once() : r;
 }
 
 /** 乗っ取られた営業 AI エージェント: 顧客の A を、事務サービス宛ての B に替える。 */
@@ -199,7 +212,9 @@ export const applyArgs = (s: Submission, extras?: Json) => ({
 
 /** 攻撃の材料として、正規の経路で、顧客宛ての提示を受け取る（防御の設定に左右されない）。 */
 export async function offerFor(customer: Customer): Promise<Offer> {
-  const r = await mcpCall(customer.ns, await atMcp(customer), "get_offers");
+  let r = await mcpCall(customer.ns, await atMcp(customer), "get_offers");
+  // B を受け取ってから呼ぶまでの間に SVID が入れ替わると、前の証明書に結んだ B は拒まれる（F-G54）。B から取り直して 1 度だけやり直す
+  if (String(r.body?.error ?? "").includes("相手の証明書に結ばれていない")) r = await mcpCall(customer.ns, await atMcp(customer), "get_offers");
   if (!r.body?.offerJws) throw new Error(`提示を受け取れない: ${JSON.stringify(r)}`);
   return r.body as Offer;
 }
@@ -213,4 +228,4 @@ export async function contractsOf(ns: Ns, nonce: string): Promise<Json[]> {
   return (await records(ns)).contracts.filter((c) => c.contract.nonce === nonce);
 }
 
-export const ISSUER = (ns: Ns) => `https://insurer-auth.${ns}.svc:8443`;
+export const ISSUER = (ns: Ns) => publicOrigin(ns, "auth");

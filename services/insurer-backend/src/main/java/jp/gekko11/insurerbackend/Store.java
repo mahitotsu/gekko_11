@@ -18,9 +18,8 @@ class Store {
 			plan("life-120", "終身年金・年額120万円", "lifetime", 1_200_000, 60_000),
 			plan("life-240", "終身年金・年額240万円", "lifetime", 2_400_000, 120_000));
 
-	/** 顧客と、本人確認のときに届け出た連絡先（直送の宛先。P-14）。 */
-	static final Map<String, String> CONTACTS = Map.of("alice", "/notices?customer=alice", "bob",
-			"/notices?customer=bob", "mallory", "/notices?customer=mallory");
+	/** 保険会社の顧客（本人確認を済ませて登録した者）。直送の宛先は、顧客が登録した受信箱で、認可サーバーが持つ（D-26）。 */
+	static final java.util.Set<String> CUSTOMERS = java.util.Set.of("alice", "bob", "mallory");
 
 	record Nonce(String customer, long expiresAt, boolean used) {
 	}

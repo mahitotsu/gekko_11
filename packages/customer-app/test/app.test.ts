@@ -8,8 +8,9 @@ const xfcc = (sa: string) => `Hash=ab;URI=spiffe://gekko11.internal/ns/secure/sa
 describe("直送の受け口", () => {
   it("保険会社のシステムからの通知だけを受ける", async () => {
     const app = createApp();
+    const inbox = "Abcdefghijklmnopqrstuv";
     const post = (sa?: string) =>
-      app.request("/notices", {
+      app.request(`/notices/${inbox}`, {
         method: "POST",
         headers: { "content-type": "application/json", ...(sa ? { "x-forwarded-client-cert": xfcc(sa) } : {}) },
         body: JSON.stringify(notice),
@@ -17,7 +18,9 @@ describe("直送の受け口", () => {
     expect((await post("sales-agent")).status).toBe(403);
     expect((await post()).status).toBe(403);
     expect((await post("insurer-backend")).status).toBe(204);
-    expect(await (await app.request("/api/notices?customer=alice")).json()).toEqual([notice]);
+    expect(await (await app.request(`/api/inbox/${inbox}`)).json()).toEqual([notice]);
+    // 番号を知らなければ、読めない
+    expect(await (await app.request("/api/inbox/Zbcdefghijklmnopqrstuv")).json()).toEqual([]);
   });
 
   it("XFCC から相手の SPIFFE ID を読む", () => {

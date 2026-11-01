@@ -39,4 +39,11 @@ class TestBackendConfig {
 		return (user) -> PASSKEYS.getOrDefault(user, List.of());
 	}
 
+	/** 顧客ごとの受信箱の番号（認可サーバーに登録した連絡先の代わり）。 */
+	@Bean
+	@Primary
+	ContactDirectory testContacts() {
+		return (user) -> List.of("inbox-of-" + user + "-0123456789ab");
+	}
+
 }

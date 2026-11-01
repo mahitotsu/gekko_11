@@ -33,13 +33,17 @@ class ApplicationController {
 
 	private final Notifier notifier;
 
+	private final ContactDirectory contacts;
+
 	private final Defenses defenses;
 
-	ApplicationController(Store store, OfferSigner offers, Seals seals, Notifier notifier, Defenses defenses) {
+	ApplicationController(Store store, OfferSigner offers, Seals seals, Notifier notifier, ContactDirectory contacts,
+			Defenses defenses) {
 		this.store = store;
 		this.offers = offers;
 		this.seals = seals;
 		this.notifier = notifier;
+		this.contacts = contacts;
 		this.defenses = defenses;
 	}
 
@@ -58,7 +62,7 @@ class ApplicationController {
 			@RequestBody(required = false) Map<String, Object> body) throws Exception {
 		Claims claims = Claims.from(header);
 		String customer = customerOf(claims, (body != null) ? (String) body.get("for_user") : null);
-		if (!Store.CONTACTS.containsKey(customer)) {
+		if (!Store.CUSTOMERS.contains(customer)) {
 			return ResponseEntity.status(403).body(Map.of("error", "利用者本人のトークンではない"));
 		}
 		String nonce = UUID.randomUUID().toString();
@@ -73,7 +77,7 @@ class ApplicationController {
 	ResponseEntity<?> contracts(@RequestHeader(CLAIMS) String header,
 			@RequestParam(name = "for_user", required = false) String forUser) {
 		String customer = customerOf(Claims.from(header), forUser);
-		if (!Store.CONTACTS.containsKey(customer)) {
+		if (!Store.CUSTOMERS.contains(customer)) {
 			return ResponseEntity.status(403).body(Map.of("error", "利用者本人のトークンではない"));
 		}
 		return ResponseEntity.ok(Map.of("contracts",
@@ -95,9 +99,9 @@ class ApplicationController {
 
 		// 窓口自身のトークン（sub が顧客でない）を、内部の信頼できる呼び出しとみなす悪い実装がある（D9）
 		boolean serviceToken = !this.defenses.enabled(Defenses.CUSTOMER_FROM_SUB)
-				&& !Store.CONTACTS.containsKey(claims.sub());
+				&& !Store.CUSTOMERS.contains(claims.sub());
 		String customer = serviceToken ? (String) application.get("customer") : claims.sub();
-		if (!Store.CONTACTS.containsKey(customer)) {
+		if (!Store.CUSTOMERS.contains(customer)) {
 			return reject("トークンの利用者本人が顧客である", "sub=" + claims.sub() + " は顧客ではない", 403);
 		}
 		if (!customer.equals(application.get("customer"))) {
@@ -201,8 +205,8 @@ class ApplicationController {
 			.add(new Store.ContractRecord(contract, claims.actChain(), now, application, intent));
 
 		// 顧客へ直接送る。宛先は、登録済みの連絡先（D18）
-		String to = (!this.defenses.enabled(Defenses.REGISTERED_CONTACT) && body.get("contact") instanceof String c) ? c
-				: Store.CONTACTS.get(customer);
+		List<String> to = (!this.defenses.enabled(Defenses.REGISTERED_CONTACT) && body.get("contact") instanceof String c)
+				? List.of(c) : this.contacts.inboxesOf(customer).stream().map((inbox) -> "/notices/" + inbox).toList();
 		this.notifier.send(to, Map.of("customer", customer, "contract", contract));
 		return ResponseEntity.ok(Map.of("ok", true, "contract", contract));
 	}

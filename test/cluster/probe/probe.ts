@@ -2,7 +2,7 @@
 // 通信だけを受け持つ。署名（passkey）と内容の組み立ては、手元のテストが行う（test/cluster）。
 // 自分の SVID（spiffe-helper が /svid に書き出す）を使うか、証明書なしで呼ぶ。結果は JSON で標準出力に書く。
 // 使い方: node test/cluster/probe/probe.ts <コマンド> '<JSON の引数>'
-import { createHash, generateKeyPairSync, randomUUID, type KeyObject } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, randomUUID, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { request } from "node:https";
@@ -17,8 +17,10 @@ const self = process.env.SERVICE_ACCOUNT!;
 const spiffeId = (sa: string) => `spiffe://${TRUST_DOMAIN}/ns/${ns}/sa/${sa}`;
 const PORTS: Record<string, number> = { "insurer-auth": 8443, "sales-agent": 8443, "customer-app": 8443, "insurer-mcp": 9443, "insurer-backend": 9443 };
 const origin = (service: string) => `https://${service}.${ns}.svc:${PORTS[service]}`;
-const CUSTOMER_ORIGIN = origin("customer-app");
-const RP_ID = `customer-app.${ns}.svc`;
+/** ブラウザが入口を通って呼ぶ公開名（D-25）。顧客の役は、署名と proof に、この名前を使う。 */
+const publicOrigin = (name: "app" | "agent") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
+const CUSTOMER_ORIGIN = publicOrigin("app");
+const RP_ID = `app.${ns}.localhost`;
 const REDIRECT = `${CUSTOMER_ORIGIN}/callback`;
 const ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const FORM = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
@@ -122,10 +124,12 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
   const options = JSON.parse(
     (await call("insurer-auth", "/passkeys/register/options", { method: "POST", headers: { ...JSON_HEADERS, cookie }, clientCert: false })).body,
   ) as { challenge: string };
+  // 受信箱の番号を、本人が登録する連絡先として、passkey と一緒に登録する（D-26）
+  const inbox = randomBytes(16).toString("base64url");
   const registered = await call("insurer-auth", "/passkeys/register/verify", {
     method: "POST",
     headers: { ...JSON_HEADERS, cookie },
-    body: JSON.stringify(register(authenticator, RP_ID, options.challenge, CUSTOMER_ORIGIN)),
+    body: JSON.stringify({ credential: register(authenticator, RP_ID, options.challenge, CUSTOMER_ORIGIN), inbox }),
     clientCert: false,
   });
   if (registered.status !== 200) throw new Error(`passkey の登録に失敗: ${registered.status} ${registered.body}`);
@@ -150,12 +154,13 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
     dpopKey: await exportJWK(privateKey),
     jkt: await calculateJwkThumbprint(jwk),
     authenticator,
+    inbox,
   };
 }
 
 /** 顧客の役: A を営業 AI エージェントに出す。proof は、正しいもの、なし、別の鍵で作ったもの。 */
 async function callSalesAgent(args: { path: string; body?: unknown; token: string; dpopKey: JWK; proof?: "good" | "none" | "other-key" }) {
-  const htu = `${origin("sales-agent")}${args.path}`;
+  const htu = `${publicOrigin("agent")}${args.path}`;
   const headers: Record<string, string> = { ...JSON_HEADERS, authorization: `DPoP ${args.token}` };
   const proof = args.proof ?? "good";
   if (proof !== "none") {
@@ -228,9 +233,9 @@ const operator = async (args: { action: "revoke" | "restore"; client: string }) 
 /** 監査の役: 契約の記録と直送の記録を読む。 */
 const audit = async () => reply(await call("insurer-backend", "/audit/records", { method: "GET", clientCert: true }));
 
-/** 顧客の役: 顧客のアプリの受信箱を読む。 */
-const notices = async (args: { customer: string }) =>
-  reply(await call("customer-app", `/api/notices?customer=${args.customer}`, { method: "GET", clientCert: false }));
+/** 顧客の役: 顧客のアプリの受信箱を、自分の番号で読む。 */
+const notices = async (args: { inbox: string }) =>
+  reply(await call("customer-app", `/api/inbox/${args.inbox}`, { method: "GET", clientCert: false }));
 
 /** vulnerable だけ: 防御を外す管理のポートを呼ぶ。 */
 function admin(args: { service: string; port: number; path: string; method?: string; body?: unknown }) {

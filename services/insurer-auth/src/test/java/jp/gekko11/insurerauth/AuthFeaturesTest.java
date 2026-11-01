@@ -89,6 +89,17 @@ class AuthFeaturesTest extends AuthTestSupport {
 	}
 
 	@Test
+	void onlyTheBackendReadsContacts() throws Exception {
+		assertThat(this.mvc.perform(get("/internal/contacts/alice").with(x509(MCP))).andReturn().getResponse().getStatus())
+			.isEqualTo(403);
+		// 受信箱を登録していない顧客には、連絡先がない
+		assertThat(this.mvc.perform(get("/internal/contacts/alice").with(x509(BACKEND)))
+			.andReturn()
+			.getResponse()
+			.getContentAsString()).isEqualTo("{\"inboxes\":[]}");
+	}
+
+	@Test
 	void weakIssuanceAppearsOnlyWhenDefensesAreOff() throws Exception {
 		TestDefenses.OFF.addAll(List.of(Defenses.AUD_ONE, Defenses.SHORT_TTL, Defenses.KEEP_ACT));
 		String a = customerToken(new ECKeyGenerator(Curve.P_256).generate());

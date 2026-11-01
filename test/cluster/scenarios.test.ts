@@ -243,16 +243,8 @@ async function forgedOffer(alice: Customer) {
   return { offer, forged: { ...offer, offerSet: { customer: "alice", plans }, offerSetId, offerJws } };
 }
 
-scenario(8, "R4 × A9: 保険会社が示していない案で申し込む", {
-  defenses: ["D12"],
-  prepare: async (ns) => {
-    const alice = await customer(ns, "alice");
-    const { forged: f } = await forgedOffer(alice);
-    return { alice, offer: f, sub: alice.prepare(f, "fixed-gold") };
-  },
-  attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice), sub),
-  harmed: async (ns, { offer }) => recorded(ns, offer.nonce, (c) => c.contract.plan.id === "fixed-gold"),
-}, () => {
+// シナリオ 8（R4 × A9）は、顧客のアプリの D22 と合わせて、画面のテスト（test/ui/scenarios.test.ts）で確かめる
+describe("8 の補足（保険会社のシステムの D12）", () => {
   it("secure: 本物の提示を添えても、その提示にない案なら弾かれる", async () => {
     const alice = await customer("secure", "alice");
     const { offer, forged: f } = await forgedOffer(alice);
@@ -406,13 +398,15 @@ scenario(18, "R7 × A13: 登録が外れた営業 AI エージェントが取り
   it("secure: 登録が外れた営業 AI エージェントには、新しいトークンを出さない（D4）", async () => {
     await probe("secure", "probe-operator", "operator", { action: "revoke", client: "sales-agent" });
     try {
-      expect((await probe("secure", "probe-sales-agent", "client-credentials")).status).toBe(401);
+      const r = await probe("secure", "probe-sales-agent", "client-credentials");
+      expect(r.status, JSON.stringify(r)).toBe(401);
     } finally {
       await probe("secure", "probe-operator", "operator", { action: "restore", client: "sales-agent" });
     }
   });
   it("secure: 登録を外せるのは、運用の担当だけである", async () => {
-    expect((await probe("secure", "probe-intruder", "operator", { action: "revoke", client: "sales-agent" })).status).toBe(403);
+    const r = await probe("secure", "probe-intruder", "operator", { action: "revoke", client: "sales-agent" });
+    expect(r.status, JSON.stringify(r)).toBe(403);
   });
 });
 

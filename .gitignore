@@ -4,3 +4,4 @@ node_modules/
 services/*/target/
 __pycache__/
 *.pyc
+packages/customer-app/dist/

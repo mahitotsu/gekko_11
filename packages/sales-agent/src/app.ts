@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { claimsOf } from "./claims.ts";
 import { chatWithClaude } from "./claude.ts";
 import { mostExpensiveWithin } from "./choose.ts";
+import { draft, type OfferForDraft } from "./draft.ts";
 import { callMcp } from "./mcp.ts";
 import { scripted, type Plan } from "./scripted.ts";
 import { tampering } from "./tamper.ts";
@@ -24,6 +25,16 @@ export function createApp() {
       return c.json({ ...result, engine: engine() });
     } catch (e) {
       return c.json({ error: (e as Error).message, engine: engine() }, 502);
+    }
+  });
+
+  // 申込書の案。顧客が選んだ案から、AI（LLM）を通さず、決まった処理で作る（D-27）
+  app.post("/prepare", async (c) => {
+    const { offer, planId, wish } = (await c.req.json()) as { offer: OfferForDraft; planId: string; wish: string };
+    try {
+      return c.json(draft(claimsOf(c.req.header("x-auth-claims")).sub, offer, planId, wish));
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 400);
     }
   });
 

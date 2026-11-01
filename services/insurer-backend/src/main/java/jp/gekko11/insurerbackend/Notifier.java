@@ -30,7 +30,15 @@ class Notifier {
 		this.customerAppUrl = props.customerAppUrl();
 	}
 
-	void send(String to, Map<String, Object> notice) {
+	/** 登録した全ての宛先へ送る。宛先がなければ送らず、届かなかった記録だけを残す。 */
+	void send(java.util.List<String> to, Map<String, Object> notice) {
+		if (to.isEmpty()) {
+			this.store.outbox.add(new Store.Delivery("(連絡先の登録がない)", notice, false));
+		}
+		to.forEach((each) -> sendOne(each, notice));
+	}
+
+	private void sendOne(String to, Map<String, Object> notice) {
 		String url = to.startsWith("/") ? this.customerAppUrl + to : to;
 		boolean delivered;
 		try {

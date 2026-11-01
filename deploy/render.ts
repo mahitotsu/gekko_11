@@ -18,10 +18,19 @@ const IMAGES = {
 
 const spiffeId = (sa: string) => `spiffe://${TRUST_DOMAIN}/ns/${ns}/sa/${sa}`;
 const host = (service: string) => `${service}.${ns}.svc`;
-const ISSUER = `https://${host("insurer-auth")}:8443`;
-const CUSTOMER_ORIGIN = `https://${host("customer-app")}:8443`;
+
+/**
+ * クラスタの入口（D-25）。ブラウザは、名前空間ごとのポートで、app、auth、agent の名前に届く。
+ * 入口の名前は、ここだけで決める。RP ID、origin、issuer、戻り先、CORS は、ここから作る。
+ */
+const ENTRANCE = { domain: "localhost", port: vulnerable ? 8082 : 8081, nodePort: vulnerable ? 30082 : 30081, listen: 8080 };
+type PublicName = "app" | "auth" | "agent";
+const publicHost = (name: PublicName) => `${name}.${ns}.${ENTRANCE.domain}`;
+const publicOrigin = (name: PublicName) => `http://${publicHost(name)}:${ENTRANCE.port}`;
+const ISSUER = publicOrigin("auth");
+const CUSTOMER_ORIGIN = publicOrigin("app");
 /** passkey の RP ID と、署名した画面の origin（顧客のアプリ）。 */
-const WEBAUTHN = { RP_ID: host("customer-app"), WEBAUTHN_ORIGINS: CUSTOMER_ORIGIN };
+const WEBAUTHN = { RP_ID: publicHost("app"), WEBAUTHN_ORIGINS: CUSTOMER_ORIGIN };
 
 /** 防御を外す管理のポート（vulnerable だけ）。token-guard と、アプリ。 */
 const ADMIN = { tokenGuard: 9090, app: 9091 };
@@ -83,7 +92,8 @@ const SERVICES: Service[] = [
     ingress: "mtls",
     port: 9443,
     callers: ["insurer-mcp"],
-    openPaths: ["/audit/"],
+    // 監査の記録（相手の SPIFFE ID で限る）と、提示の公開鍵（顧客のアプリのサーバーが取る）は、トークンなしで受ける
+    openPaths: ["/audit/", "/offers-jwks.json"],
     egress: [
       { port: 15101, target: "insurer-auth" },
       { port: 15103, target: "customer-app" },
@@ -100,8 +110,13 @@ const SERVICES: Service[] = [
     port: 8443,
     mtlsPort: 9443,
     callers: ["insurer-backend"],
-    egress: [],
-    app: { image: IMAGES.node, command: ["node", "packages/customer-app/src/server.ts"], env: { NAMESPACE: ns, TRUST_DOMAIN } },
+    // 提示の公開鍵を、保険会社のシステムから取り、画面に渡す（4-5）
+    egress: [{ port: 15104, target: "insurer-backend" }],
+    app: {
+      image: IMAGES.node,
+      command: ["node", "packages/customer-app/src/server.ts"],
+      env: { NAMESPACE: ns, TRUST_DOMAIN, ISSUER, RP_ID: WEBAUTHN.RP_ID, APP_ORIGIN: CUSTOMER_ORIGIN, AGENT_ORIGIN: publicOrigin("agent"), APP_ADMIN_PORT: String(ADMIN.app) },
+    },
   },
 ];
 
@@ -125,6 +140,7 @@ const SERVICE_ACCOUNTS = [
   "insurer-mcp",
   "insurer-backend",
   "customer-app",
+  "entrance",
   "intruder",
   "operator",
   "auditor",
@@ -161,7 +177,7 @@ const portOf = (target: Egress["target"]) => (target === "insurer-auth" || targe
  * 接続は要求ごとにつなぎ直し、そのときの SVID で示す。使い回すと、SVID が入れ替わった後も前の証明書で示し続け、
  * 新しい証明書に結んだトークンと食い違う（F-G54）。
  */
-const upstream = (name: string, service: string, port: number) => ({
+const upstream = (name: string, service: string, port: number, presentSvid = true) => ({
   name,
   type: "STRICT_DNS",
   connect_timeout: "5s",
@@ -181,7 +197,7 @@ const upstream = (name: string, service: string, port: number) => ({
     typed_config: {
       "@type": "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext",
       common_tls_context: {
-        tls_certificate_sds_secret_configs: [sds("default")],
+        ...(presentSvid ? { tls_certificate_sds_secret_configs: [sds("default")] } : {}),
         combined_validation_context: {
           default_validation_context: {
             match_typed_subject_alt_names: [{ san_type: "URI", matcher: { exact: spiffeId(service) } }],
@@ -432,6 +448,7 @@ function serviceWorkload(s: Service) {
         NAMESPACE: ns,
         ISSUER,
         INGRESS_PROOF: s.ingress,
+        PUBLIC_ORIGIN: s.ingress === "dpop" ? publicOrigin("agent") : undefined,
         ALLOWED_CALLERS: s.callers.join(","),
         NEXT_SERVICE: next,
         TOKEN_GUARD_ADMIN_PORT: String(ADMIN.tokenGuard),
@@ -487,6 +504,132 @@ function authWorkload() {
         },
       ],
       volumes: [SOCKET_VOLUME, SVID_VOLUME, HELPER_CONFIG_VOLUME],
+    }),
+  ];
+}
+
+// ---- クラスタの入口（D-25） ----------------------------------------------------
+// ブラウザからの要求を、名前（Host）で振り分ける。入口から先は、相手の SPIFFE ID を確かめる TLS で、証明書は示さない
+// （顧客と同じく、証明書を持たない者として呼ぶ。F-G59）。
+
+/** 認可サーバーのうち、ブラウザに出す経路。運用（/admin）、内部（/internal）、有効性の問い合わせは出さない。 */
+const AUTH_PUBLIC_PATHS = ["/oauth2/authorize", "/oauth2/token", "/oauth2/jwks", "/.well-known/", "/login", "/default-ui.css", "/passkeys/register/", "/error"];
+
+const CORS = "envoy.filters.http.cors";
+
+/** 顧客のアプリの画面（app の origin）からだけ、別の名前を呼ばせる。 */
+const corsFor = (credentials: boolean) => ({
+  [CORS]: {
+    "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy",
+    allow_origin_string_match: [{ exact: CUSTOMER_ORIGIN }],
+    allow_methods: "GET, POST, OPTIONS",
+    allow_headers: "authorization, dpop, content-type",
+    allow_credentials: credentials,
+    max_age: "600",
+  },
+});
+
+const NOT_FOUND = { direct_response: { status: 404, body: { inline_string: "not found" } } };
+
+function entranceConfig() {
+  const domains = (name: PublicName) => [publicHost(name), `${publicHost(name)}:${ENTRANCE.port}`];
+  // 認可サーバーは、転送のヘッダーで、ブラウザが呼んだ URL を知る（DPoP の htu、戻り先）
+  const forwarded = [
+    { header: { key: "x-forwarded-proto", value: "http" }, append_action: "OVERWRITE_IF_EXISTS_OR_ADD" },
+    { header: { key: "x-forwarded-port", value: String(ENTRANCE.port) }, append_action: "OVERWRITE_IF_EXISTS_OR_ADD" },
+  ];
+  const virtualHosts = [
+    {
+      name: "app",
+      domains: domains("app"),
+      routes: [
+        // 直送の受け口は、保険会社のシステムからの mTLS の受け口だけで受ける
+        { match: { prefix: "/notices" }, ...NOT_FOUND },
+        { match: { prefix: "/" }, route: { cluster: "to_customer_app" } },
+      ],
+    },
+    {
+      name: "auth",
+      domains: domains("auth"),
+      typed_per_filter_config: corsFor(true),
+      request_headers_to_add: forwarded,
+      routes: [
+        ...AUTH_PUBLIC_PATHS.map((prefix) => ({ match: { prefix }, route: { cluster: "to_insurer_auth" } })),
+        { match: { prefix: "/" }, ...NOT_FOUND },
+      ],
+    },
+    {
+      name: "agent",
+      domains: domains("agent"),
+      typed_per_filter_config: corsFor(false),
+      routes: [{ match: { prefix: "/" }, route: { cluster: "to_sales_agent", timeout: "120s" } }],
+    },
+  ];
+  const corsFilter = { name: CORS, typed_config: { "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors" } };
+  return {
+    node: { id: "entrance", cluster: "entrance" },
+    admin: { address: { socket_address: { address: "127.0.0.1", port_value: 9901 } } },
+    static_resources: {
+      listeners: [
+        listener("entrance", "0.0.0.0", ENTRANCE.listen, {
+          filters: [
+            hcm(
+              "entrance",
+              { name: "entrance", virtual_hosts: virtualHosts, request_headers_to_remove: ["x-forwarded-client-cert", "x-forwarded-host"] },
+              [corsFilter],
+              { use_remote_address: true },
+            ),
+          ],
+        }),
+      ],
+      clusters: [
+        {
+          name: "spire_agent",
+          type: "STATIC",
+          connect_timeout: "1s",
+          typed_extension_protocol_options: {
+            "envoy.extensions.upstreams.http.v3.HttpProtocolOptions": {
+              "@type": "type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions",
+              explicit_http_config: { http2_protocol_options: {} },
+            },
+          },
+          load_assignment: {
+            cluster_name: "spire_agent",
+            endpoints: [{ lb_endpoints: [{ endpoint: { address: { pipe: { path: "/run/spire/sockets/agent.sock" } } } }] }],
+          },
+        },
+        upstream("to_customer_app", "customer-app", 8443, false),
+        upstream("to_insurer_auth", "insurer-auth", 8443, false),
+        upstream("to_sales_agent", "sales-agent", 8443, false),
+      ],
+    },
+  };
+}
+
+function entranceWorkload() {
+  return [
+    { apiVersion: "v1", kind: "ConfigMap", metadata: meta("entrance-envoy"), data: { "envoy.json": JSON.stringify(entranceConfig()) } },
+    {
+      apiVersion: "v1",
+      kind: "Service",
+      metadata: meta("entrance"),
+      spec: {
+        type: "NodePort",
+        selector: { app: "entrance" },
+        ports: [{ name: "http", port: ENTRANCE.listen, targetPort: ENTRANCE.listen, nodePort: ENTRANCE.nodePort }],
+      },
+    },
+    deployment("entrance", "entrance", { app: "entrance" }, {
+      containers: [
+        {
+          name: "envoy",
+          image: IMAGES.envoy,
+          args: ["-c", "/etc/envoy/envoy.json", "--log-level", "warn"],
+          ports: [{ containerPort: ENTRANCE.listen }],
+          volumeMounts: [SOCKET_MOUNT, { name: "envoy", mountPath: "/etc/envoy" }],
+        },
+      ],
+      volumes: [SOCKET_VOLUME, { name: "envoy", configMap: { name: "entrance-envoy" } }],
     }),
   ];
 }
@@ -558,6 +701,10 @@ const networkPolicies = [
   // 保険会社のシステムは、トークンを確かめる公開鍵と passkey の公開鍵を、認可サーバーから取る
   ...allow("insurer-auth", [8443], ["sales-agent", "insurer-mcp", "insurer-backend", "probe"]),
   ...SERVICES.flatMap((s) => allow(s.name, [s.port, ...(s.mtlsPort ? [s.mtlsPort] : [])], [...s.callers, "probe"])),
+  // クラスタの入口: 外から入口へ。入口からは、ブラウザが使う 3 つの受け口へだけ
+  policy("entrance-ingress", { podSelector: { matchLabels: { app: "entrance" } }, policyTypes: ["Ingress"], ingress: [{ ports: [{ port: ENTRANCE.listen }] }] }),
+  ...["insurer-auth", "sales-agent", "customer-app"].flatMap((app) => allow(app, [8443], ["entrance"], "-entrance")),
+  ...allow("insurer-backend", [9443], ["customer-app"], "-offer-keys"),
   // クラスタの外へは、secure の営業 AI エージェントが、モデルの提供元を呼ぶ通信だけを許す（architecture の 2-3）
   ...(vulnerable
     ? []
@@ -580,6 +727,7 @@ const items = [
   { apiVersion: "v1", kind: "ConfigMap", metadata: meta("spiffe-helper"), data: { "helper.conf": HELPER_CONFIG } },
   ...networkPolicies,
   ...authWorkload(),
+  ...entranceWorkload(),
   ...SERVICES.flatMap(serviceWorkload),
   ...PROBES.map(probe),
 ];

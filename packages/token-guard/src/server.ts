@@ -31,7 +31,7 @@ app.all("/ingress/*", async (c) => {
   try {
     const { token, claims, peer } = await checkIngress({
       method: c.req.method,
-      url: `https://${c.req.header("host")}${path}`,
+      url: `${config.publicOrigin ?? `https://${c.req.header("host")}`}${path}`,
       authorization: c.req.header("authorization"),
       dpop: c.req.header("dpop"),
       xfcc: c.req.header("x-forwarded-client-cert"),

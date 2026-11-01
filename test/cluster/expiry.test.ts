@@ -34,6 +34,7 @@ async function prepare(ns: Ns): Promise<Prepared> {
   const alice = await new Customer(ns, "alice").setup();
   const offer = await offerFor(alice);
   const c = await exchangeAs(ns, "probe-mcp-1", await atMcp(alice), "insurer-backend");
+  if (!c.body?.access_token) throw new Error(`C を受け取れない: ${JSON.stringify(c)}`);
   const sub = { ...alice.prepare(offer, "fixed-60"), assertion: null, intentAssertion: null };
   return { ns, token: c.body.access_token, nonce: offer.nonce, sub };
 }
@@ -51,9 +52,9 @@ describe("4. R2 × A4: 期限切れのトークンで、本人の知らない申
     it(run.name, async () => {
       if (run.ns === "vulnerable") await setDefenses(run.gaps);
       const p = prepared[i]!;
-      await backendPost(p.ns, p.token, p.sub);
+      const r = await backendPost(p.ns, p.token, p.sub);
       if (run.ns === "vulnerable") await setDefenses({});
-      expect((await contractsOf(p.ns, p.nonce)).length > 0).toBe(run.harmed);
+      expect((await contractsOf(p.ns, p.nonce)).length > 0, JSON.stringify(r)).toBe(run.harmed);
     });
   });
 });

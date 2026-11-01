@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>顧客のアプリ</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+  section { border: 1px solid #8884; border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
+  #error, #offer-warning { color: #b00; }
+  td { padding: .2rem .6rem; border-bottom: 1px solid #8883; }
+  li { margin: .4rem 0; }
+</style>
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<h1>教材保険会社 顧客のアプリ</h1>
+<p id="error" data-testid="error" hidden></p>
+
+<section id="login" hidden>
+  <p>営業 AI エージェントに任せる範囲（取決め）: <code id="terms"></code></p>
+  <button id="login-button" data-testid="login" type="button">同意して保険会社にログインする</button>
+</section>
+
+<section id="signed-in" hidden>
+  <p>ログイン中: <strong id="whoami" data-testid="whoami"></strong></p>
+</section>
+
+<section id="register" hidden>
+  <p>この端末に、署名に使う passkey と、契約内容が届く受信箱を登録します。</p>
+  <button id="register-button" data-testid="register-passkey" type="button">passkey を登録する</button>
+</section>
+
+<section id="chat" hidden>
+  <h2>営業 AI エージェントに相談する（<span id="engine"></span>）</h2>
+  <textarea id="chat-input" data-testid="chat-input" rows="2" cols="50">老後に備えて、個人年金保険の案を見せてください。</textarea>
+  <button id="chat-send" data-testid="chat-send" type="button">送る</button>
+  <p>営業 AI エージェントの説明: <span id="agent-reply" data-testid="agent-reply"></span></p>
+  <div id="offer" hidden>
+    <p id="offer-warning" data-testid="offer-warning" hidden></p>
+    <label>意向: <input id="wish" data-testid="wish" value="老後の生活費に備えたい" size="30"></label>
+    <ul id="plans"></ul>
+  </div>
+  <div id="confirm" hidden>
+    <h2>申し込む内容の確認</h2>
+    <div id="confirm-body" data-testid="confirm"></div>
+    <button id="sign" data-testid="sign" type="button">passkey で署名して申し込む</button>
+    <button id="cancel" data-testid="cancel" type="button">やめる</button>
+  </div>
+  <p id="submit-result" data-testid="submit-result"></p>
+  <h2>保険会社から直接届いた契約内容</h2>
+  <button id="check-inbox" data-testid="check-inbox" type="button">受信箱を照合する</button>
+  <ul id="reconcile"></ul>
+</section>
+</body>
+</html>

@@ -29,7 +29,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 顧客の passkey を登録し、保険会社のシステムに公開鍵を渡す（D-1、D13）。
- * 登録は、ログインした顧客だけが行う。公開鍵の参照は、保険会社のシステムの SPIFFE ID だけが行える。
+ * 登録のときに、顧客の端末が作った受信箱の番号を、本人が登録した連絡先として一緒に受け取る（P-14、D-26）。
+ * 登録は、ログインした顧客だけが行う。公開鍵と連絡先の参照は、保険会社のシステムの SPIFFE ID だけが行える。
  */
 @RestController
 class PasskeyController {
@@ -46,6 +47,12 @@ class PasskeyController {
 	private final Map<String, List<Credential>> credentials = new ConcurrentHashMap<>();
 
 	private final Map<String, byte[]> challenges = new ConcurrentHashMap<>();
+
+	/** 顧客ごとの受信箱の番号（直送の宛先）。端末ごとに登録し、全てに送る。 */
+	private final Map<String, Set<String>> inboxes = new ConcurrentHashMap<>();
+
+	/** 受信箱の番号は、推測できない長さの base64url（128 ビット以上）に限る。 */
+	private static final java.util.regex.Pattern INBOX = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{22,64}");
 
 	private final AuthProperties props;
 
@@ -66,12 +73,17 @@ class PasskeyController {
 				"attestation", "none");
 	}
 
+	/** 本文は {credential: navigator.credentials.create の結果, inbox: 受信箱の番号}。 */
 	@PostMapping("/passkeys/register/verify")
-	ResponseEntity<?> verify(Principal user, @RequestBody String responseJson) {
+	ResponseEntity<?> verify(Principal user, @RequestBody Map<String, Object> body) {
 		byte[] challenge = this.challenges.remove(user.getName());
 		if (challenge == null) {
 			return ResponseEntity.badRequest().body(Map.of("error", "登録の準備がない"));
 		}
+		if (!(body.get("inbox") instanceof String inbox) || !INBOX.matcher(inbox).matches()) {
+			return ResponseEntity.badRequest().body(Map.of("error", "受信箱の番号がない"));
+		}
+		String responseJson = this.converter.getJsonConverter().writeValueAsString(body.get("credential"));
 		Set<Origin> origins = this.props.origins().stream().map(Origin::new).collect(Collectors.toSet());
 		ServerProperty server = new ServerProperty(origins, this.props.rpId(), new DefaultChallenge(challenge));
 		RegistrationData data;
@@ -85,7 +97,16 @@ class PasskeyController {
 		byte[] coseKey = this.converter.getCborConverter().writeValueAsBytes(attested.getCOSEKey());
 		this.credentials.computeIfAbsent(user.getName(), (k) -> new ArrayList<>())
 			.add(new Credential(attested.getCredentialId(), coseKey));
+		this.inboxes.computeIfAbsent(user.getName(), (k) -> ConcurrentHashMap.newKeySet()).add(inbox);
 		return ResponseEntity.ok(Map.of("ok", true));
+	}
+
+	@GetMapping("/internal/contacts/{user}")
+	ResponseEntity<?> contact(@PathVariable String user, HttpServletRequest request) {
+		if (!PeerIdentity.is(request, this.props.spiffeId("insurer-backend"))) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "保険会社のシステムではない"));
+		}
+		return ResponseEntity.ok(Map.of("inboxes", List.copyOf(this.inboxes.getOrDefault(user, Set.of()))));
 	}
 
 	@GetMapping("/internal/passkeys/{user}")

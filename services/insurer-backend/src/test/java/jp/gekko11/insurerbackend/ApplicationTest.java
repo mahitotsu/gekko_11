@@ -63,7 +63,7 @@ class ApplicationTest {
 		Store.ContractRecord record = this.store.contracts.get(this.store.contracts.size() - 1);
 		assertThat(record.by()).containsExactly("insurer-mcp", "sales-agent");
 		assertThat(record.contract().get("contractId")).asString().startsWith("C-");
-		assertThat(this.store.outbox.get(this.store.outbox.size() - 1).to()).isEqualTo("/notices?customer=alice");
+		assertThat(this.store.outbox.get(this.store.outbox.size() - 1).to()).isEqualTo("/notices/inbox-of-alice-0123456789ab");
 	}
 
 	@Test
@@ -150,7 +150,7 @@ class ApplicationTest {
 			.isEqualTo(200);
 		assertThat(this.store.contracts.get(this.store.contracts.size() - 1).contract().get("plan").toString())
 			.contains("fixed-60");
-		assertThat(this.store.outbox.get(this.store.outbox.size() - 1).to()).isEqualTo("/notices?customer=alice");
+		assertThat(this.store.outbox.get(this.store.outbox.size() - 1).to()).isEqualTo("/notices/inbox-of-alice-0123456789ab");
 
 		TestBackendConfig.OFF.put(Defenses.DERIVE_RECORD, "off");
 		TestBackendConfig.OFF.put(Defenses.REGISTERED_CONTACT, "off");
