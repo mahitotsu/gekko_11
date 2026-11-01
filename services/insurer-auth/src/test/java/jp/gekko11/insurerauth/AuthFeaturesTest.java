@@ -1,6 +1,7 @@
 package jp.gekko11.insurerauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -86,6 +87,15 @@ class AuthFeaturesTest extends AuthTestSupport {
 			.andReturn()
 			.getResponse()
 			.getStatus()).isEqualTo(200);
+	}
+
+	@Test
+	void loggedInCustomerListsOnlyOwnPasskeyIds() throws Exception {
+		// ログインしていなければ、一覧は出ない
+		assertThat(this.mvc.perform(get("/passkeys/mine")).andReturn().getResponse().getStatus()).isNotEqualTo(200);
+		// ログインした本人には、本人の一覧（まだ登録がなければ空）だけを返す
+		assertThat(this.mvc.perform(get("/passkeys/mine").with(user("alice"))).andReturn().getResponse().getContentAsString())
+			.isEqualTo("{\"credentialIds\":[]}");
 	}
 
 	@Test

@@ -153,6 +153,21 @@ async function registerDevice(session: Session) {
   store.set(localStorage, `device:${session.sub}`, { credentialId: credential.rawId, inbox } satisfies Device);
 }
 
+/**
+ * この端末の passkey が、認可サーバーに登録されたまま残っているかを確かめる（認可サーバーの記憶はメモリにあり、再起動で消える）。
+ * ログインの Cookie で、本人の passkey の識別子の一覧を問い合わせる。確かめられなければ、unknown を返して、今までどおり進める。
+ */
+async function deviceStatus(device: Device): Promise<"ok" | "missing" | "unknown"> {
+  try {
+    const res = await fetch(`${cfg.issuer}/passkeys/mine`, { credentials: "include", headers: { accept: "application/json" } });
+    if (!res.ok) return "unknown";
+    const { credentialIds } = (await res.json()) as { credentialIds: string[] };
+    return credentialIds.includes(device.credentialId) ? "ok" : "missing";
+  } catch {
+    return "unknown";
+  }
+}
+
 // ---- 4. 営業 AI エージェントとの会話（AG-UI） ----
 
 const conversation = {
@@ -162,6 +177,8 @@ const conversation = {
   offer: undefined as Offer | undefined,
   /** 営業 AI エージェントの直前の文（D23 を外したときに、確認画面に出す）。 */
   lastText: "",
+  /** 今回署名した申込書の nonce（会話の最後の照合で使う）。 */
+  submitted: "",
 };
 
 /** 1 回分を走らせ、営業 AI エージェントの文と、画面側の道具の呼び出しを、会話の欄に足していく。 */
@@ -326,6 +343,10 @@ function presentDocument(session: Session, device: Device, id: string, step: "in
         // 顧客が承認した申込みの写しを、端末に残す（事後の照合に使う）
         const copies = store.get<Copy[]>(localStorage, `copies:${session.sub}`) ?? [];
         store.set(localStorage, `copies:${session.sub}`, [...copies, doc as unknown as Copy]);
+        // 会話の最後で、今回の申込みだけを照合できるようにする
+        conversation.submitted = doc.nonce;
+        $("reconcile").replaceChildren();
+        show("session-check");
       }
       await answer(session, device, id, { [step]: doc, assertion });
     } catch (e) {
@@ -342,26 +363,52 @@ function presentDocument(session: Session, device: Device, id: string, step: "in
 }
 
 // ---- 5. 直送の照合（D19） ----
+// 照合は 2 か所で行う。会話の最後では、今回提出した申込書だけを確かめる。「受信箱と契約」の画面では、届いた全ての契約と
+// 全ての写しを突き合わせ、本人の名義で勝手に申し込まれた契約（覚えのない契約）に気付く。
 
-async function checkInbox(session: Session, device: Device) {
-  type Notice = { contract: { contractId?: string; nonce: string; plan: { name: string } } };
+type Notice = { contract: { contractId?: string; nonce: string; plan: { name: string } } };
+const LABEL = { match: "一致", mismatch: "食い違い", missing: "未着", unexpected: "覚えのない契約" };
+
+async function reconciled(session: Session, device: Device) {
   const notices = (await (await fetch(`/api/inbox/${device.inbox}`)).json()) as Notice[];
   const copies = store.get<(Copy & { plan: { name?: string } })[]>(localStorage, `copies:${session.sub}`) ?? [];
-  const results = reconcile(copies, notices as never);
   // どの契約の行かを示す: 届いた契約の番号と案、届いていなければ写しの案
   const which = (nonce: string) => {
     const n = notices.find((x) => x.contract.nonce === nonce)?.contract;
     const c = copies.find((x) => x.nonce === nonce);
     return n ? `${n.contractId ?? ""} ${n.plan.name}` : `${c?.plan.name ?? ""}（契約の番号なし）`;
   };
-  const label = { match: "一致", mismatch: "食い違い", missing: "未着", unexpected: "覚えのない契約" };
-  $("reconcile").replaceChildren(
-    ...results.map((r) => {
-      const li = el("li", { textContent: `${which(r.nonce)} — ${r.status === "match" ? label.match : `${label[r.status]}: ${r.diffs.join("、")}`}` }, `reconcile-${r.nonce}`);
-      li.dataset.status = r.status;
-      return li;
-    }),
-  );
+  return { results: reconcile(copies, notices as never), which };
+}
+
+function rowOf(r: ReturnType<typeof reconcile>[number], which: (nonce: string) => string, prefix: string) {
+  const li = el("li", { textContent: `${which(r.nonce)} — ${r.status === "match" ? LABEL.match : `${LABEL[r.status]}: ${r.diffs.join("、")}`}` }, `${prefix}-${r.nonce}`);
+  li.dataset.status = r.status;
+  return li;
+}
+
+/** 会話の最後: 今回提出した申込書だけを照合する。 */
+async function checkSession(session: Session, device: Device) {
+  const { results, which } = await reconciled(session, device);
+  const mine = results.filter((r) => r.nonce === conversation.submitted);
+  $("reconcile").replaceChildren(...mine.map((r) => rowOf(r, which, "reconcile")));
+}
+
+/** 「受信箱と契約」: 届いた全ての契約と、全ての写しを照合する。覚えのない契約は、警告として目立たせる。 */
+async function checkInbox(session: Session, device: Device) {
+  const { results, which } = await reconciled(session, device);
+  const unexpected = results.filter((r) => r.status === "unexpected").length;
+  $("inbox-alert").textContent = `申し込んだ覚えのない契約が ${unexpected} 件届いています。保険会社へ連絡してください。`;
+  show("inbox-alert", unexpected > 0);
+  $("inbox-list").replaceChildren(...results.map((r) => rowOf(r, which, "inbox")));
+}
+
+function showTab(tab: "chat" | "inbox", session: Session, device: Device) {
+  show("chat", tab === "chat");
+  show("inbox", tab === "inbox");
+  $("tab-chat").classList.toggle("active", tab === "chat");
+  $("tab-inbox").classList.toggle("active", tab === "inbox");
+  if (tab === "inbox") checkInbox(session, device).catch(fail);
 }
 
 // ---- 画面の組み立て ----
@@ -375,13 +422,23 @@ async function render() {
   if (!session) return;
   $("whoami").textContent = session.sub;
   show("signed-in");
-  const device = store.get<Device>(localStorage, `device:${session.sub}`);
+  let device = store.get<Device>(localStorage, `device:${session.sub}`);
+  if (device && (await deviceStatus(device)) === "missing") {
+    // 認可サーバーに登録が残っていない: 端末の記録を消し、登録し直しに案内する
+    localStorage.removeItem(`device:${session.sub}`);
+    device = undefined;
+    show("register-note");
+  }
   show("register", !device);
+  show("tabs", Boolean(device));
   show("chat", Boolean(device));
   if (!device) return;
   setBusy(false);
   $("chat-send").onclick = () => say(session, device).catch(fail);
+  $("check-session").onclick = () => checkSession(session, device).catch(fail);
   $("check-inbox").onclick = () => checkInbox(session, device).catch(fail);
+  $("tab-chat").onclick = () => showTab("chat", session, device);
+  $("tab-inbox").onclick = () => showTab("inbox", session, device);
 }
 
 $("login-button").onclick = () => startLogin().catch(fail);

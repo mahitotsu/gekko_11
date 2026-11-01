@@ -15,6 +15,9 @@
   .tool h3 { margin: 0 0 .4rem; font-size: 1rem; }
   .chosen { font-weight: bold; outline: 2px solid #1a7f37; }
   #agent-status { color: #888; }
+  .tab { padding: .4rem 1rem; border: 1px solid #8886; background: none; border-radius: .4rem .4rem 0 0; }
+  .tab.active { font-weight: bold; border-bottom-color: transparent; }
+  .alert { color: #fff; background: #b00; padding: .6rem 1rem; border-radius: .4rem; }
   #error { position: sticky; top: 0; z-index: 1; color: #fff; background: #b00; padding: .6rem 1rem; border-radius: .4rem; }
   td, th { padding: .2rem .6rem; border-bottom: 1px solid #8883; text-align: left; }
   .step { font-size: .9rem; color: #888; }
@@ -38,9 +41,15 @@
 </section>
 
 <section id="register" hidden>
+  <p id="register-note" class="warning" data-testid="register-note" hidden>この端末の登録が、保険会社に見つかりませんでした（保険会社のシステムが入れ替わった可能性があります）。もう一度登録してください。</p>
   <p>この端末に、署名に使う passkey と、契約内容が届く受信箱を登録します。</p>
   <button id="register-button" data-testid="register-passkey" type="button">passkey を登録する</button>
 </section>
+
+<nav id="tabs" hidden>
+  <button id="tab-chat" data-testid="tab-chat" type="button" class="tab active">相談して申し込む</button>
+  <button id="tab-inbox" data-testid="tab-inbox" type="button" class="tab">受信箱と契約</button>
+</nav>
 
 <section id="chat" hidden>
   <h2>営業 AI エージェントと相談する</h2>
@@ -49,9 +58,20 @@
   <p id="agent-status" data-testid="agent-status" data-state="idle"></p>
   <textarea id="chat-input" data-testid="chat-input" rows="2" cols="50">老後に備えて、個人年金保険を考えています。</textarea>
   <button id="chat-send" data-testid="chat-send" type="button">送る</button>
-  <h2>保険会社から直接届いた契約内容（営業 AI エージェントを通らない）</h2>
-  <button id="check-inbox" data-testid="check-inbox" type="button">受信箱を照合する</button>
-  <ul id="reconcile"></ul>
+  <div id="session-check" hidden>
+    <h2>今回の申込みの照合</h2>
+    <p>保険会社から、営業 AI エージェントを通らずに直接届いた契約内容と、今回署名した申込書の写しを突き合わせます。</p>
+    <button id="check-session" data-testid="check-session" type="button">今回の申込みを照合する</button>
+    <ul id="reconcile"></ul>
+  </div>
+</section>
+
+<section id="inbox" hidden>
+  <h2>受信箱と契約</h2>
+  <p>保険会社から直接届いた全ての契約内容を、この端末に残した申込みの写しと突き合わせます。申し込んだ覚えのない契約が届いていたら、保険会社へ連絡してください。</p>
+  <button id="check-inbox" data-testid="check-inbox" type="button">最新の受信箱を照合する</button>
+  <p id="inbox-alert" class="alert" data-testid="inbox-alert" hidden></p>
+  <ul id="inbox-list"></ul>
 </section>
 </body>
 </html>

@@ -513,7 +513,7 @@ function authWorkload() {
 // （顧客と同じく、証明書を持たない者として呼ぶ。F-G59）。
 
 /** 認可サーバーのうち、ブラウザに出す経路。運用（/admin）、内部（/internal）、有効性の問い合わせは出さない。 */
-const AUTH_PUBLIC_PATHS = ["/oauth2/authorize", "/oauth2/token", "/oauth2/jwks", "/.well-known/", "/login", "/default-ui.css", "/passkeys/register/", "/error"];
+const AUTH_PUBLIC_PATHS = ["/oauth2/authorize", "/oauth2/token", "/oauth2/jwks", "/.well-known/", "/login", "/default-ui.css", "/passkeys/register/", "/passkeys/mine", "/error"];
 
 const CORS = "envoy.filters.http.cors";
 

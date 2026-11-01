@@ -109,6 +109,15 @@ class PasskeyController {
 		return ResponseEntity.ok(Map.of("inboxes", List.copyOf(this.inboxes.getOrDefault(user, Set.of()))));
 	}
 
+	/** ログインした本人が登録した passkey の識別子の一覧。顧客のアプリが、この端末の登録が残っているかを確かめる。公開鍵は返さない。 */
+	@GetMapping("/passkeys/mine")
+	Map<String, Object> mine(Principal user) {
+		return Map.of("credentialIds", this.credentials.getOrDefault(user.getName(), List.of())
+			.stream()
+			.map((c) -> B64.encodeToString(c.id()))
+			.toList());
+	}
+
 	@GetMapping("/internal/passkeys/{user}")
 	ResponseEntity<?> lookup(@PathVariable String user, HttpServletRequest request) {
 		if (!PeerIdentity.is(request, this.props.spiffeId("insurer-backend"))) {

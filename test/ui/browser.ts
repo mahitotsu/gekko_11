@@ -194,14 +194,25 @@ export class BrowserCustomer {
     return true;
   }
 
-  /** 受信箱を照合し、その nonce の結果を返す。 */
+  /** 会話の最後で、今回の申込みを照合し、その結果を返す。 */
   async reconcile(nonce?: string): Promise<string | undefined> {
     nonce ??= await this.nonce;
-    await this.page.getByTestId("check-inbox").click();
+    await this.page.getByTestId("check-session").click();
     const item = this.page.getByTestId(`reconcile-${nonce}`);
     await item.waitFor({ timeout: 10_000 }).catch(() => undefined);
     return (await item.count()) ? ((await item.getAttribute("data-status")) ?? undefined) : undefined;
   }
+
+  /** 「受信箱と契約」の画面を開き、その nonce の行の結果と、照合した行の数を返す。 */
+  async inbox(nonce?: string): Promise<{ status?: string; rows: number }> {
+    nonce ??= await this.nonce;
+    await this.page.getByTestId("tab-inbox").click();
+    const item = this.page.getByTestId(`inbox-${nonce}`);
+    await item.waitFor({ timeout: 10_000 }).catch(() => undefined);
+    const rows = await this.page.locator("[data-testid^=inbox-]:not([data-testid=inbox-alert])").count();
+    return { status: (await item.count()) ? ((await item.getAttribute("data-status")) ?? undefined) : undefined, rows };
+  }
+
 
   /**
    * 営業 AI エージェントの返答（AG-UI の SSE）の中の、画面側の道具の引数を書き換える（乗っ取られた営業 AI エージェントの役）。
