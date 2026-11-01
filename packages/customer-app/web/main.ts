@@ -2,10 +2,11 @@
 // ログイン → passkey と受信箱の登録 → 相談 → 案の選択 → 確認 → 署名 → 提出 → 直送の照合、の順に進む（architecture の 3 章）。
 import { createRemoteJWKSet, createLocalJWKSet, type JSONWebKeySet } from "jose";
 import { reconcile, type Copy } from "../src/reconcile.ts";
-import { confirmationOf, verifyIdToken, verifyOffer, type Draft, type Offer, type Plan } from "./checks.ts";
+import { applicationRowsOf, intentRowsOf, termsRowsOf, verifyIdToken, verifyOffer, type Draft, type Offer, type Plan, type Row } from "./checks.ts";
 import { b64u, challengeOf, randomB64u, sha256 } from "./codec.ts";
 import { loadDefenses } from "./defenses.ts";
 import { createPasskey, dpopProof, signWithPasskey } from "./keys.ts";
+import { markdownToHtml } from "./markdown.ts";
 
 interface Config {
   issuer: string;
@@ -36,9 +37,29 @@ const store = {
   set: (s: Storage, key: string, value: unknown) => s.setItem(key, JSON.stringify(value)),
 };
 
+/** エラーは、画面の上に固定した帯に出す（どこを見ていても見える）。passkey の取り消しは、日本語で案内する。 */
 function fail(e: unknown) {
-  $("error").textContent = (e as Error).message ?? String(e);
+  const err = e as Error;
+  $("error").textContent =
+    err?.name === "NotAllowedError"
+      ? "passkey の操作が取り消されたか、時間切れになりました。もう一度ボタンを押してください。"
+      : (err?.message ?? String(e));
   show("error");
+  if ($("agent-reply").textContent === "（考えています）") $("agent-reply").textContent = "（答えを受け取れませんでした）";
+}
+
+const clearError = () => show("error", false);
+
+function table(rows: Row[], prefix: string): HTMLTableElement {
+  const t = document.createElement("table");
+  for (const row of rows) {
+    const tr = t.insertRow();
+    tr.insertCell().textContent = row.label;
+    const td = tr.insertCell();
+    td.textContent = row.value;
+    td.dataset.testid = `${prefix}-${row.key}`;
+  }
+  return t;
 }
 
 const cfg = (await (await fetch("/config.json")).json()) as Config;
@@ -134,10 +155,12 @@ let draft: Draft | undefined;
 
 async function chat(session: Session) {
   const message = $<HTMLTextAreaElement>("chat-input").value;
+  clearError();
   $("agent-reply").textContent = "（考えています）";
   const r = await agent<{ reply: string; offer?: Offer; engine: string }>(session, "/chat", { message });
-  $("agent-reply").textContent = r.reply;
-  $("engine").textContent = r.engine === "claude" ? "Claude" : "台本";
+  // 説明文は、HTML の特別な文字を置き換えてから、表と箇条書きを整える
+  $("agent-reply").innerHTML = markdownToHtml(r.reply);
+  $("engine").textContent = `（${r.engine === "claude" ? "Claude" : "台本"}）`;
   show("offer-warning", false);
   if (!r.offer?.offerJws) return;
   if (enabled("D22")) {
@@ -176,34 +199,57 @@ function renderPlans(plans: Plan[]) {
   show("offer");
 }
 
-async function choose(planId: string) {
-  const session = store.get<Session>(sessionStorage, "session")!;
-  draft = await agent<Draft>(session, "/prepare", { offer: current, planId, wish: $<HTMLInputElement>("wish").value });
-  const box = $("confirm-body");
+let intentAssertion: Awaited<ReturnType<typeof signWithPasskey>> | undefined;
+
+const GUIDE = { intent: "選んだ案と意向を確かめて、署名してください。", application: "申し込む内容を確かめて、署名してください。" };
+
+/** 書類の署名が済んだら、案内文を「署名済み」に置き換え、署名とやめるのボタンを隠す。 */
+function setSigned(step: "intent" | "application", signed: boolean) {
+  $(`${step}-guide`).textContent = signed ? "✓ 署名済み" : GUIDE[step];
+  $(`${step}-guide`).classList.toggle("signed", signed);
+  show(`${step}-actions`, !signed);
+}
+
+/** 署名の画面に、署名する内容（D23）か、営業 AI エージェントの説明文（D23 を外したとき）を描く。 */
+function drawSigning(box: string, rows: Row[], prefix: string) {
   if (enabled("D23")) {
-    // 確認画面は、署名する内容そのものから描く
-    const table = document.createElement("table");
-    for (const row of confirmationOf(draft)) {
-      const tr = table.insertRow();
-      tr.insertCell().textContent = row.label;
-      const td = tr.insertCell();
-      td.textContent = row.value;
-      td.dataset.testid = `confirm-${row.key}`;
-    }
-    box.replaceChildren(table);
+    $(box).replaceChildren(table(rows, prefix));
   } else {
     // 悪い実装: 営業 AI エージェントの説明文を、確認画面に出す
     const p = document.createElement("p");
-    p.textContent = draft.summary;
-    p.dataset.testid = "confirm-summary";
-    box.replaceChildren(p);
+    p.textContent = draft!.summary;
+    p.dataset.testid = `${prefix}-summary`;
+    $(box).replaceChildren(p);
   }
-  show("confirm");
 }
 
-async function signAndSubmit(session: Session, device: Device) {
-  if (!draft || !current) throw new Error("確認する申込みがない");
-  const intentAssertion = await signWithPasskey(await challengeOf(draft.intent), cfg.rpId, device.credentialId);
+async function choose(planId: string) {
+  const session = store.get<Session>(sessionStorage, "session")!;
+  clearError();
+  draft = await agent<Draft>(session, "/prepare", { offer: current, planId, wish: $<HTMLInputElement>("wish").value });
+  intentAssertion = undefined;
+  // 署名の 1/2: 意向確認書面
+  drawSigning("intent-body", intentRowsOf(draft, current!.offerSet.plans), "intent");
+  setSigned("intent", false);
+  show("application-confirm", false);
+  show("intent-confirm");
+  $("submit-result").textContent = "";
+}
+
+async function signIntent(device: Device) {
+  if (!draft) throw new Error("確認する意向確認書面がない");
+  clearError();
+  intentAssertion = await signWithPasskey(await challengeOf(draft.intent), cfg.rpId, device.credentialId);
+  // 署名の 2/2: 申込書。署名を終えた意向確認書面は、署名済みとして上に残す（手続きが進んだことが見える）
+  setSigned("intent", true);
+  drawSigning("application-body", applicationRowsOf(draft), "application");
+  setSigned("application", false);
+  show("application-confirm");
+}
+
+async function signApplication(session: Session, device: Device) {
+  if (!draft || !current || !intentAssertion) throw new Error("確認する申込書がない");
+  clearError();
   const application = { ...draft.application, intentSignature: intentAssertion.response.signature };
   const assertion = await signWithPasskey(await challengeOf(application), cfg.rpId, device.credentialId);
   const r = await agent<{ contract?: { contractId: string } }>(session, "/submit", {
@@ -218,21 +264,29 @@ async function signAndSubmit(session: Session, device: Device) {
   const copies = store.get<Copy[]>(localStorage, `copies:${session.sub}`) ?? [];
   store.set(localStorage, `copies:${session.sub}`, [...copies, application]);
   $("submit-result").textContent = `申し込みました（${r.contract?.contractId ?? ""}）`;
-  show("confirm", false);
+  setSigned("application", true);
 }
 
 // ---- 7. 直送の照合（D19） ----
 
 async function checkInbox(session: Session, device: Device) {
-  const notices = await (await fetch(`/api/inbox/${device.inbox}`)).json();
-  const results = reconcile(store.get<Copy[]>(localStorage, `copies:${session.sub}`) ?? [], notices);
+  type Notice = { contract: { contractId?: string; nonce: string; plan: { name: string } } };
+  const notices = (await (await fetch(`/api/inbox/${device.inbox}`)).json()) as Notice[];
+  const copies = store.get<(Copy & { plan: { name?: string } })[]>(localStorage, `copies:${session.sub}`) ?? [];
+  const results = reconcile(copies, notices as never);
+  // どの契約の行かを示す: 届いた契約の番号と案、届いていなければ写しの案
+  const which = (nonce: string) => {
+    const n = notices.find((x) => x.contract.nonce === nonce)?.contract;
+    const c = copies.find((x) => x.nonce === nonce);
+    return n ? `${n.contractId ?? ""} ${n.plan.name}` : `${c?.plan.name ?? ""}（契約の番号なし）`;
+  };
   const label = { match: "一致", mismatch: "食い違い", missing: "未着", unexpected: "覚えのない契約" };
   $("reconcile").replaceChildren(
     ...results.map((r) => {
       const li = document.createElement("li");
       li.dataset.testid = `reconcile-${r.nonce}`;
       li.dataset.status = r.status;
-      li.textContent = `${label[r.status]}: ${r.diffs.join("、")}`;
+      li.textContent = `${which(r.nonce)} — ${r.status === "match" ? label.match : `${label[r.status]}: ${r.diffs.join("、")}`}`;
       return li;
     }),
   );
@@ -241,7 +295,7 @@ async function checkInbox(session: Session, device: Device) {
 // ---- 画面の組み立て ----
 
 async function render() {
-  $("terms").textContent = JSON.stringify(cfg.terms);
+  $("terms").replaceChildren(table(termsRowsOf(cfg.terms as { kinds: string[]; maxBenefit: number }[]), "terms"));
   const params = new URLSearchParams(location.search);
   if (location.pathname === "/callback" && params.get("code")) await finishLogin(params);
   const session = store.get<Session>(sessionStorage, "session");
@@ -254,7 +308,8 @@ async function render() {
   show("chat", Boolean(device));
   if (!device) return;
   $("chat-send").onclick = () => chat(session).catch(fail);
-  $("sign").onclick = () => signAndSubmit(session, device).catch(fail);
+  $("sign-intent").onclick = () => signIntent(device).catch(fail);
+  $("sign-application").onclick = () => signApplication(session, device).catch(fail);
   $("check-inbox").onclick = () => checkInbox(session, device).catch(fail);
 }
 
@@ -267,9 +322,13 @@ $("register-button").onclick = async () => {
     fail(e);
   }
 };
-$("cancel").onclick = () => {
-  draft = undefined;
-  show("confirm", false);
-  $("submit-result").textContent = "申し込みをやめました";
-};
+for (const id of ["cancel-intent", "cancel-application"]) {
+  $(id).onclick = () => {
+    draft = undefined;
+    intentAssertion = undefined;
+    show("intent-confirm", false);
+    show("application-confirm", false);
+    $("submit-result").textContent = "申し込みをやめました";
+  };
+}
 render().catch(fail);

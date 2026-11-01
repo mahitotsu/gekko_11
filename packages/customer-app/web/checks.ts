@@ -70,17 +70,40 @@ export interface Row {
   key: string;
 }
 
-/** D23: 確認画面は、署名する内容そのものから作る。営業 AI エージェントの説明文は使わない。 */
-export function confirmationOf(draft: Draft): Row[] {
-  const { intent, application } = draft;
-  const yen = (n: number) => `${n.toLocaleString("ja-JP")} 円`;
+const yen = (n: number) => `${n.toLocaleString("ja-JP")} 円`;
+
+/**
+ * D23: 意向確認書面の画面（署名の 1/2）は、意向確認の内容そのものから作る。営業 AI エージェントの説明文は使わない。
+ * 案の名前は、意向確認の案の番号で、署名を確かめた提示（D22）から引く。
+ */
+export function intentRowsOf(draft: Draft, plans: Plan[]): Row[] {
+  const { intent } = draft;
+  return [
+    { key: "customer", label: "契約者", value: intent.customer },
+    { key: "plan-name", label: "選んだ案", value: plans.find((p) => p.id === intent.planId)?.name ?? "（示された案にない）" },
+    { key: "plan-id", label: "案の番号", value: intent.planId },
+    { key: "wish", label: "意向", value: intent.wish },
+  ];
+}
+
+/** D23: 申込書の画面（署名の 2/2）は、申込みの内容そのものから作る。 */
+export function applicationRowsOf(draft: Draft): Row[] {
+  const { application } = draft;
   return [
     { key: "customer", label: "契約者", value: application.customer },
     { key: "plan-name", label: "申し込む案", value: application.plan.name },
     { key: "plan-id", label: "案の番号", value: application.plan.id },
     { key: "benefit", label: "年金の年額", value: yen(application.plan.benefit) },
     { key: "monthly", label: "月額の保険料", value: yen(application.plan.monthly) },
-    { key: "intent-plan", label: "意向確認で選んだ案の番号", value: intent.planId },
-    { key: "wish", label: "意向", value: intent.wish },
+    { key: "intent-signed", label: "意向確認書面", value: "署名済み" },
   ];
+}
+
+/** 取決め（authorization_details）を、顧客が読める行にする。 */
+export function termsRowsOf(terms: { kinds: string[]; maxBenefit: number }[]): Row[] {
+  const kind: Record<string, string> = { fixed: "確定年金", lifetime: "終身年金" };
+  return terms.flatMap((t) => [
+    { key: "kinds", label: "申し込める保険", value: t.kinds.map((k) => kind[k] ?? k).join("、") },
+    { key: "max-benefit", label: "年金の年額の上限", value: `${(t.maxBenefit / 10_000).toLocaleString("ja-JP")} 万円` },
+  ]);
 }

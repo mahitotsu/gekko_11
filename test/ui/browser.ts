@@ -124,27 +124,39 @@ export class BrowserCustomer {
     return (await this.page.getByTestId("offer-warning").isVisible()) ? this.page.getByTestId("offer-warning").textContent() : null;
   }
 
-  /** 案を選び、確認画面が出るまで待つ。 */
+  /** 案を選び、意向確認書面の画面（署名 1/2）が出るまで待つ。 */
   async choose(planId: string) {
     await this.page.getByTestId(`choose-${planId}`).click({ timeout: 5_000 });
-    await this.page.getByTestId("sign").waitFor();
+    await this.page.getByTestId("sign-intent").waitFor();
   }
 
-  async confirmation(): Promise<string> {
-    return (await this.page.getByTestId("confirm").textContent()) ?? "";
+  /** 画面に出ている確認の内容（意向確認書面か申込書）。 */
+  async confirmation(step: "intent" | "application"): Promise<string> {
+    return (await this.page.getByTestId(`${step}-confirm`).textContent()) ?? "";
   }
 
-  /** 確認画面を読み、選んだ案の名前が出ていて、ほかの案の名前が出ていなければ署名する（顧客の判断を演じる）。 */
-  async approveIfShows(chosen: Plan): Promise<boolean> {
-    const text = await this.confirmation();
+  /** 選んだ案の名前が出ていて、ほかの案の名前が出ていないか（顧客が画面を読む判断を演じる）。 */
+  private async shows(step: "intent" | "application", chosen: Plan): Promise<boolean> {
+    const text = await this.confirmation(step);
     const others = Object.values(PLANS).filter((p) => p.id !== chosen.id);
-    if (text.includes(chosen.name) && !others.some((p) => text.includes(p.name))) {
-      await this.page.getByTestId("sign").click();
-      await this.page.locator("[data-testid=submit-result]:has-text('申し込みました'), [data-testid=error]:visible").first().waitFor();
-      return true;
+    return text.includes(chosen.name) && !others.some((p) => text.includes(p.name));
+  }
+
+  /** 意向確認書面と申込書を順に読み、どちらも選んだ案なら署名する。違えば、そこでやめる。 */
+  async approveIfShows(chosen: Plan): Promise<boolean> {
+    if (!(await this.shows("intent", chosen))) {
+      await this.page.getByTestId("cancel-intent").click();
+      return false;
     }
-    await this.page.getByTestId("cancel").click();
-    return false;
+    await this.page.getByTestId("sign-intent").click();
+    await anyVisible(this.page, "sign-application", "error").waitFor();
+    if (!(await this.page.getByTestId("sign-application").isVisible()) || !(await this.shows("application", chosen))) {
+      if (await this.page.getByTestId("cancel-application").isVisible()) await this.page.getByTestId("cancel-application").click();
+      return false;
+    }
+    await this.page.getByTestId("sign-application").click();
+    await this.page.locator("[data-testid=submit-result]:has-text('申し込みました'), [data-testid=error]:visible").first().waitFor();
+    return true;
   }
 
   async submitResult(): Promise<string> {

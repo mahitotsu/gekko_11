@@ -6,7 +6,10 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 
-/** 顧客と、取引時確認（本人確認）の記録。記録のない顧客は、本人確認が済んでいない（D11）。 */
+/**
+ * 顧客と、取引時確認（本人確認）の記録。記録のない顧客は、本人確認が済んでいない（D11）。
+ * alice、bob、mallory はテストが使い、hanako は手で画面を試す人が使う（受信箱にテストの申込みが混ざらない）。
+ */
 @Component
 class UserDirectory {
 
@@ -19,7 +22,8 @@ class UserDirectory {
 	private final Map<String, Customer> customers = Map.of(
 			"alice", new Customer("Alice", new Verification("対面で本人確認書類を確認", "2026-01-15")),
 			"bob", new Customer("Bob", new Verification("対面で本人確認書類を確認", "2026-01-15")),
-			"mallory", new Customer("Mallory", null));
+			"mallory", new Customer("Mallory", null),
+			"hanako", new Customer("Hanako", new Verification("対面で本人確認書類を確認", "2026-01-15")));
 
 	java.util.Set<String> names() {
 		return this.customers.keySet();

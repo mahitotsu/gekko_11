@@ -86,13 +86,18 @@ scenario(24, "R4 × A20: 確認画面の説明文で、署名する内容と違�
 });
 
 describe("24 の補足（画面）", () => {
-  it("secure: 確認画面には、署名する内容の案と保険料が出る", async () => {
+  it("secure: 意向確認書面と申込書には、署名する内容の案と保険料が出る", async () => {
     const c = await open("secure");
     await c.rewriteAgent("/prepare", (d) => ({ ...d, intent: { ...d.intent, planId: "life-120" }, application: { ...d.application, plan: PLANS["life-120"] } }));
     await c.chat();
     await c.choose("fixed-60");
-    expect(await c.page.getByTestId("confirm-plan-name").textContent()).toBe(PLANS["life-120"]!.name);
-    expect(await c.page.getByTestId("confirm-monthly").textContent()).toBe("60,000 円");
+    // 意向確認書面（1/2）の時点で、すり替えた案が出る
+    expect(await c.page.getByTestId("intent-plan-name").textContent()).toBe(PLANS["life-120"]!.name);
+    // 申込書（2/2）には、すり替えた案の保険料が出る
+    await c.page.getByTestId("sign-intent").click();
+    await c.page.getByTestId("sign-application").waitFor();
+    expect(await c.page.getByTestId("application-plan-name").textContent()).toBe(PLANS["life-120"]!.name);
+    expect(await c.page.getByTestId("application-monthly").textContent()).toBe("60,000 円");
   });
 });
 

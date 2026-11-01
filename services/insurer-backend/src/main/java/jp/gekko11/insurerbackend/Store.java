@@ -19,7 +19,7 @@ class Store {
 			plan("life-240", "終身年金・年額240万円", "lifetime", 2_400_000, 120_000));
 
 	/** 保険会社の顧客（本人確認を済ませて登録した者）。直送の宛先は、顧客が登録した受信箱で、認可サーバーが持つ（D-26）。 */
-	static final java.util.Set<String> CUSTOMERS = java.util.Set.of("alice", "bob", "mallory");
+	static final java.util.Set<String> CUSTOMERS = java.util.Set.of("alice", "bob", "mallory", "hanako");
 
 	record Nonce(String customer, long expiresAt, boolean used) {
 	}
