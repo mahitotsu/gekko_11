@@ -104,7 +104,7 @@ docs/ 直下は、読み手の問いの順に並べた 5 文書である。
 - 共通の 2 軸: 主の軸は時点で、従の軸は 3 つの確認である。purpose の 2 章と 3 章、architecture の 1-2 の要件の表は、この軸で組む。scenarios は、リスク（3 つの確認と時点に対応）× 手口 × 防御の漏れで組み、想定される被害をテストの期待結果にする。統制と仕組みとシナリオを足すときは、時点と確認のどこに入るかを決め、誰が確かめるかを書く。
   - **時点:** 取引のときの検証、事後の確認と監査、確かめきれない部分を補う。
   - **3 つの確認:** 誰の依頼か、内容は依頼どおりか、権限の範囲内か。
-- 防御やシナリオを変えるときは、`test/cluster/scenarios.test.ts` と `docs/scenarios.md`（防御の表）、`docs/architecture.md`（4-4 の防御の列）を同じ変更で直す。テストのない防御は、`docs/implementation.md` の 6 章にも載せる。防御の実装ファイルは、implementation の 2 章にある。
+- 防御やシナリオを変えるときは、`test/cluster/scenarios.test.ts`（顧客のアプリの防御は `test/ui/scenarios.test.ts`）と `docs/scenarios.md`（防御の表）、`docs/architecture.md`（4-4 の防御の列）を同じ変更で直す。テストのない防御は、`docs/implementation.md` の 6 章にも載せる。防御の実装ファイルは、implementation の 2 章にある。
 - 悪い実装は、教材のための意図的な実装である。本番の部品として使わない。コードの冒頭に、その旨を書く。
 - クラスタのテストは、vulnerable の防御の設定を共有するので、テストファイルを並列に動かさない（`vitest.cluster.config.ts`）。防御を外す受け口は、vulnerable のイメージだけに入れ、secure のイメージには入れない。
 - `.env` に認証情報を置く。git に入れない。文書とコードに値を書かない。

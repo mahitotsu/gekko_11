@@ -24,7 +24,9 @@ npm install
 npm test                 # サービスごとの単体テスト（TypeScript、Java、Python）
 npm run cluster:up       # k3d のクラスタを作る
 npm run cluster:deploy   # secure と vulnerable の名前空間に、全てのサービスを置く
-npm run cluster:test     # 全シナリオを確かめる（20 分ほど）
+npm run cluster:test     # 全シナリオと画面のテストを確かめる（25 分ほど）
 ```
 
-期待する結果: どちらのテストも、全て通る。防御を外した vulnerable の名前空間では被害が出て、secure の名前空間では出ない。クラスタの構成と環境変数、Claude の認証情報の置き方は、[implementation.md](docs/implementation.md) にある。
+期待する結果: どちらのテストも、全て通る。防御を外した vulnerable の名前空間では被害が出て、secure の名前空間では出ない。画面のテストのブラウザは、Docker の中で動く。
+
+画面を手で使うには、ブラウザで `http://app.secure.localhost:8081` を開く（防御を外せる複製は `http://app.vulnerable.localhost:8082`）。ログインは固定のユーザー（alice、bob、mallory）で、パスワードは `demo` である。クラスタの構成と環境変数、Claude の認証情報の置き方は、[implementation.md](docs/implementation.md) にある。
