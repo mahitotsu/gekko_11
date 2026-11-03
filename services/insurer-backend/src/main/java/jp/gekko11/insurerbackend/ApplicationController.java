@@ -202,7 +202,8 @@ class ApplicationController {
 			contract.putAll((Map<String, Object>) entry);
 		}
 		this.store.contracts
-			.add(new Store.ContractRecord(contract, claims.actChain(), now, application, intent));
+			.add(new Store.ContractRecord(contract, claims.actChain(), now, application, intent, claims.jti()));
+		AuditLog.contract(contract, claims.actChain(), claims.jti(), Canonical.challengeOf(application), now);
 
 		// 顧客へ直接送る。宛先は、登録済みの連絡先（D18）
 		List<String> to = (!this.defenses.enabled(Defenses.REGISTERED_CONTACT) && body.get("contact") instanceof String c)

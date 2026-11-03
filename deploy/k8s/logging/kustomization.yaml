@@ -1,0 +1,7 @@
+# 記録の集約（D-30）。Alloy を logging の名前空間に 1 つ置き、secure と vulnerable の Pod の記録を、それぞれの名前空間の Loki へ送る。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - alloy.yaml

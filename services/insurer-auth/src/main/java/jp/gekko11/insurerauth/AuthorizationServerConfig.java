@@ -27,6 +27,7 @@ import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenExchangeAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenIntrospectionAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.X509ClientCertificateAuthenticationProvider;
@@ -69,9 +70,13 @@ public class AuthorizationServerConfig {
 							x509.setCertificateVerifier(new SpiffeCertificateVerifier(revocation));
 						}
 					})))
-				.tokenEndpoint((t) -> t.authenticationProviders((providers) -> providers
-					.replaceAll((p) -> (p instanceof OAuth2TokenExchangeAuthenticationProvider)
-							? new ExchangeGuard(p, authorizationService, defenses) : p)))
+				.tokenEndpoint((t) -> t.authenticationProviders((providers) -> providers.replaceAll((p) -> {
+					// 交換は、前の確かめを通してから出す。ログインと交換で出したトークンは、監査のために記録する（D-17）
+					if (p instanceof OAuth2TokenExchangeAuthenticationProvider) {
+						return new IssuanceRecorder(new ExchangeGuard(p, authorizationService, defenses), authorizationService);
+					}
+					return (p instanceof OAuth2AuthorizationCodeAuthenticationProvider) ? new IssuanceRecorder(p, authorizationService) : p;
+				})))
 				.tokenIntrospectionEndpoint((i) -> i.authenticationProviders((providers) -> providers
 					.replaceAll((p) -> (p instanceof OAuth2TokenIntrospectionAuthenticationProvider)
 							? new IntrospectionGuard(p, revocation) : p)))

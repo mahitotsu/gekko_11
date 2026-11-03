@@ -1,0 +1,54 @@
+# Alloy は、secure と vulnerable の Pod の一覧と記録だけを読める（Kubernetes の API で読む。ノードのディレクトリは使わない）。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alloy-read-logs
+  namespace: secure
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alloy-read-logs
+  namespace: secure
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alloy-read-logs
+subjects:
+  - kind: ServiceAccount
+    name: alloy
+    namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alloy-read-logs
+  namespace: vulnerable
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alloy-read-logs
+  namespace: vulnerable
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alloy-read-logs
+subjects:
+  - kind: ServiceAccount
+    name: alloy
+    namespace: logging

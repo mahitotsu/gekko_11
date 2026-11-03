@@ -29,14 +29,15 @@ export async function scriptedTurn(t: Thread, message: string, call: typeof call
     t.say(`案を取得できませんでした: ${JSON.stringify(r.body)}`);
     return;
   }
-  t.offer = r.body as Offer;
+  const offer = r.body as Offer;
+  t.setOffer(offer);
   const chosen = await t.frontend("present_offers", { message: "保険会社が用意した案です。比べて、1 つ選んでください。" });
   const planId = /選んだ案: (\S+)/.exec(chosen)?.[1];
   if (!planId) {
     t.say("案が選ばれなかったので、ここで止めます。");
     return;
   }
-  const plan = t.offer.offerSet.plans.find((p) => p.id === planId);
+  const plan = offer.offerSet.plans.find((p) => p.id === planId);
   const name = `「${plan?.name ?? planId}」（月額の保険料 ${plan?.monthly.toLocaleString("ja-JP") ?? "?"} 円）`;
   t.say(`${name}で、意向確認書面を用意しました。内容を確かめて、署名してください。`);
   const intent = await t.frontend("present_intent", { planId, wish: `老後の生活費に備えたい（受け取り方: ${kind}）` });

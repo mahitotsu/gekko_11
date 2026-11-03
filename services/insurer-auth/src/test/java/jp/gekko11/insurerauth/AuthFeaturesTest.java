@@ -16,12 +16,16 @@ import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MvcResult;
 
 /** 取決めの範囲、確認済みの属性、失効、有効性の問い合わせ、内部の受け口と、外せる防御（D3a〜D3f）を確かめる。 */
 @Import(TestDefenses.class)
+@ExtendWith(OutputCaptureExtension.class)
 class AuthFeaturesTest extends AuthTestSupport {
 
 	private static final X509Certificate SALES = svid("sales-agent");
@@ -87,6 +91,20 @@ class AuthFeaturesTest extends AuthTestSupport {
 			.andReturn()
 			.getResponse()
 			.getStatus()).isEqualTo(200);
+	}
+
+	@Test
+	void issuanceAndExchangeAreRecordedWithChainedJti(CapturedOutput output) throws Exception {
+		String a = customerToken(new ECKeyGenerator(Curve.P_256).generate());
+		String b = exchange(SALES, "sales-agent", a, actorToken(SALES, "sales-agent"), "insurer-mcp");
+		String aJti = (String) claims(a).get("jti");
+		String bJti = (String) claims(b).get("jti");
+		// ログインで出した A は issue、交換で出した B は exchange として、A の jti を元にした記録が残る
+		assertThat(output.getOut()).contains("\"kind\":\"issue\"").contains("\"jti\":\"" + aJti + "\"");
+		assertThat(output.getOut()).contains("\"kind\":\"exchange\"").contains("\"jti\":\"" + bJti + "\"")
+			.contains("\"from_jti\":\"" + aJti + "\"");
+		// トークンそのものは書かない
+		assertThat(output.getOut()).doesNotContain(a).doesNotContain(b);
 	}
 
 	@Test

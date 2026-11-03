@@ -6,6 +6,7 @@
 """
 
 import base64
+import hashlib
 import json
 import os
 import sys
@@ -29,15 +30,23 @@ def _incoming() -> dict[str, str]:
     return get_http_headers(include={"x-auth-ctx", "x-auth-claims"})
 
 
+def digest(value: Any) -> str:
+    """JCS（RFC 8785）で正規化した内容の SHA-256 の base64url（D-1 の challenge と同じ値）。
+    このシステムの書類は、文字列と整数と入れ子だけなので、鍵を並べ替えた空白のない JSON が、JCS と同じ並びになる。"""
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return base64.urlsafe_b64encode(hashlib.sha256(canonical.encode()).digest()).rstrip(b"=").decode()
+
+
 def _record(tool: str, detail: dict[str, Any]) -> None:
-    """ツールの呼び出しの記録。誰の依頼か（sub）と、誰が取り次いだか（act）を、トークンの主張から書く。"""
+    """ツールの呼び出しの記録（監査の形。D-17、D-30）。誰の依頼か（sub）と、誰が取り次いだか（act）を、トークンの主張から書く。
+    Alloy が集め、名前空間の Loki に入れる。トークンと署名の値は書かない。"""
     claims: dict[str, Any] = {}
     raw = _incoming().get("x-auth-claims")
     if raw:
         claims = json.loads(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))).get("claims", {})
-    record = {"at": int(time.time()), "service": "insurer-mcp", "tool": tool, "sub": claims.get("sub"),
+    record = {"kind": "tool_call", "at": int(time.time()), "service": "insurer-mcp", "tool": tool, "sub": claims.get("sub"),
               "act": claims.get("act"), "jti": claims.get("jti"), **detail}
-    print(json.dumps({"tool_call": record}, ensure_ascii=False), file=sys.stdout, flush=True)
+    print(json.dumps({"audit": record}, ensure_ascii=False), file=sys.stdout, flush=True)
 
 
 async def _backend(method: str, path: str, **kwargs: Any) -> Any:
@@ -76,9 +85,14 @@ async def submit_application(intent: dict[str, Any], application: dict[str, Any]
     body = {"offerJws": offer_jws, "intent": intent, "intentAssertion": intent_assertion,
             "application": application, "assertion": assertion, **(extras or {})}
     result = await _backend("POST", "/applications", json=body)
-    _record("submit_application", {"nonce": application.get("nonce"),
+    # 取り次いだ申込みの案と顧客を残す。監査サービスが、保険会社のシステムの契約の記録と照らす
+    # 申込みと意向確認のハッシュは、監査の突き合わせの根拠になる（保険会社の側で算出する。D-32）
+    _record("submit_application", {"nonce": application.get("nonce"), "customer": application.get("customer"),
+                                   "plan": application.get("plan"),
+                                   "application_hash": digest(application), "intent_hash": digest(intent),
                                    "contractId": (result.get("contract") or {}).get("contractId")
-                                   if isinstance(result, dict) else None})
+                                   if isinstance(result, dict) else None,
+                                   "status": result.get("status", 200) if isinstance(result, dict) else None})
     return result
 
 

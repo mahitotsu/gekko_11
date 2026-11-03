@@ -1,7 +1,8 @@
 // 会話（AG-UI の thread）ごとの状態と、AG-UI のイベントの列（D-29）。Claude と台本の両方が、これを通して顧客とやりとりする。
 // 画面側の道具（顧客への質問と書類の提示）を呼ぶと、イベントを出してその回を区切り、次の回の tool message を待つ。
 // 書類の識別子と署名の値は、LLM ではなく、ここが直前の提示と画面の回答から入れる（D-27）。
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import canonicalize from "canonicalize";
 import { EventType, type BaseEvent } from "@ag-ui/core";
 import { applicationOf, intentOf, type Application, type Intent, type Offer } from "./draft.ts";
 import type { Plan } from "./scripted.ts";
@@ -9,6 +10,25 @@ import type { Plan } from "./scripted.ts";
 /** 画面側の道具。営業 AI エージェントが呼び、顧客のアプリが画面で答える。 */
 export const FRONTEND_TOOLS = ["ask_customer", "present_offers", "present_intent", "present_application"] as const;
 export type FrontendTool = (typeof FRONTEND_TOOLS)[number];
+
+/** 会話の記録で伏せる欄。トークン、署名の値、提示の JWS は残さない（D-32）。 */
+const SECRET_KEYS = new Set(["assertion", "intentAssertion", "intent_assertion", "signature", "intentSignature", "offerJws", "offer_jws", "token"]);
+
+/** 値を複製し、伏せる欄を「（伏せた）」に置き換える。 */
+export function redact(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redact);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, SECRET_KEYS.has(k) ? "（伏せた）" : redact(v)]));
+  }
+  return value;
+}
+
+/** JCS（RFC 8785）で正規化した内容の SHA-256 の base64url。事務サービスのハッシュと同じ算出（監査の突き合わせ。D-32）。 */
+export const digest = (value: unknown) => createHash("sha256").update(canonicalize(value) ?? "").digest("base64url");
+
+/** 動いているモデル（Claude か台本）。 */
+const model = () =>
+  process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY ? (process.env.CLAUDE_MODEL ?? "claude-haiku-5-5") : "scripted";
 
 /** 回の区切り。PAUSE は顧客の答えを待つ、END は営業 AI エージェントの番が終わった。 */
 type Item = BaseEvent | { pause: true } | { end: true; error?: string };
@@ -46,8 +66,18 @@ export class Thread {
     this.sub = sub;
   }
 
+  /**
+   * 会話の記録（監査の形。D-32）を、1 行の JSON で書く。Alloy が集め、名前空間の Loki に入れる。
+   * 本文を残すが、トークン、署名の値、提示の JWS は伏せる。営業 AI エージェントは書き換えうる者なので、監査では証拠の 1 つとして扱う。
+   */
+  record(event: string, detail: Record<string, unknown> = {}) {
+    const entry = { kind: "conversation", at: Math.floor(Date.now() / 1000), service: "sales-agent", thread: this.id, sub: this.sub, model: model(), event, ...detail };
+    console.log(JSON.stringify({ audit: redact(entry) }));
+  }
+
   /** 顧客の文（user message）を、営業 AI エージェントに渡す。 */
   tell(text: string) {
+    this.record("customer_text", { text });
     this.inbox.push(text);
     this.inboxWake?.();
   }
@@ -59,6 +89,12 @@ export class Thread {
       await new Promise<void>((r) => (this.inboxWake = r));
       this.inboxWake = undefined;
     }
+  }
+
+  /** 事務サービスから受け取った提示を覚え、会話の記録に、nonce と識別子を残す。 */
+  setOffer(offer: Offer) {
+    this.offer = offer;
+    this.record("agent_tool", { name: "get_offers", nonce: offer.nonce, offerSetId: offer.offerSetId });
   }
 
   get waitingFor(): string | undefined {
@@ -86,6 +122,7 @@ export class Thread {
   /** 営業 AI エージェントの文を、顧客に送る。 */
   say(text: string) {
     if (!text.trim()) return;
+    this.record("agent_text", { text });
     const messageId = randomUUID();
     this.push({ type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" } as BaseEvent);
     this.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: text } as BaseEvent);
@@ -104,6 +141,13 @@ export class Thread {
   async frontend(name: FrontendTool, llmArgs: Record<string, unknown>): Promise<string> {
     const args = this.argsFor(name, llmArgs);
     const toolCallId = randomUUID();
+    // 示した書類のハッシュを、決まった処理が残す。LLM の会話の履歴には入らない。監査サービスが、事務サービスのハッシュと比べる
+    const document = name === "present_intent" ? args.intent : name === "present_application" ? args.application : undefined;
+    this.record("frontend_tool", {
+      name,
+      args: name === "present_offers" ? offerSummary(args) : args,
+      ...(document ? { document_hash: digest(document) } : {}),
+    });
     this.push({ type: EventType.TOOL_CALL_START, toolCallId, toolCallName: name } as BaseEvent);
     this.push({ type: EventType.TOOL_CALL_ARGS, toolCallId, delta: JSON.stringify(args) } as BaseEvent);
     this.push({ type: EventType.TOOL_CALL_END, toolCallId } as BaseEvent);
@@ -117,6 +161,13 @@ export class Thread {
     if (this.pending?.id !== toolCallId) return false;
     const { resolve } = this.pending;
     this.pending = undefined;
+    let answer: unknown = content;
+    try {
+      answer = JSON.parse(content);
+    } catch {
+      // 文の答えは、そのまま残す
+    }
+    this.record("customer_answer", { answer });
     resolve(content);
     return true;
   }
@@ -162,6 +213,12 @@ export class Thread {
     }
     return String(answer.answer ?? content);
   }
+}
+
+/** 提示は、nonce と識別子と案の一覧だけを残す（署名の JWS は残さない）。 */
+function offerSummary(args: Record<string, unknown>) {
+  const offer = args.offer as Offer;
+  return { message: args.message, offer: { nonce: offer.nonce, offerSetId: offer.offerSetId, plans: offer.offerSet.plans } };
 }
 
 /** threadId ごとの会話。1 つの複製で動き、15 分使われなければ捨てる。 */

@@ -9,6 +9,7 @@ const vulnerable = ns === "vulnerable";
 
 const IMAGES = {
   envoy: "envoyproxy/envoy:v1.31.5",
+  loki: "grafana/loki:3.7.8",
   helper: "ghcr.io/spiffe/spiffe-helper:0.12.2",
   auth: `gekko11/insurer-auth:${ns}`,
   backend: `gekko11/insurer-backend:${ns}`,
@@ -634,6 +635,65 @@ function entranceWorkload() {
   ];
 }
 
+// ---- 記録の集約（D-30） -------------------------------------------------------
+// 名前空間ごとに Loki を 1 つ置く。記録を届けるのは logging の名前空間の Alloy だけで、読むのは監査サービスだけである。
+
+/** 単一のプロセスで、ファイルに保存する。保存期間は 7 日（compactor の retention）。 */
+const LOKI_CONFIG = `auth_enabled: false
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+limits_config:
+  retention_period: 168h
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+analytics:
+  reporting_enabled: false
+`;
+
+function lokiWorkload() {
+  return [
+    { apiVersion: "v1", kind: "ConfigMap", metadata: meta("loki-config"), data: { "loki.yaml": LOKI_CONFIG } },
+    { apiVersion: "v1", kind: "Service", metadata: meta("loki"), spec: { selector: { app: "loki" }, ports: [{ name: "http", port: 3100, targetPort: 3100 }] } },
+    deployment("loki", "default", { app: "loki" }, {
+      containers: [
+        {
+          name: "loki",
+          image: IMAGES.loki,
+          args: ["-config.file=/etc/loki/loki.yaml"],
+          ports: [{ containerPort: 3100 }],
+          resources: { requests: { memory: "128Mi" }, limits: { memory: "384Mi" } },
+          volumeMounts: [{ name: "config", mountPath: "/etc/loki" }, { name: "data", mountPath: "/loki" }],
+        },
+      ],
+      volumes: [{ name: "config", configMap: { name: "loki-config" } }, { name: "data", emptyDir: {} }],
+    }),
+  ];
+}
+
 const probe = (p: (typeof PROBES)[number]) =>
   deployment(p.name, p.sa, { app: "probe" }, {
     ...("awayFrom" in p
@@ -715,6 +775,17 @@ const networkPolicies = [
           egress: [{ to: [{ ipBlock: { cidr: "0.0.0.0/0", except: PRIVATE } }], ports: [{ port: 443 }] }],
         }),
       ]),
+  // Loki: logging の名前空間の Alloy だけが届ける
+  policy("loki-ingress", {
+    podSelector: { matchLabels: { app: "loki" } },
+    policyTypes: ["Ingress"],
+    ingress: [
+      {
+        from: [{ namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "logging" } }, podSelector: { matchLabels: { app: "alloy" } } }],
+        ports: [{ port: 3100 }],
+      },
+    ],
+  }),
   // vulnerable だけ: 確かめの役が、防御を外す管理のポートを呼ぶ
   ...(vulnerable
     ? [...SERVICES.map((s) => s.name), "insurer-auth"].flatMap((app) => allow(app, [ADMIN.tokenGuard, ADMIN.app], ["probe"], "-admin"))
@@ -728,6 +799,7 @@ const items = [
   ...networkPolicies,
   ...authWorkload(),
   ...entranceWorkload(),
+  ...lokiWorkload(),
   ...SERVICES.flatMap(serviceWorkload),
   ...PROBES.map(probe),
 ];

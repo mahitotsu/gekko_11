@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { scriptedTurn } from "../src/scripted.ts";
-import { Thread } from "../src/thread.ts";
+import { digest, redact, Thread } from "../src/thread.ts";
 
 const plans = [{ id: "fixed-60", name: "確定年金 10年・年額60万円", kind: "fixed", benefit: 600_000, monthly: 20_000 }];
 const offer = { offerJws: "jws", offerSet: { customer: "alice", plans }, offerSetId: "set-1", nonce: "n-1", expiresAt: 1 };
@@ -73,5 +74,19 @@ describe("台本の会話（AG-UI のイベント）", () => {
     await nextRun(t);
     await done;
     expect(calls.map((x) => x.name)).toEqual(["get_offers"]);
+  });
+});
+
+describe("会話の記録（D-32）", () => {
+  it("トークン、署名の値、提示の JWS を伏せる", () => {
+    const out = redact({ application: { plan: { id: "fixed-60" }, intentSignature: "sig" }, assertion: { response: { signature: "s" } }, offerJws: "jws", text: "老後に備えたい" }) as Record<string, any>;
+    expect(out).toEqual({ application: { plan: { id: "fixed-60" }, intentSignature: "（伏せた）" }, assertion: "（伏せた）", offerJws: "（伏せた）", text: "老後に備えたい" });
+  });
+});
+
+describe("書類のハッシュ", () => {
+  it("JCS で正規化した内容の SHA-256（鍵の順に依らない）", () => {
+    expect(digest({ b: 1, a: "あ" })).toBe(digest({ a: "あ", b: 1 }));
+    expect(digest({ a: "あ", b: 1 })).toBe(createHash("sha256").update('{"a":"あ","b":1}').digest("base64url"));
   });
 });

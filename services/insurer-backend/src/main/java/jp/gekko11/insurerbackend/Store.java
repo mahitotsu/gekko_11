@@ -25,7 +25,8 @@ class Store {
 	}
 
 	/** 契約の記録。揉めたときの証拠として、署名済みの申込みと、取り次いだ窓口を残す（D-9）。 */
-	record ContractRecord(Map<String, Object> contract, List<String> by, long at, Object application, Object intent) {
+	record ContractRecord(Map<String, Object> contract, List<String> by, long at, Object application, Object intent,
+			String tokenJti) {
 	}
 
 	record Delivery(String to, Map<String, Object> notice, boolean delivered) {

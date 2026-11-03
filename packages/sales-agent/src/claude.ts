@@ -48,8 +48,9 @@ function toolsFor(t: Thread) {
         async () => {
           const r = await callMcp(t.ctx, "get_offers");
           if (r.isError || r.body.error) return text(`案を受け取れない: ${JSON.stringify(r.body)}`);
-          t.offer = r.body as Offer;
-          return text(JSON.stringify({ plans: t.offer.offerSet.plans.map(planForModel), note: PLAN_NOTE }, null, 1));
+          const offer = r.body as Offer;
+          t.setOffer(offer);
+          return text(JSON.stringify({ plans: offer.offerSet.plans.map(planForModel), note: PLAN_NOTE }, null, 1));
         },
       ),
       tool("list_contracts", "顧客の契約の一覧を受け取る", {}, async () => text(JSON.stringify((await callMcp(t.ctx, "list_contracts")).body))),

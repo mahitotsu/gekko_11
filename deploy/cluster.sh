@@ -38,7 +38,10 @@ deploy() {
   done
 
   # secure と vulnerable で、防御を外す受け口を含むかが違う（D-20）
-  local images=(gekko11/insurer-mcp:dev)
+  # 記録の集約（D-30）。公開から 2 週間以上の版に固定する
+  local images=(gekko11/insurer-mcp:dev grafana/loki:3.7.8 grafana/alloy:v1.20.1)
+  docker pull -q grafana/loki:3.7.8 >/dev/null
+  docker pull -q grafana/alloy:v1.20.1 >/dev/null
   docker build -q -t gekko11/insurer-mcp:dev services/insurer-mcp
   for ns in "${NAMESPACES[@]}"; do
     docker build -q --build-arg VARIANT="$ns" -t "gekko11/insurer-auth:$ns" services/insurer-auth
@@ -64,6 +67,9 @@ deploy() {
     # 設定やイメージを替えたら、Pod を作り直す（Envoy は設定を読み直さない）
     kubectl -n "$ns" rollout restart deployment
   done
+  # Alloy は、secure と vulnerable の名前空間ができてから置く（両方の名前空間に、記録を読む権限を置くため）
+  kubectl apply -k deploy/k8s/logging
+  kubectl -n logging rollout restart deployment/alloy
   for ns in "${NAMESPACES[@]}"; do
     kubectl -n "$ns" rollout status deployment --timeout=300s
   done

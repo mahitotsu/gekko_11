@@ -1,5 +1,7 @@
 """事務サービスのツールが、受け口の控えの番号を付けて保険会社のシステムへ回し、記録を書くことを確かめる。"""
 
+import base64
+import hashlib
 import json
 
 import httpx2 as httpx
@@ -48,11 +50,20 @@ async def test_submit_application_passes_extras_and_records_the_call(backend, ca
     sent = json.loads(backend[-1].content)
     assert sent["contact"] == "http://elsewhere"
     assert result.data["contract"]["contractId"] == "C-1"
-    record = json.loads(capsys.readouterr().out.strip().splitlines()[-1])["tool_call"]
+    record = json.loads(capsys.readouterr().out.strip().splitlines()[-1])["audit"]
+    assert record["kind"] == "tool_call"
     assert record["tool"] == "submit_application"
     assert record["sub"] == "alice"
     assert record["act"] == {"sub": "sales-agent"}
     assert record["contractId"] == "C-1"
+    # 申込みのハッシュは、JCS の SHA-256（顧客のアプリが passkey に署名させた challenge と同じ値）
+    assert record["application_hash"] == app.digest({"nonce": "n-1"})
+
+
+def test_digest_matches_jcs_sha256():
+    # canonicalize({"b": 1, "a": "あ"}) は {"a":"あ","b":1}
+    expected = base64.urlsafe_b64encode(hashlib.sha256('{"a":"あ","b":1}'.encode()).digest()).rstrip(b"=").decode()
+    assert app.digest({"b": 1, "a": "あ"}) == expected
 
 
 async def test_backend_refusal_is_returned_with_its_status(backend):

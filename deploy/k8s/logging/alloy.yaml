@@ -1,0 +1,116 @@
+# 名前空間ごとに読む流れを分け、監査の記録（"audit" の欄を持つ JSON の行）だけを、その名前空間の Loki へ送る。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-config
+  namespace: logging
+data:
+  config.alloy: |
+    // secure の名前空間 → secure の Loki
+    discovery.kubernetes "secure" {
+      role = "pod"
+      namespaces { names = ["secure"] }
+    }
+    discovery.relabel "secure" {
+      targets = discovery.kubernetes.secure.targets
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
+        target_label  = "app"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+    }
+    loki.source.kubernetes "secure" {
+      targets    = discovery.relabel.secure.output
+      forward_to = [loki.process.secure.receiver]
+    }
+    loki.process "secure" {
+      stage.match {
+        selector = "{namespace=\"secure\"} !~ \"\\\"audit\\\"\""
+        action   = "drop"
+      }
+      forward_to = [loki.write.secure.receiver]
+    }
+    loki.write "secure" {
+      endpoint {
+        url = "http://loki.secure.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
+
+    // vulnerable の名前空間 → vulnerable の Loki
+    discovery.kubernetes "vulnerable" {
+      role = "pod"
+      namespaces { names = ["vulnerable"] }
+    }
+    discovery.relabel "vulnerable" {
+      targets = discovery.kubernetes.vulnerable.targets
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
+        target_label  = "app"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+    }
+    loki.source.kubernetes "vulnerable" {
+      targets    = discovery.relabel.vulnerable.output
+      forward_to = [loki.process.vulnerable.receiver]
+    }
+    loki.process "vulnerable" {
+      stage.match {
+        selector = "{namespace=\"vulnerable\"} !~ \"\\\"audit\\\"\""
+        action   = "drop"
+      }
+      forward_to = [loki.write.vulnerable.receiver]
+    }
+    loki.write "vulnerable" {
+      endpoint {
+        url = "http://loki.vulnerable.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+  namespace: logging
+  labels:
+    app: alloy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+    spec:
+      serviceAccountName: alloy
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.20.1
+          args: ["run", "/etc/alloy/config.alloy", "--storage.path=/tmp/alloy", "--server.http.listen-addr=127.0.0.1:12345"]
+          resources:
+            requests:
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-config

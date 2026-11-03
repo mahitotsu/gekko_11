@@ -36,6 +36,11 @@ record Claims(Map<String, Object> claims, String peer) {
 		return (String) this.claims.get("sub");
 	}
 
+	/** 受け取ったトークン（C）の識別子。監査サービスが、交換の記録とたどる（D-17）。 */
+	String jti() {
+		return (String) this.claims.get("jti");
+	}
+
 	/** 取り次いだ窓口。外側（最後に替えた者）から順に並べる。 */
 	List<String> actChain() {
 		List<String> chain = new ArrayList<>();
