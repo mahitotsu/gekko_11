@@ -161,7 +161,7 @@ class ApplicationTest {
 	}
 
 	@Test
-	void auditRecordsAreOnlyForTheAuditor() throws Exception {
+	void auditRecordsAreOnlyForTheAuditorAndTheAuditService() throws Exception {
 		assertThat(this.mvc.perform(get("/audit/records")).andReturn().getResponse().getStatus()).isEqualTo(403);
 		assertThat(this.mvc
 			.perform(get("/audit/records").header("x-forwarded-client-cert",
@@ -169,6 +169,19 @@ class ApplicationTest {
 			.andReturn()
 			.getResponse()
 			.getStatus()).isEqualTo(200);
+		// 監査サービスも読む（D-17）。ほかのサービスは読めない
+		assertThat(this.mvc
+			.perform(get("/audit/records").header("x-forwarded-client-cert",
+					"Hash=ab;URI=spiffe://gekko11.internal/ns/secure/sa/insurer-audit"))
+			.andReturn()
+			.getResponse()
+			.getStatus()).isEqualTo(200);
+		assertThat(this.mvc
+			.perform(get("/audit/records").header("x-forwarded-client-cert",
+					"Hash=ab;URI=spiffe://gekko11.internal/ns/secure/sa/sales-agent"))
+			.andReturn()
+			.getResponse()
+			.getStatus()).isEqualTo(403);
 	}
 
 	// ---- 手順 ----

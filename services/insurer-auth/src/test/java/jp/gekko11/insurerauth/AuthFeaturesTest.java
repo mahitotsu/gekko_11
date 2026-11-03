@@ -22,6 +22,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /** 取決めの範囲、確認済みの属性、失効、有効性の問い合わせ、内部の受け口と、外せる防御（D3a〜D3f）を確かめる。 */
 @Import(TestDefenses.class)
@@ -35,6 +36,10 @@ class AuthFeaturesTest extends AuthTestSupport {
 	private static final X509Certificate BACKEND = svid("insurer-backend");
 
 	private static final X509Certificate OPERATOR = svid("operator");
+
+	private static final X509Certificate AUDIT = svid("insurer-audit");
+
+	private static final String AUDIT_REDIRECT = "http://127.0.0.1:4100/login/oauth2/code/insurer-auth";
 
 	@AfterEach
 	void restore() throws Exception {
@@ -105,6 +110,52 @@ class AuthFeaturesTest extends AuthTestSupport {
 			.contains("\"from_jti\":\"" + aJti + "\"");
 		// トークンそのものは書かない
 		assertThat(output.getOut()).doesNotContain(a).doesNotContain(b);
+	}
+
+	@Test
+	void auditServiceLogsInWithItsSvidAndPkceAndTheIdTokenCarriesTheRole() throws Exception {
+		assertThat(auditIdToken("kansa", AUDIT).get("roles")).isEqualTo(List.of("AUDITOR"));
+		assertThat(auditIdToken("alice", AUDIT).get("roles")).isEqualTo(List.of("CUSTOMER"));
+		// 監査サービスの SVID でなければ、認可コードを替えられない
+		assertThat(auditTokenRequest("kansa", SALES).getResponse().getStatus()).isEqualTo(401);
+	}
+
+	private Map<String, Object> auditIdToken(String user, X509Certificate cert) throws Exception {
+		MvcResult result = auditTokenRequest(user, cert);
+		assertThat(result.getResponse().getStatus()).as(result.getResponse().getContentAsString()).isEqualTo(200);
+		String idToken = (String) this.json.readValue(result.getResponse().getContentAsString(), Map.class).get("id_token");
+		return SignedJWT.parse(idToken).getJWTClaimsSet().toJSONObject();
+	}
+
+	/** 監査サービスの認可コードの流れ。クライアント認証は SVID の mTLS で、PKCE も使う。 */
+	private MvcResult auditTokenRequest(String user, X509Certificate cert) throws Exception {
+		String verifier = java.util.UUID.randomUUID() + "-" + java.util.UUID.randomUUID();
+		MvcResult authorized = this.mvc
+			.perform(get(UriComponentsBuilder.fromPath("/oauth2/authorize")
+				.queryParam("response_type", "code")
+				.queryParam("client_id", "insurer-audit")
+				.queryParam("scope", "openid")
+				.queryParam("redirect_uri", AUDIT_REDIRECT)
+				.queryParam("state", "s")
+				.queryParam("nonce", "n")
+				.queryParam("code_challenge", challenge(verifier))
+				.queryParam("code_challenge_method", "S256")
+				.build()
+				.encode()
+				.toUri()).with(user(user).roles("kansa".equals(user) ? "AUDITOR" : "CUSTOMER")))
+			.andReturn();
+		String code = UriComponentsBuilder.fromUriString(authorized.getResponse().getRedirectedUrl())
+			.build()
+			.getQueryParams()
+			.getFirst("code");
+		return this.mvc
+			.perform(post("/oauth2/token").param("grant_type", "authorization_code")
+				.param("client_id", "insurer-audit")
+				.param("code", code)
+				.param("redirect_uri", AUDIT_REDIRECT)
+				.param("code_verifier", verifier)
+				.with(x509(cert)))
+			.andReturn();
 	}
 
 	@Test

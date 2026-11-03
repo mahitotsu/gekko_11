@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>監査: 契約の一覧</title>
+  <style th:replace="~{style :: style}"></style>
+</head>
+<body>
+<header>
+  <h1>監査: 契約の一覧</h1>
+  <p class="who">監査の担当: <span th:text="${user}">kansa</span></p>
+</header>
+<main>
+  <p>保険会社のシステムの記録（自己申告）を、認可サーバーと事務サービスの記録と、契約ごとに突き合わせた結果です。新しい順に、30 件まで出します。</p>
+  <p th:if="${#lists.isEmpty(contracts)}" data-testid="no-contracts">契約の記録がありません。</p>
+  <table th:unless="${#lists.isEmpty(contracts)}">
+    <thead><tr><th>結果</th><th>契約</th><th>顧客</th><th>案</th></tr></thead>
+    <tbody>
+    <tr th:each="c : ${contracts}" th:attr="data-testid='contract-' + ${c.nonce}">
+      <td><span th:class="${c.ok} ? 'ok' : 'ng'" th:text="${c.status}">食い違いなし</span></td>
+      <td><a th:href="@{/contracts/{n}(n=${c.nonce})}" th:text="${c.contract['contractId']}">C-…</a></td>
+      <td th:text="${c.contract['customer']}">alice</td>
+      <td th:text="${c.contract['plan'] != null ? c.contract['plan']['name'] : ''}">案</td>
+    </tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>

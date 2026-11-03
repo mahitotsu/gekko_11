@@ -1,0 +1,20 @@
+<style th:fragment="style">
+  :root { --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --bg: #ffffff; --panel: #f6f8fa; --ok: #1a7f37; --ng: #cf222e; --note: #9a6700; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --bg: #0d1117; --panel: #151b23; --ok: #3fb950; --ng: #f85149; --note: #d29922; }
+  }
+  body { margin: 0; font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; color: var(--fg); background: var(--bg); line-height: 1.6; }
+  header, main { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  header { border-bottom: 1px solid var(--line); }
+  h1 { font-size: 1.4rem; margin: 16px 0 4px; }
+  h2 { font-size: 1.1rem; margin: 24px 0 8px; border-bottom: 1px solid var(--line); }
+  .who { color: var(--muted); margin: 0 0 12px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--panel); }
+  .ok { color: var(--ok); font-weight: bold; }
+  .ng { color: var(--ng); font-weight: bold; }
+  .note { color: var(--note); }
+  pre { background: var(--panel); border: 1px solid var(--line); padding: 8px; overflow-x: auto; font-size: 0.85rem; }
+  a { color: inherit; }
+</style>

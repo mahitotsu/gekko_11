@@ -13,6 +13,7 @@ const IMAGES = {
   helper: "ghcr.io/spiffe/spiffe-helper:0.12.2",
   auth: `gekko11/insurer-auth:${ns}`,
   backend: `gekko11/insurer-backend:${ns}`,
+  audit: "gekko11/insurer-audit:dev",
   mcp: "gekko11/insurer-mcp:dev",
   node: `gekko11/node:${ns}`,
 };
@@ -21,11 +22,11 @@ const spiffeId = (sa: string) => `spiffe://${TRUST_DOMAIN}/ns/${ns}/sa/${sa}`;
 const host = (service: string) => `${service}.${ns}.svc`;
 
 /**
- * クラスタの入口（D-25）。ブラウザは、名前空間ごとのポートで、app、auth、agent の名前に届く。
+ * クラスタの入口（D-25）。ブラウザは、名前空間ごとのポートで、app、auth、agent、audit の名前に届く。
  * 入口の名前は、ここだけで決める。RP ID、origin、issuer、戻り先、CORS は、ここから作る。
  */
 const ENTRANCE = { domain: "localhost", port: vulnerable ? 8082 : 8081, nodePort: vulnerable ? 30082 : 30081, listen: 8080 };
-type PublicName = "app" | "auth" | "agent";
+type PublicName = "app" | "auth" | "agent" | "audit";
 const publicHost = (name: PublicName) => `${name}.${ns}.${ENTRANCE.domain}`;
 const publicOrigin = (name: PublicName) => `http://${publicHost(name)}:${ENTRANCE.port}`;
 const ISSUER = publicOrigin("auth");
@@ -36,7 +37,7 @@ const WEBAUTHN = { RP_ID: publicHost("app"), WEBAUTHN_ORIGINS: CUSTOMER_ORIGIN }
 /** 防御を外す管理のポート（vulnerable だけ）。token-guard と、アプリ。 */
 const ADMIN = { tokenGuard: 9090, app: 9091 };
 
-type Name = "sales-agent" | "insurer-mcp" | "insurer-backend" | "customer-app";
+type Name = "sales-agent" | "insurer-mcp" | "insurer-backend" | "customer-app" | "insurer-audit";
 
 interface Egress {
   port: number;
@@ -119,6 +120,23 @@ const SERVICES: Service[] = [
       env: { NAMESPACE: ns, TRUST_DOMAIN, ISSUER, RP_ID: WEBAUTHN.RP_ID, APP_ORIGIN: CUSTOMER_ORIGIN, AGENT_ORIGIN: publicOrigin("agent"), APP_ADMIN_PORT: String(ADMIN.app) },
     },
   },
+  {
+    // 監査サービス（D-17、D-31）。監査の担当のブラウザから入口を通って受け、認可サーバーと保険会社のシステムは、SVID で呼ぶ。
+    // 記録は、名前空間の Loki から読む（D-30）
+    name: "insurer-audit",
+    ingress: "open",
+    port: 8443,
+    callers: [],
+    egress: [
+      { port: 15101, target: "insurer-auth" },
+      { port: 15102, target: "insurer-backend" },
+    ],
+    app: {
+      image: IMAGES.audit,
+      command: ["java", "-jar", "/app/insurer-audit.jar"],
+      env: { NAMESPACE: ns, ISSUER, PUBLIC_ORIGIN: publicOrigin("audit"), LOKI_URL: `http://${host("loki")}.cluster.local:3100` },
+    },
+  },
 ];
 
 /**
@@ -141,6 +159,7 @@ const SERVICE_ACCOUNTS = [
   "insurer-mcp",
   "insurer-backend",
   "customer-app",
+  "insurer-audit",
   "entrance",
   "intruder",
   "operator",
@@ -424,7 +443,8 @@ const service = (name: string, ...ports: number[]) => ({
   metadata: meta(name),
   spec: {
     selector: { app: name },
-    ports: [...ports, ...(vulnerable ? [ADMIN.tokenGuard, ADMIN.app] : [])].map((port) => ({ name: `p${port}`, port, targetPort: port })),
+    // 監査サービスには、防御を外す受け口がない
+    ports: [...ports, ...(vulnerable && name !== "insurer-audit" ? [ADMIN.tokenGuard, ADMIN.app] : [])].map((port) => ({ name: `p${port}`, port, targetPort: port })),
   },
 });
 
@@ -467,7 +487,7 @@ function serviceWorkload(s: Service) {
         ? [{ name: "CLAUDE_CODE_OAUTH_TOKEN", valueFrom: { secretKeyRef: { name: "claude", key: "token", optional: true } } }]
         : []),
     ],
-    ...(s.app.image === IMAGES.backend ? { resources: { requests: { memory: "256Mi" }, limits: { memory: "512Mi" } }, ...ready(8080) } : {}),
+    ...(s.app.command[0] === "java" ? { resources: { requests: { memory: "256Mi" }, limits: { memory: "512Mi" } }, ...ready(8080) } : {}),
   });
   return [
     { apiVersion: "v1", kind: "ConfigMap", metadata: meta(`${s.name}-envoy`), data: { "envoy.json": JSON.stringify(envoyConfig(s)) } },
@@ -496,6 +516,7 @@ function authWorkload() {
             NAMESPACE: ns,
             TRUST_DOMAIN,
             CUSTOMER_REDIRECT_URI: `${CUSTOMER_ORIGIN}/callback`,
+            AUDIT_REDIRECT_URI: `${publicOrigin("audit")}/login/oauth2/code/insurer-auth`,
             ...WEBAUTHN,
           }),
           ports: [{ containerPort: 8443 }],
@@ -565,6 +586,13 @@ function entranceConfig() {
       typed_per_filter_config: corsFor(false),
       routes: [{ match: { prefix: "/" }, route: { cluster: "to_sales_agent", timeout: "120s" } }],
     },
+    {
+      // 監査の担当の画面。戻り先を、ブラウザが呼んだ名前で作れるよう、転送のヘッダーを付ける
+      name: "audit",
+      domains: domains("audit"),
+      request_headers_to_add: forwarded,
+      routes: [{ match: { prefix: "/" }, route: { cluster: "to_insurer_audit", timeout: "60s" } }],
+    },
   ];
   const corsFilter = { name: CORS, typed_config: { "@type": "type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors" } };
   return {
@@ -602,6 +630,7 @@ function entranceConfig() {
         upstream("to_customer_app", "customer-app", 8443, false),
         upstream("to_insurer_auth", "insurer-auth", 8443, false),
         upstream("to_sales_agent", "sales-agent", 8443, false),
+        upstream("to_insurer_audit", "insurer-audit", 8443, false),
       ],
     },
   };
@@ -758,13 +787,15 @@ const networkPolicies = [
       },
     ],
   }),
-  // 保険会社のシステムは、トークンを確かめる公開鍵と passkey の公開鍵を、認可サーバーから取る
-  ...allow("insurer-auth", [8443], ["sales-agent", "insurer-mcp", "insurer-backend", "probe"]),
+  // 保険会社のシステムは、トークンを確かめる公開鍵と passkey の公開鍵を、認可サーバーから取る。監査サービスは、監査の担当のログインに使う
+  ...allow("insurer-auth", [8443], ["sales-agent", "insurer-mcp", "insurer-backend", "insurer-audit", "probe"]),
   ...SERVICES.flatMap((s) => allow(s.name, [s.port, ...(s.mtlsPort ? [s.mtlsPort] : [])], [...s.callers, "probe"])),
-  // クラスタの入口: 外から入口へ。入口からは、ブラウザが使う 3 つの受け口へだけ
+  // クラスタの入口: 外から入口へ。入口からは、ブラウザが使う 4 つの受け口へだけ
   policy("entrance-ingress", { podSelector: { matchLabels: { app: "entrance" } }, policyTypes: ["Ingress"], ingress: [{ ports: [{ port: ENTRANCE.listen }] }] }),
-  ...["insurer-auth", "sales-agent", "customer-app"].flatMap((app) => allow(app, [8443], ["entrance"], "-entrance")),
+  ...["insurer-auth", "sales-agent", "customer-app", "insurer-audit"].flatMap((app) => allow(app, [8443], ["entrance"], "-entrance")),
   ...allow("insurer-backend", [9443], ["customer-app"], "-offer-keys"),
+  // 監査サービスは、保険会社のシステムの自己申告（/audit/records）を読む
+  ...allow("insurer-backend", [9443], ["insurer-audit"], "-audit"),
   // クラスタの外へは、secure の営業 AI エージェントが、モデルの提供元を呼ぶ通信だけを許す（architecture の 2-3）
   ...(vulnerable
     ? []
@@ -775,7 +806,7 @@ const networkPolicies = [
           egress: [{ to: [{ ipBlock: { cidr: "0.0.0.0/0", except: PRIVATE } }], ports: [{ port: 443 }] }],
         }),
       ]),
-  // Loki: logging の名前空間の Alloy だけが届ける
+  // Loki: logging の名前空間の Alloy だけが届け、監査サービスだけが読む
   policy("loki-ingress", {
     podSelector: { matchLabels: { app: "loki" } },
     policyTypes: ["Ingress"],
@@ -784,11 +815,17 @@ const networkPolicies = [
         from: [{ namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "logging" } }, podSelector: { matchLabels: { app: "alloy" } } }],
         ports: [{ port: 3100 }],
       },
+      { from: from("insurer-audit"), ports: [{ port: 3100 }] },
     ],
+  }),
+  policy("insurer-audit-to-loki", {
+    podSelector: { matchLabels: { app: "insurer-audit" } },
+    policyTypes: ["Egress"],
+    egress: [{ to: from("loki"), ports: [{ port: 3100 }] }],
   }),
   // vulnerable だけ: 確かめの役が、防御を外す管理のポートを呼ぶ
   ...(vulnerable
-    ? [...SERVICES.map((s) => s.name), "insurer-auth"].flatMap((app) => allow(app, [ADMIN.tokenGuard, ADMIN.app], ["probe"], "-admin"))
+    ? [...SERVICES.map((s) => s.name).filter((n) => n !== "insurer-audit"), "insurer-auth"].flatMap((app) => allow(app, [ADMIN.tokenGuard, ADMIN.app], ["probe"], "-admin"))
     : []),
 ];
 

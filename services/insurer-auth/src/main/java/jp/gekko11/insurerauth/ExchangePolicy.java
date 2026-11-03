@@ -13,6 +13,9 @@ final class ExchangePolicy {
 
 	static final String INSURER_BACKEND = "insurer-backend";
 
+	/** 監査サービス。トークンの宛先にはならず、監査の担当のログインにだけ使う（D-31）。 */
+	static final String INSURER_AUDIT = "insurer-audit";
+
 	/** 顧客のアプリが受け取るトークン A の宛先。 */
 	static final String CUSTOMER_AUDIENCE = SALES_AGENT;
 

@@ -3,5 +3,6 @@ gekko:
   trust-domain: ${TRUST_DOMAIN:gekko11.internal}
   namespace: ${NAMESPACE:secure}
   customer-redirect-uri: ${CUSTOMER_REDIRECT_URI:http://127.0.0.1:4000/callback}
+  audit-redirect-uri: ${AUDIT_REDIRECT_URI:http://127.0.0.1:4100/login/oauth2/code/insurer-auth}
   rp-id: ${RP_ID:localhost}
   origins: ${WEBAUTHN_ORIGINS:http://localhost:4000}

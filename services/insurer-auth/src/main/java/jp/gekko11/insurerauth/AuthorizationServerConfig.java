@@ -5,6 +5,8 @@ import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import com.nimbusds.jose.jwk.JWKSet;
@@ -22,6 +24,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
@@ -62,9 +65,12 @@ public class AuthorizationServerConfig {
 		http.securityMatcher(server.getEndpointsMatcher())
 			.with(server, (s) -> s
 				.clientAuthentication((c) -> c
-					.authenticationConverters((converters) -> converters
-						.replaceAll((v) -> (v instanceof X509ClientCertificateAuthenticationConverter)
-								? new SpiffeCertificateConverter() : v))
+					.authenticationConverters((converters) -> {
+						// 証明書を示した要求は、PKCE の値があっても、公開クライアントより先に tls_client_auth として確かめる
+						// （監査サービスは、mTLS で認証し、PKCE も使う。D-31）。証明書のない顧客のアプリは、これまでどおり公開クライアントになる
+						converters.removeIf((v) -> v instanceof X509ClientCertificateAuthenticationConverter);
+						converters.add(0, new SpiffeCertificateConverter());
+					})
 					.authenticationProviders((providers) -> providers.forEach((p) -> {
 						if (p instanceof X509ClientCertificateAuthenticationProvider x509) {
 							x509.setCertificateVerifier(new SpiffeCertificateVerifier(revocation));
@@ -103,13 +109,15 @@ public class AuthorizationServerConfig {
 		return http.build();
 	}
 
-	/** ログインは固定ユーザー（implementation の 5 章）。 */
+	/** ログインは固定ユーザー（implementation の 5 章）。顧客と、監査の担当（D-31）。 */
 	@Bean
 	UserDetailsService users(UserDirectory directory) {
-		return new InMemoryUserDetailsManager(directory.names()
+		List<UserDetails> users = new ArrayList<>(directory.names()
 			.stream()
 			.map((name) -> User.withUsername(name).password("{noop}demo").roles("CUSTOMER").build())
 			.toList());
+		users.add(User.withUsername(UserDirectory.AUDITOR).password("{noop}demo").roles("AUDITOR").build());
+		return new InMemoryUserDetailsManager(users);
 	}
 
 	@Bean
@@ -133,8 +141,22 @@ public class AuthorizationServerConfig {
 				.setting(SpiffeCertificateVerifier.SPIFFE_ID, props.spiffeId(ExchangePolicy.INSURER_BACKEND))
 				.build())
 			.build();
+		// 監査サービスは、監査の担当のログインのために、OpenID Connect のクライアントとして、SVID の mTLS で認証する（D-31）
+		RegisteredClient audit = RegisteredClient.withId(ExchangePolicy.INSURER_AUDIT)
+			.clientId(ExchangePolicy.INSURER_AUDIT)
+			.clientAuthenticationMethod(ClientAuthenticationMethod.TLS_CLIENT_AUTH)
+			.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+			.redirectUri(props.auditRedirectUri())
+			.scope("openid")
+			.clientSettings(ClientSettings.builder()
+				.requireProofKey(true)
+				.requireAuthorizationConsent(false)
+				.setting(SpiffeCertificateVerifier.SPIFFE_ID, props.spiffeId(ExchangePolicy.INSURER_AUDIT))
+				.build())
+			.tokenSettings(TokenSettings.builder().accessTokenTimeToLive(ACCESS_TOKEN_TTL).build())
+			.build();
 		return new InMemoryRegisteredClientRepository(customerApp, service(props, ExchangePolicy.SALES_AGENT),
-				service(props, ExchangePolicy.INSURER_MCP), backend);
+				service(props, ExchangePolicy.INSURER_MCP), backend, audit);
 	}
 
 	/** 替えを頼む窓口。SPIFFE ID の mTLS で認証し、出すトークンをその証明書に結ぶ（D-7、D-16）。 */

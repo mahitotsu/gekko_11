@@ -9,9 +9,13 @@ import org.springframework.stereotype.Component;
 /**
  * 顧客と、取引時確認（本人確認）の記録。記録のない顧客は、本人確認が済んでいない（D11）。
  * alice、bob、mallory はテストが使い、hanako は手で画面を試す人が使う（受信箱にテストの申込みが混ざらない）。
+ * 監査の担当（kansa）は顧客ではないので、ここには載せない。
  */
 @Component
 class UserDirectory {
+
+	/** 監査の担当。監査サービスの画面を使う（D-31）。 */
+	static final String AUDITOR = "kansa";
 
 	record Verification(String method, String time) {
 	}

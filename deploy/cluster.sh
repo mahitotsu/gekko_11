@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 CLUSTER=gekko11
 TRUST_DOMAIN=gekko11.internal
 NAMESPACES=(secure vulnerable)
-SERVICE_ACCOUNTS=(insurer-auth sales-agent insurer-mcp insurer-backend customer-app entrance intruder operator auditor)
+SERVICE_ACCOUNTS=(insurer-auth sales-agent insurer-mcp insurer-backend customer-app insurer-audit entrance intruder operator auditor)
 # SVID の有効期間（秒）。入れ替わりを観察できるよう、短くする。
 SVID_TTL=600
 
@@ -39,10 +39,12 @@ deploy() {
 
   # secure と vulnerable で、防御を外す受け口を含むかが違う（D-20）
   # 記録の集約（D-30）。公開から 2 週間以上の版に固定する
-  local images=(gekko11/insurer-mcp:dev grafana/loki:3.7.8 grafana/alloy:v1.20.1)
-  docker pull -q grafana/loki:3.7.8 >/dev/null
-  docker pull -q grafana/alloy:v1.20.1 >/dev/null
+  local images=(gekko11/insurer-mcp:dev gekko11/insurer-audit:dev)
+  local external=(grafana/loki:3.7.8 grafana/alloy:v1.20.1)
+  for image in "${external[@]}"; do docker pull -q "$image" >/dev/null; done
   docker build -q -t gekko11/insurer-mcp:dev services/insurer-mcp
+  # 監査サービスには、防御を外す受け口がないので、両方の名前空間で同じイメージを使う
+  docker build -q -t gekko11/insurer-audit:dev services/insurer-audit
   for ns in "${NAMESPACES[@]}"; do
     docker build -q --build-arg VARIANT="$ns" -t "gekko11/insurer-auth:$ns" services/insurer-auth
     docker build -q --build-arg VARIANT="$ns" -t "gekko11/insurer-backend:$ns" services/insurer-backend
@@ -50,6 +52,14 @@ deploy() {
     images+=("gekko11/insurer-auth:$ns" "gekko11/insurer-backend:$ns" "gekko11/node:$ns")
   done
   k3d image import -c "$CLUSTER" "${images[@]}"
+  # 外から取ったイメージは、複数の CPU 向けの目次を持つが、手元には、この PC の CPU の分しかない。そのまま取り込むと、
+  # ほかの CPU の分が見つからずに失敗するので、この PC の CPU の分だけを書き出して取り込む
+  local platform tarball
+  platform="linux/$(docker version --format '{{.Server.Arch}}')"
+  tarball="$(mktemp -d)/external.tar"
+  docker save --platform "$platform" -o "$tarball" "${external[@]}"
+  k3d image import -c "$CLUSTER" "$tarball"
+  rm -rf "$(dirname "$tarball")"
 
   # 営業 AI エージェントの Claude の認証情報は、secure の名前空間にだけ置く（D-23）。値は .env から読み、どこにも書かない
   kubectl create namespace secure --dry-run=client -o yaml | kubectl apply -f - >/dev/null

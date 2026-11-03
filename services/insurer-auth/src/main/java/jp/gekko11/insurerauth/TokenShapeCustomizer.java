@@ -32,6 +32,7 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
  * <li>aud を、トークンを受け取るサービスにする（A は営業 AI エージェント、交換では求めた宛先）</li>
  * <li>受け取るサービスが替える窓口なら、may_act にそのサービスを入れる（D-7 の手順 3）</li>
  * <li>取決めの範囲（authorization_details）と、確認済みの属性（verified_claims）を載せ、交換では引き継ぐ</li>
+ * <li>ID トークンに、ログインした者の役割（roles）を載せる</li>
  * </ul>
  * 顧客のアプリのトークンは、DPoP の proof がなければ出さない（D-18）。
  * 教材のための意図的に悪い発行を含む。vulnerable の名前空間では、D3a〜D3e を外せる。本番の部品として使わないこと。
@@ -56,6 +57,15 @@ final class TokenShapeCustomizer implements OAuth2TokenCustomizer<JwtEncodingCon
 	@Override
 	public void customize(JwtEncodingContext context) {
 		if (OidcParameterNames.ID_TOKEN.equals(context.getTokenType().getValue())) {
+			// ログインした者の役割（顧客か、監査の担当か）。監査サービスは、監査の担当にだけ画面を見せる（D-31）
+			context.getClaims()
+				.claim("roles", context.getPrincipal()
+					.getAuthorities()
+					.stream()
+					.map((a) -> a.getAuthority())
+					.filter((a) -> a.startsWith("ROLE_"))
+					.map((a) -> a.substring("ROLE_".length()))
+					.toList());
 			// 悪い発行（D3c を外す）: ID トークンの宛先に、API の識別子まで入れる
 			if (!this.defenses.enabled(Defenses.ID_TOKEN_AUD)) {
 				List<String> aud = new ArrayList<>(List.of(context.getRegisteredClient().getClientId()));

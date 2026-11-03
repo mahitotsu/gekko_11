@@ -30,7 +30,7 @@ export async function probe(ns: Ns, who: Role, command: string, args: object = {
 }
 
 /** ブラウザが入口を通って呼ぶ公開名（D-25）。 */
-export const publicOrigin = (ns: Ns, name: "app" | "auth" | "agent") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
+export const publicOrigin = (ns: Ns, name: "app" | "auth" | "agent" | "audit") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
 
 export const TERMS = [{ type: "insurance_application", kinds: ["fixed", "lifetime"], maxBenefit: 1_200_000 }];
 
@@ -154,6 +154,28 @@ export async function records(ns: Ns): Promise<{ contracts: Json[]; outbox: Json
   const r = await probe(ns, "probe-auditor", "audit");
   if (r.status !== 200) throw new Error(`監査の記録を読めない: ${JSON.stringify(r)}`);
   return r.body as { contracts: Json[]; outbox: Json[] };
+}
+
+/** 監査の担当（kansa）としてログインし、監査サービスの受け口を読む（D-31）。user を変えると、ほかの者のログインを試せる。 */
+export const auditorGet = (ns: Ns, path: string, user = "kansa") => probe(ns, "probe-auditor", "auditor", { user, path });
+
+/** 監査サービスが示す、契約ごとの突き合わせの結果の、点ごとの一致。 */
+export const checksOf = (report: Json): Record<string, boolean> =>
+  Object.fromEntries((report.checks as Json[]).map((c) => [String(c.name).replace(/（.*/, ""), c.ok as boolean]));
+
+/**
+ * 監査サービスの、契約ごとの突き合わせ（D25）。Loki に記録が届くまで数秒かかるので、until を満たすまで問い合わせ直す。
+ * 満たさないまま時間が過ぎたら、最後の結果を返す（テストの期待で、何が足りないかを示す）。
+ */
+export async function auditOf(ns: Ns, nonce: string, until: (report: Json) => boolean): Promise<Json> {
+  let last: Json = {};
+  for (let i = 0; i < 15; i++) {
+    const r = await auditorGet(ns, `/api/contracts/${nonce}`);
+    last = r.status === 200 ? (r.body as Json) : { status: r.status, body: r.body };
+    if (r.status === 200 && until(last)) return last;
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  return last;
 }
 
 // ---- vulnerable の防御の切り替え（メモリ上だけ。切り替えた後と戻した後に読み返す） ----

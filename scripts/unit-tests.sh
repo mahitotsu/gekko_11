@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 mkdir -p ~/.m2 ~/.cache/pip
 USER_ARGS=(-u "$(id -u):$(id -g)" -e HOME=/tmp)
 
-for service in insurer-auth insurer-backend; do
+for service in insurer-auth insurer-backend insurer-audit; do
   echo "== $service（JUnit）"
   docker run --rm "${USER_ARGS[@]}" -v ~/.m2:/var/maven/.m2 -e MAVEN_CONFIG=/var/maven/.m2 \
     -v "$PWD/services/$service":/src -w /src maven:3.9-eclipse-temurin-21 \

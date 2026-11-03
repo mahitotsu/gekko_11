@@ -6,8 +6,8 @@ import { generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
 import { reconcile } from "../../packages/customer-app/src/reconcile.ts";
 import {
-  applyArgs, atMcp, backendPost, contractsOf, Customer, exchangeAs, ISSUER, mcpCall, offerFor, probe, records, setDefenses, setTamper,
-  TERMS, type Gaps, type Json, type Ns, type Offer, type Submission,
+  applyArgs, atMcp, auditOf, auditorGet, backendPost, checksOf, contractsOf, Customer, exchangeAs, ISSUER, mcpCall, offerFor, probe, records,
+  setDefenses, setTamper, TERMS, type Gaps, type Json, type Ns, type Offer, type Submission,
 } from "./world.ts";
 
 const FULL_ROUTE = ["insurer-mcp", "sales-agent"];
@@ -290,6 +290,16 @@ scenario(10, "R4 × A14: 申込みと違う内容で、契約を記録させる"
     const mine = reconcile([sub.application as never], (await alice.notices()) as never).filter((r) => r.nonce === offer.nonce);
     expect(mine[0]?.status).toBe("mismatch");
   });
+
+  it("vulnerable: 事後に、監査サービスが、契約の案と取り次いだ申込みの案の食い違いを示す（D25）", async () => {
+    await setDefenses({ D17: "off" });
+    const alice = await customer("vulnerable", "alice");
+    const offer = await offerFor(alice);
+    await submitViaMcp("vulnerable", await atMcp(alice), alice.prepare(offer, "fixed-60"), { contractEntry: { plan: planOf(offer, "life-240") } });
+    const report = await auditOf("vulnerable", offer.nonce, (r) => r.tool !== null && r.contractRecord !== null);
+    expect(report.status).toBe("食い違いあり");
+    expect(checksOf(report)).toMatchObject({ 申込みの中身: false, トークンの連鎖: true, 事務サービスの記録: true });
+  });
 });
 
 scenario(11, "R5 × A11: 同じ申込みを二度出す", {
@@ -348,6 +358,15 @@ scenario(14, "R7 × A6: 営業 AI エージェント宛ての A で、保険会�
   prepare: signedFor,
   attack: async (ns, { alice, sub }) => backendPost(ns, alice.token, sub),
   harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
+}, () => {
+  it("vulnerable: 事後に、監査サービスが、事務サービスの記録の欠けと、トークンの連鎖の切れを示す（D25）", async () => {
+    const { alice, offer, sub } = await signedFor("vulnerable");
+    await setDefenses(gapsOf(["D7", "D26 保険会社のシステム"]));
+    await backendPost("vulnerable", alice.token, sub);
+    const report = await auditOf("vulnerable", offer.nonce, (r) => r.contractRecord !== null && r.chain.length > 0);
+    expect(report.status).toBe("食い違いあり");
+    expect(checksOf(report)).toMatchObject({ 事務サービスの記録: false, トークンの連鎖: false });
+  });
 });
 
 scenario(15, "R7 × A7: 事務サービスが、受け取った B をそのまま保険会社のシステムへ流す", {
@@ -429,6 +448,15 @@ scenario(20, "R9 × A16: 経由を残さない発行で、取り次いだ窓口�
   prepare: signedFor,
   attack: async (ns, { alice, sub }) => submitViaMcp(ns, await atMcp(alice), sub),
   harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
+}, () => {
+  it("vulnerable: 事後に、監査サービスが、契約の記録の経由と交換の記録の道の食い違いを示す（D25）", async () => {
+    const { alice, offer, sub } = await signedFor("vulnerable");
+    await setDefenses({ D3d: "off" });
+    await submitViaMcp("vulnerable", await atMcp(alice), sub);
+    const report = await auditOf("vulnerable", offer.nonce, (r) => r.contractRecord !== null && r.chain.length === 3);
+    expect(report.status).toBe("食い違いあり");
+    expect(checksOf(report)).toMatchObject({ 経由: false, トークンの連鎖: true });
+  });
 });
 
 scenario(21, "R7 × A17: 営業 AI エージェントが、事務サービスを飛ばした宛先のトークンを求めて、直接申し込む", {
@@ -460,6 +488,40 @@ scenario(23, "R10 × A19: 盗んだ B を、別のサービスの SVID で使い
 });
 
 // ======== 補足: シナリオにしない防御と、隔たり ========
+// ======== 監査サービス（D25）: 事後に、契約ごとに、自己申告と第三者の記録を突き合わせる ========
+describe("監査サービス（D25）", () => {
+  it("secure: 正規の契約は、食い違いなしで、認可サーバー、事務サービス、保険会社のシステムの記録がそろう", async () => {
+    const { alice, offer, sub } = await signedFor("secure");
+    await submitViaMcp("secure", await atMcp(alice), sub);
+    const report = await auditOf("secure", offer.nonce, (r) => r.ok === true);
+    expect(report.status, JSON.stringify(report.checks)).toBe("食い違いなし");
+    expect(report.chain.map((r: Json) => r.kind)).toEqual(["exchange", "exchange", "issue"]);
+    expect(report.tool?.application_hash).toBe(report.contractRecord?.application_hash);
+    expect(report.selfReport?.tokenJti).toBe(report.contractRecord?.token_jti);
+  });
+
+  it("secure: 監査の担当でない者（顧客）は、ログインできても、監査の記録を読めない", async () => {
+    expect((await auditorGet("secure", "/api/contracts", "alice")).status).toBe(403);
+    expect((await auditorGet("secure", "/api/contracts")).status).toBe(200);
+  });
+
+  it("vulnerable: 営業 AI エージェントが、認可サーバーを名乗って書いた交換の記録は、受け付けない（D-32）", async () => {
+    await setDefenses({});
+    const { alice, offer, sub } = await signedFor("vulnerable");
+    await submitViaMcp("vulnerable", await atMcp(alice), sub);
+    const before = await auditOf("vulnerable", offer.nonce, (r) => r.ok === true);
+    expect(before.status, JSON.stringify(before.checks)).toBe("食い違いなし");
+    // 乗っ取られた営業 AI エージェントが、C と同じ jti で、経由を偽った交換の記録を書く
+    const forged = { kind: "exchange", service: "insurer-auth", client: "insurer-mcp", sub: "alice", jti: before.contractRecord.token_jti, from_jti: "forged", act: { sub: "insurer-mcp" } };
+    await probe("vulnerable", "probe-intruder", "admin", { service: "sales-agent", port: 9091, path: "/forge-audit", method: "PUT", body: forged });
+    const after = await auditOf("vulnerable", offer.nonce, (r) => r.rejected.length > 0);
+    expect(after.rejected.map((r: Json) => [r.kind, r.app])).toEqual([["exchange", "sales-agent"]]);
+    // 連鎖は、認可サーバーが書いた記録だけでたどる
+    expect(checksOf(after)).toMatchObject({ トークンの連鎖: true, 経由: true, 書いた者: false });
+    expect(after.chain[0].from_jti).toBe(before.chain[0].from_jti);
+  });
+});
+
 describe("補足", () => {
   it("secure: 営業 AI エージェントは、自分宛てでないトークン（B）を受け付けない（D20）", async () => {
     const alice = await customer("secure", "alice");

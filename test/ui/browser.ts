@@ -237,3 +237,46 @@ export class BrowserCustomer {
     });
   }
 }
+
+/** 監査の担当のブラウザ。監査サービスの画面を開くと、認可サーバーのログインへ送られ、戻ってくる（D-31）。 */
+export class BrowserAuditor {
+  readonly ns: Ns;
+  readonly user: string;
+  context!: BrowserContext;
+  page!: Page;
+  constructor(ns: Ns, user = "kansa") {
+    this.ns = ns;
+    this.user = user;
+  }
+
+  /** 監査サービスの画面を開き、ログインする。返すのは、ログインの後の画面の HTTP の状態。 */
+  async open(path = "/"): Promise<number | undefined> {
+    this.context = await (await connect()).newContext();
+    this.page = await this.context.newPage();
+    await this.page.goto(`${publicOrigin(this.ns, "audit")}${path}`);
+    await this.page.locator("#username").fill(this.user);
+    await this.page.locator("#password").fill("demo");
+    const [response] = await Promise.all([
+      this.page.waitForResponse((r) => r.url().startsWith(publicOrigin(this.ns, "audit")) && r.request().resourceType() === "document" && r.status() !== 302),
+      this.page.locator("button[type=submit]").click(),
+    ]);
+    return response.status();
+  }
+
+  /** 契約の突き合わせの画面を開き、結果を返す。Loki に記録が届くまで、決まった回数だけ開き直す。 */
+  async contract(nonce: string, until: (status: string, conversationRows: number) => boolean): Promise<{ status: string; conversationRows: number }> {
+    let last = { status: "", conversationRows: 0 };
+    for (let i = 0; i < 15; i++) {
+      await this.page.goto(`${publicOrigin(this.ns, "audit")}/contracts/${nonce}`);
+      const status = (await this.page.getByTestId("status").textContent().catch(() => "")) ?? "";
+      last = { status, conversationRows: await this.page.locator("[data-testid=conversation] tbody tr").count() };
+      if (until(last.status, last.conversationRows)) return last;
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    return last;
+  }
+
+  async close() {
+    await this.context?.close();
+  }
+}

@@ -15,7 +15,7 @@ const SVID_DIR = "/svid";
 const ns = process.env.NAMESPACE!;
 const self = process.env.SERVICE_ACCOUNT!;
 const spiffeId = (sa: string) => `spiffe://${TRUST_DOMAIN}/ns/${ns}/sa/${sa}`;
-const PORTS: Record<string, number> = { "insurer-auth": 8443, "sales-agent": 8443, "customer-app": 8443, "insurer-mcp": 9443, "insurer-backend": 9443 };
+const PORTS: Record<string, number> = { "insurer-auth": 8443, "sales-agent": 8443, "customer-app": 8443, "insurer-audit": 8443, "insurer-mcp": 9443, "insurer-backend": 9443 };
 const origin = (service: string) => `https://${service}.${ns}.svc:${PORTS[service]}`;
 /** ブラウザが入口を通って呼ぶ公開名（D-25）。顧客の役は、署名と proof に、この名前を使う。 */
 const publicOrigin = (name: "app" | "agent") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
@@ -158,6 +158,40 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
   };
 }
 
+/** 監査サービスの公開名。監査の担当の役は、内部の名前で呼び、Host にこの名前を付ける（戻り先とログインの後の行き先が、公開名になる）。 */
+const AUDIT_HOST = `audit.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
+
+/**
+ * 監査の担当の役: 監査サービスから認可サーバーへ送られ、固定ユーザーでログインし、監査サービスに戻ってから、その受け口を読む（D-31）。
+ * ブラウザと同じ順で進み、公開名の URL を、内部の名前で呼び直す。
+ */
+async function auditor(args: { user?: string; path: string }) {
+  const html = { accept: "text/html" };
+  const audit = (path: string, cookie: string, accept = "text/html") =>
+    call("insurer-audit", path, { method: "GET", headers: { accept, host: AUDIT_HOST, ...(cookie ? { cookie } : {}) }, clientCert: false });
+  const start = await audit("/oauth2/authorization/insurer-auth", "");
+  let auditCookie = cookieOf(start);
+  const first = await call("insurer-auth", pathOf(start.headers.location), { method: "GET", headers: html, clientCert: false });
+  let cookie = cookieOf(first);
+  const login = await call("insurer-auth", "/login", { method: "GET", headers: { ...html, cookie }, clientCert: false });
+  const csrf = login.body.match(/name="_csrf"[^>]*value="([^"]+)"/)?.[1];
+  const posted = await call("insurer-auth", "/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+    body: form({ username: args.user ?? "kansa", password: "demo", _csrf: csrf }),
+    clientCert: false,
+  });
+  cookie = cookieOf(posted) || cookie;
+  const resumed = await call("insurer-auth", pathOf(posted.headers.location), { method: "GET", headers: { ...html, cookie }, clientCert: false });
+  const back = await audit(pathOf(resumed.headers.location), auditCookie);
+  // ログインに失敗すると、監査サービスは /login?error へ送る
+  if (back.status !== 302 || String(back.headers.location).includes("error")) {
+    return { status: back.status, body: { error: "ログインできない", location: back.headers.location } };
+  }
+  auditCookie = cookieOf(back) || auditCookie;
+  return reply(await audit(args.path, auditCookie, "application/json"));
+}
+
 /** 顧客の役: A を営業 AI エージェントに出す。proof は、正しいもの、なし、別の鍵で作ったもの。 */
 async function callSalesAgent(args: { path: string; body?: unknown; token: string; dpopKey: JWK; proof?: "good" | "none" | "other-key" }) {
   const htu = `${publicOrigin("agent")}${args.path}`;
@@ -283,6 +317,7 @@ const commands: Record<string, (args: never) => Promise<unknown>> = {
   mcp,
   operator,
   audit,
+  auditor,
   notices,
   admin: admin as (args: never) => Promise<unknown>,
   "reach-other-namespace": reachOtherNamespace as (args: never) => Promise<unknown>,

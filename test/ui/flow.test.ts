@@ -2,12 +2,15 @@
 // ブラウザは入口を通り、トークンと DPoP の鍵と passkey は、ブラウザの中にある（D-18）。secure では、本物の Claude が案を示す。
 import { afterEach, describe, expect, it } from "vitest";
 import { records, setDefenses, type Ns } from "../cluster/world.ts";
-import { BrowserCustomer, PLANS } from "./browser.ts";
+import { BrowserAuditor, BrowserCustomer, PLANS } from "./browser.ts";
 
 let alice: BrowserCustomer | undefined;
+let auditor: BrowserAuditor | undefined;
 afterEach(async () => {
   await alice?.close();
+  await auditor?.close();
   alice = undefined;
+  auditor = undefined;
 });
 
 describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", (ns) => {
@@ -32,6 +35,20 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
     expect(await alice.page.locator("[data-testid^=reconcile-]").count()).toBe(1);
     // 「受信箱と契約」の画面にも、今回の契約が一致として出る
     expect((await alice.inbox()).status).toBe("match");
+
+    // 監査の担当が、監査の画面で、その契約を食い違いなしと見て、会話の記録を読める（D25、D-31）
+    auditor = new BrowserAuditor(ns);
+    expect(await auditor.open()).toBe(200);
+    const audited = await auditor.contract(nonce, (status, rows) => status === "食い違いなし" && rows > 0);
+    expect(audited.status).toBe("食い違いなし");
+    expect(audited.conversationRows).toBeGreaterThan(0);
+  });
+});
+
+describe("監査の画面", () => {
+  it("secure: 顧客は、認可サーバーにログインできても、監査の画面を見られない", async () => {
+    auditor = new BrowserAuditor("secure", "alice");
+    expect(await auditor.open()).toBe(403);
   });
 });
 
