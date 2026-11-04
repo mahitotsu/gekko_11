@@ -1,5 +1,6 @@
 package jp.gekko11.insurerauth;
 
+import java.net.URI;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
@@ -60,7 +61,7 @@ public class AuthorizationServerConfig {
 	@Bean
 	@Order(1)
 	SecurityFilterChain authorizationServerChain(HttpSecurity http, OAuth2AuthorizationService authorizationService,
-			Defenses defenses, ClientRevocation revocation) throws Exception {
+			Defenses defenses, ClientRevocation revocation, RegisteredClientRepository clients) throws Exception {
 		OAuth2AuthorizationServerConfigurer server = OAuth2AuthorizationServerConfigurer.authorizationServer();
 		http.securityMatcher(server.getEndpointsMatcher())
 			.with(server, (s) -> s
@@ -86,7 +87,7 @@ public class AuthorizationServerConfig {
 				.tokenIntrospectionEndpoint((i) -> i.authenticationProviders((providers) -> providers
 					.replaceAll((p) -> (p instanceof OAuth2TokenIntrospectionAuthenticationProvider)
 							? new IntrospectionGuard(p, revocation) : p)))
-				.oidc(Customizer.withDefaults()))
+				.oidc((o) -> o.logoutEndpoint((l) -> l.errorResponseHandler(new SignOutFailureHandler(clients)))))
 			.authorizeHttpRequests((a) -> a.anyRequest().authenticated())
 			.exceptionHandling((e) -> e
 				.defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
@@ -127,6 +128,7 @@ public class AuthorizationServerConfig {
 			.clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
 			.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
 			.redirectUri(props.customerRedirectUri())
+			.postLogoutRedirectUri(originOf(props.customerRedirectUri()))
 			.scope("openid")
 			.scope("apply")
 			.clientSettings(ClientSettings.builder().requireProofKey(true).requireAuthorizationConsent(false).build())
@@ -147,6 +149,7 @@ public class AuthorizationServerConfig {
 			.clientAuthenticationMethod(ClientAuthenticationMethod.TLS_CLIENT_AUTH)
 			.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
 			.redirectUri(props.auditRedirectUri())
+			.postLogoutRedirectUri(originOf(props.auditRedirectUri()))
 			.scope("openid")
 			.clientSettings(ClientSettings.builder()
 				.requireProofKey(true)
@@ -157,6 +160,11 @@ public class AuthorizationServerConfig {
 			.build();
 		return new InMemoryRegisteredClientRepository(customerApp, service(props, ExchangePolicy.SALES_AGENT),
 				service(props, ExchangePolicy.INSURER_MCP), backend, audit);
+	}
+
+	/** サインアウトの後の戻り先は、ログインの戻り先と同じ名前の、画面の先頭である（D-33）。 */
+	private static String originOf(String redirectUri) {
+		return URI.create(redirectUri).resolve("/").toString();
 	}
 
 	/** 替えを頼む窓口。SPIFFE ID の mTLS で認証し、出すトークンをその証明書に結ぶ（D-7、D-16）。 */

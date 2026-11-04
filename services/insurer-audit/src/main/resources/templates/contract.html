@@ -10,6 +10,7 @@
 <header>
   <h1>監査: <span th:text="${report.contract['contractId']}">C-…</span></h1>
   <p class="who">監査の担当: <span th:text="${user}">kansa</span>（<a th:href="@{/}">一覧へ</a>）</p>
+  <form th:replace="~{style :: signout}"></form>
 </header>
 <main>
   <p>結果: <span data-testid="status" th:class="${report.ok} ? 'ok' : 'ng'" th:text="${report.status}">食い違いなし</span></p>

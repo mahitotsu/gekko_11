@@ -3,6 +3,7 @@ package jp.gekko11.insureraudit;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.context.annotation.Bean;
@@ -11,6 +12,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
+import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
 import org.springframework.security.oauth2.client.endpoint.DefaultOAuth2TokenRequestParametersConverter;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
@@ -41,11 +43,16 @@ class SecurityConfig {
 	static final String CLIENT_ID = "insurer-audit";
 
 	@Bean
-	SecurityFilterChain auditChain(HttpSecurity http, ClientRegistrationRepository clients) throws Exception {
+	SecurityFilterChain auditChain(HttpSecurity http, ClientRegistrationRepository clients, AuditProperties props)
+			throws Exception {
+		// サインアウトでは、認可サーバーのログインも終わらせる（D-33）。残ると、次に開いたときに、前の人のまま通ってしまう
+		OidcClientInitiatedLogoutSuccessHandler signedOut = new OidcClientInitiatedLogoutSuccessHandler(clients);
+		signedOut.setPostLogoutRedirectUri(props.publicOrigin() + "/");
 		http.authorizeHttpRequests((a) -> a.requestMatchers("/error").permitAll().anyRequest().hasRole("AUDITOR"))
 			.oauth2Login((o) -> o.authorizationEndpoint((e) -> e.authorizationRequestResolver(pkce(clients)))
 				.tokenEndpoint((t) -> t.accessTokenResponseClient(tokenClient()))
-				.userInfoEndpoint((u) -> u.userAuthoritiesMapper(rolesFromIdToken())));
+				.userInfoEndpoint((u) -> u.userAuthoritiesMapper(rolesFromIdToken())))
+			.logout((l) -> l.logoutSuccessHandler(signedOut));
 		return http.build();
 	}
 
@@ -62,6 +69,7 @@ class SecurityConfig {
 			.authorizationUri(props.issuer() + "/oauth2/authorize")
 			.tokenUri(props.authUrl() + "/oauth2/token")
 			.jwkSetUri(props.authUrl() + "/oauth2/jwks")
+			.providerConfigurationMetadata(Map.of("end_session_endpoint", props.issuer() + "/connect/logout"))
 			.userNameAttributeName("sub")
 			.clientName("認可サーバー")
 			.build();

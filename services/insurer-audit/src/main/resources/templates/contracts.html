@@ -10,6 +10,7 @@
 <header>
   <h1>監査: 契約の一覧</h1>
   <p class="who">監査の担当: <span th:text="${user}">kansa</span></p>
+  <form th:replace="~{style :: signout}"></form>
 </header>
 <main>
   <p>保険会社のシステムの記録（自己申告）を、認可サーバーと事務サービスの記録と、契約ごとに突き合わせた結果です。新しい順に、30 件まで出します。</p>

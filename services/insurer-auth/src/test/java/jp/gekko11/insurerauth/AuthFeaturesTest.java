@@ -159,6 +159,24 @@ class AuthFeaturesTest extends AuthTestSupport {
 	}
 
 	@Test
+	void signOutWithAnUnknownIdTokenReturnsOnlyToARegisteredPage() throws Exception {
+		// 再起動の前の ID トークンなどで確かめられなくても、登録された戻り先へ戻す
+		MvcResult back = this.mvc.perform(get("/connect/logout").param("client_id", "customer-app")
+			.param("post_logout_redirect_uri", "http://127.0.0.1:4000/")
+			.param("id_token_hint", "unknown")).andReturn();
+		assertThat(back.getResponse().getRedirectedUrl()).isEqualTo("http://127.0.0.1:4000/");
+		MvcResult noHint = this.mvc.perform(get("/connect/logout").param("client_id", "insurer-audit")
+			.param("post_logout_redirect_uri", "http://127.0.0.1:4100/")).andReturn();
+		assertThat(noHint.getResponse().getRedirectedUrl()).isEqualTo("http://127.0.0.1:4100/");
+		// 登録にない宛先へは戻さない
+		MvcResult other = this.mvc.perform(get("/connect/logout").param("client_id", "customer-app")
+			.param("post_logout_redirect_uri", "http://attacker.invalid/")
+			.param("id_token_hint", "unknown")).andReturn();
+		assertThat(other.getResponse().getStatus()).isEqualTo(400);
+		assertThat(other.getResponse().getRedirectedUrl()).isNull();
+	}
+
+	@Test
 	void loggedInCustomerListsOnlyOwnPasskeyIds() throws Exception {
 		// ログインしていなければ、一覧は出ない
 		assertThat(this.mvc.perform(get("/passkeys/mine")).andReturn().getResponse().getStatus()).isNotEqualTo(200);

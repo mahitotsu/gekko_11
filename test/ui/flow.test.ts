@@ -1,7 +1,7 @@
 // 画面の基本の流れ: ログイン → passkey と受信箱の登録 → 相談 → 署名を確かめた案 → 確認 → 署名 → 提出 → 直送の照合（architecture の 3 章）。
 // ブラウザは入口を通り、トークンと DPoP の鍵と passkey は、ブラウザの中にある（D-18）。secure では、本物の Claude が案を示す。
 import { afterEach, describe, expect, it } from "vitest";
-import { records, setDefenses, type Ns } from "../cluster/world.ts";
+import { publicOrigin, records, setDefenses, type Ns } from "../cluster/world.ts";
 import { BrowserAuditor, BrowserCustomer, PLANS } from "./browser.ts";
 
 let alice: BrowserCustomer | undefined;
@@ -44,6 +44,45 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
     expect(audited.conversationRows).toBeGreaterThan(0);
     // 詳細の冒頭に、何と何を比べたかが出る
     expect(await auditor.page.getByTestId("comparison").count()).toBeGreaterThan(0);
+  });
+});
+
+describe("サインアウト", () => {
+  it("secure: 顧客がサインアウトすると、次のログインで、認可サーバーがまた本人を確かめる", async () => {
+    alice = await new BrowserCustomer("secure", "alice").ready();
+    await alice.page.getByTestId("signout").click();
+    await alice.page.getByTestId("login").waitFor();
+    expect(await alice.page.getByTestId("whoami").isVisible()).toBe(false);
+    await alice.page.getByTestId("login").click();
+    await alice.page.locator("#username").waitFor();
+  });
+
+  it("secure: 認可サーバーが再起動して ID トークンを忘れていても、サインアウトで行き止まりにならない", async () => {
+    alice = await new BrowserCustomer("secure", "alice").ready();
+    // 認可サーバーが知らない ID トークンを持つ状態を作る
+    await alice.page.evaluate(() => {
+      const session = JSON.parse(sessionStorage.getItem("session")!);
+      sessionStorage.setItem("session", JSON.stringify({ ...session, idToken: "unknown" }));
+    });
+    await alice.page.getByTestId("signout").click();
+    await alice.page.getByTestId("login").waitFor();
+    expect(alice.page.url()).toBe(`${alice.app}/`);
+  });
+
+  it("secure: 顧客のまま監査の画面を開くと断られ、サインアウトして、同じブラウザで監査の担当に替われる", async () => {
+    alice = await new BrowserCustomer("secure", "alice").ready();
+    const audit = publicOrigin("secure", "audit");
+    await alice.page.goto(audit);
+    await alice.page.getByTestId("forbidden").waitFor();
+    await alice.page.getByTestId("signout").click();
+    await alice.page.locator("#username").fill("kansa");
+    await alice.page.locator("#password").fill("demo");
+    await alice.page.locator("button[type=submit]").click();
+    await alice.page.waitForURL(`${audit}/**`);
+    expect(await alice.page.locator(".who").first().textContent()).toContain("kansa");
+    // 監査の担当もサインアウトすると、次に開いたときに、またログインを求められる
+    await alice.page.getByTestId("signout").click();
+    await alice.page.locator("#username").waitFor();
   });
 });
 

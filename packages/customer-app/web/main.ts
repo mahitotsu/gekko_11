@@ -26,6 +26,8 @@ interface Config {
 interface Session {
   token: string;
   sub: string;
+  /** サインアウトのときに、認可サーバーへ示す（D-33）。 */
+  idToken: string;
 }
 
 interface Device {
@@ -132,7 +134,19 @@ async function finishLogin(params: URLSearchParams) {
     sub = JSON.parse(atob(body.id_token.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/"))).sub;
   }
   sessionStorage.removeItem("login");
-  store.set(sessionStorage, "session", { token: body.access_token, sub } satisfies Session);
+  store.set(sessionStorage, "session", { token: body.access_token, sub, idToken: body.id_token } satisfies Session);
+}
+
+/**
+ * サインアウト（OpenID Connect の RP-Initiated Logout。D-33）。手元のセッションを消してから、認可サーバーのログインも終わらせる。
+ * 認可サーバーのログインが残ると、次にログインを押したときに、前の人のまま通ってしまう。端末の passkey と写しは、人ごとに残す。
+ */
+function signOut() {
+  const session = store.get<Session>(sessionStorage, "session");
+  sessionStorage.removeItem("session");
+  const q = new URLSearchParams({ client_id: cfg.clientId, post_logout_redirect_uri: `${location.origin}/` });
+  if (session?.idToken) q.set("id_token_hint", session.idToken);
+  location.assign(`${cfg.issuer}/connect/logout?${q}`);
 }
 
 // ---- 3. この端末の passkey と、受信箱の番号を登録する（D-26） ----
@@ -442,6 +456,7 @@ async function render() {
 }
 
 $("login-button").onclick = () => startLogin().catch(fail);
+$("signout-button").onclick = signOut;
 $("register-button").onclick = async () => {
   try {
     await registerDevice(store.get<Session>(sessionStorage, "session")!);

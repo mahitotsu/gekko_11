@@ -22,4 +22,9 @@
   .note { color: var(--note); }
   pre { background: var(--panel); border: 1px solid var(--line); padding: 8px; overflow-x: auto; font-size: 0.85rem; }
   a { color: inherit; }
+  .signout { margin: 0 0 12px; }
 </style>
+
+<form th:fragment="signout" th:action="@{/logout}" method="post" class="signout">
+  <button type="submit" data-testid="signout">サインアウト</button>
+</form>

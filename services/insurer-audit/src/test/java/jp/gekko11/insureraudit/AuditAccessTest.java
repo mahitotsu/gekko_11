@@ -3,8 +3,10 @@ package jp.gekko11.insureraudit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import java.util.List;
 import java.util.Map;
@@ -15,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -29,6 +32,9 @@ class AuditAccessTest {
 
 	@MockitoBean
 	RecordSource source;
+
+	@Autowired
+	ClientRegistrationRepository clients;
 
 	@Test
 	void notLoggedInGoesToTheAuthorizationServerWithPkce() throws Exception {
@@ -56,6 +62,17 @@ class AuditAccessTest {
 		assertThat(page.indexOf("何と何を比べたか")).isLessThan(page.indexOf("第三者の記録との比較"));
 		assertThat(page.indexOf("比べた値")).isLessThan(page.indexOf("保険会社のシステムの契約の記録（Loki）"));
 		assertThat(page).contains("保険会社のシステムの自己申告 ↔ Loki の契約の記録").doesNotContain("data-testid=\"mismatches\"");
+	}
+
+	@Test
+	void signOutAlsoEndsTheLoginAtTheAuthorizationServer() throws Exception {
+		MvcResult result = this.mvc
+			.perform(post("/logout").with(csrf())
+				.with(oidcLogin().clientRegistration(this.clients.findByRegistrationId("insurer-auth"))))
+			.andReturn();
+		assertThat(result.getResponse().getRedirectedUrl()).startsWith("http://auth.secure.localhost:8081/connect/logout?")
+			.contains("id_token_hint=")
+			.contains("post_logout_redirect_uri=http://audit.secure.localhost:8081/");
 	}
 
 	@Test
