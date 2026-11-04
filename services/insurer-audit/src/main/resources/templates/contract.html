@@ -15,17 +15,43 @@
   <p>結果: <span data-testid="status" th:class="${report.ok} ? 'ok' : 'ng'" th:text="${report.status}">食い違いなし</span></p>
   <p>顧客 <span th:text="${report.contract['customer']}">alice</span>、nonce <code th:text="${report.nonce}">…</code></p>
 
-  <h2>確かめた点</h2>
-  <table>
-    <thead><tr><th>点</th><th>結果</th><th>中身</th></tr></thead>
+  <h2>何と何を比べたか</h2>
+  <table data-testid="summary">
+    <thead><tr><th>根拠</th><th>比べたもの</th><th>比べた結果</th><th class="result">判定</th></tr></thead>
     <tbody>
-    <tr th:each="c : ${report.checks}">
-      <td th:text="${c.name}">点</td>
-      <td><span th:class="${c.ok} ? 'ok' : 'ng'" th:text="${c.ok} ? '一致' : '食い違い'">一致</span></td>
-      <td th:text="${c.detail}">中身</td>
+    <tr th:each="g : ${report.groups()}">
+      <td th:text="${g.title}">根拠</td>
+      <td th:text="${g.compared}">何と何</td>
+      <td th:text="${g.summary}">要約</td>
+      <td class="result"><span th:class="${g.verdict == '一致'} ? 'ok' : (${g.ok} ? 'note' : 'ng')" th:text="${g.verdict}">一致</span></td>
     </tr>
     </tbody>
   </table>
+  <ul th:unless="${report.ok}" data-testid="mismatches">
+    <th:block th:each="c : ${report.checks}">
+      <li th:unless="${c.ok}"><span class="ng" th:text="${c.name}">点</span>: <span th:text="${c.detail}">中身</span></li>
+    </th:block>
+  </ul>
+  <p class="note">確かめていないこと: AI の説明の文が正しいか。Loki に届いた後の書き換え（クラスタの管理者を信頼する）。</p>
+
+  <h2>比べた値</h2>
+  <details th:each="g : ${report.groups()}" th:open="${!g.ok}" data-testid="summary-group">
+    <summary><span th:text="${g.title}">根拠</span>（<span th:class="${g.verdict == '一致'} ? 'ok' : (${g.ok} ? 'note' : 'ng')" th:text="${g.summary}">要約</span>）</summary>
+    <p class="who" th:text="${g.note}">説明</p>
+    <table>
+      <thead><tr><th>確かめたこと</th><th>値 1（書いた者）</th><th>値 2（書いた者）</th><th class="result">結果</th></tr></thead>
+      <tbody th:each="c : ${g.checks}">
+        <tr><th colspan="3" th:text="${c.name}">点</th><th class="result"><span th:class="${c.verdict() == '一致'} ? 'ok' : (${c.ok} ? 'note' : 'ng')" th:text="${c.verdict()}">一致</span></th></tr>
+        <tr th:each="v : ${c.comparisons}" data-testid="comparison">
+          <td th:text="${v.what}">確かめたこと</td>
+          <td><code th:text="${v.left}">値</code><br><span class="who" th:text="${v.leftBy}">書いた者</span></td>
+          <td><code th:text="${v.right}">値</code><br><span class="who" th:text="${v.rightBy}">書いた者</span></td>
+          <td class="result"><span th:class="${v.ok} ? 'ok' : 'ng'" th:text="${v.ok} ? '一致' : '食い違い'">一致</span></td>
+        </tr>
+        <tr th:if="${!c.ok or #lists.isEmpty(c.comparisons)}"><td colspan="4" th:text="${c.detail}">中身</td></tr>
+      </tbody>
+    </table>
+  </details>
 
   <h2>保険会社のシステムの契約の記録（Loki）</h2>
   <pre data-testid="contract-record" th:text="${pretty.of(report.contractRecord)}">{}</pre>

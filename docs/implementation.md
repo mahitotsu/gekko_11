@@ -51,7 +51,7 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `services/insurer-auth/src/main/java/jp/gekko11/insurerauth/` | 認可サーバーの拡張点（SAN の照合、交換の前の確かめ、トークンの形、有効性の問い合わせ） |
 | `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/ApplicationController.java` | 申込みの内容の確かめ（D9、D11〜D18） |
 | `services/*/src/vulnerable/java/` | vulnerable のビルドだけに入る、防御を外す受け口 |
-| `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/Reconciler.java` | 契約ごとの突き合わせ（D25）。書いた者を Pod の印で決める（D-32） |
+| `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/Reconciler.java` | 契約ごとの突き合わせ（D25）。書いた者を Pod の印で決める（D-32）。比べた値と書いた者を、根拠の強さごとにまとめて、画面と JSON に渡す |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/ClusterRecords.java` | Loki の問い合わせと、保険会社のシステムの自己申告（`/audit/records`）の読み手 |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/SecurityConfig.java` | 監査の担当のログイン（D-31） |
 | `deploy/k8s/logging/alloy.yaml` | Alloy の設定。名前空間ごとに、監査の記録だけをその名前空間の Loki へ送る |

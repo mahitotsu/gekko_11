@@ -116,6 +116,26 @@ class ReconcilerTest {
 	}
 
 	@Test
+	void reportShowsWhatWasComparedGroupedByTheStrengthOfTheEvidence() {
+		Reconciler.Report r = new Reconciler(regular(LIFE_240, Reconciler.ROUTE, ACT)).reconcile(NONCE);
+		assertThat(r.groups()).extracting(Reconciler.Group::title)
+			.containsExactly("第三者の記録との比較", "同じ書き手の記録どうしの比較", "自己申告との比較", "記録の書き手");
+		assertThat(r.groups().get(0).ok()).isFalse();
+		assertThat(r.groups().get(0).summary()).matches("\\d+ 点中 \\d+ 点が一致");
+		// 自己申告と Loki の記録は同じ案なので、同じ書き手どうしの比較では、案の食い違いに気付けない
+		assertThat(r.groups().get(1).ok()).isTrue();
+		Reconciler.Comparison plan = r.groups().get(0).checks().stream()
+			.flatMap((c) -> c.comparisons().stream())
+			.filter((v) -> v.what().equals("案"))
+			.findFirst().orElseThrow();
+		assertThat(plan).isEqualTo(new Reconciler.Comparison("案", "life-240", "保険会社のシステム", "fixed-60", "事務サービス", false));
+		// 判定が一致なら、比べた値もすべて一致で、判定と食い違わない
+		Reconciler.Report regular = new Reconciler(regular(FIXED_60, Reconciler.ROUTE, ACT)).reconcile(NONCE);
+		assertThat(regular.checks()).flatExtracting(Reconciler.Check::comparisons)
+			.isNotEmpty().allMatch(Reconciler.Comparison::ok);
+	}
+
+	@Test
 	void contractPlanDifferentFromSubmittedApplicationIsAMismatch() {
 		// シナリオ 10: 保険会社のシステムが、申込みと違う案で契約を記録した
 		Reconciler.Report r = new Reconciler(regular(LIFE_240, Reconciler.ROUTE, ACT)).reconcile(NONCE);
@@ -160,6 +180,10 @@ class ReconcilerTest {
 		Memory m = regular(FIXED_60, Reconciler.ROUTE, ACT);
 		m.entries.removeIf((e) -> "conversation".equals(e.kind()));
 		assertThat(new Reconciler(m).reconcile(NONCE).ok()).isTrue();
+		// 会話がなければ、比べていないと示し、一致と見せない
+		assertThat(new Reconciler(m).reconcile(NONCE).groups().get(2).verdict()).isEqualTo("比べていない");
+		assertThat(new Reconciler(regular(FIXED_60, Reconciler.ROUTE, ACT)).reconcile(NONCE).groups().get(2).verdict())
+			.isEqualTo("一致");
 
 		Memory shown = regular(FIXED_60, Reconciler.ROUTE, ACT);
 		shown.add("sales-agent", "app", rec("kind", "conversation", "thread", "t-1", "event", "frontend_tool", "name",

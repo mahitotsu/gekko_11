@@ -1,11 +1,13 @@
 package jp.gekko11.insureraudit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -36,6 +38,24 @@ class AuditAccessTest {
 		assertThat(authorize.getResponse().getRedirectedUrl()).startsWith("http://auth.secure.localhost:8081/oauth2/authorize?")
 			.contains("code_challenge=")
 			.contains("redirect_uri=http://audit.secure.localhost:8081/login/oauth2/code/insurer-auth");
+	}
+
+	@Test
+	void contractPageStartsWithWhatWasCompared() throws Exception {
+		ReconcilerTest.Memory records = ReconcilerTest.regular(Map.of("id", "fixed-60", "name", "確定年金"), Reconciler.ROUTE,
+				Map.of("sub", "insurer-mcp", "act", Map.of("sub", "sales-agent")));
+		given(this.source.selfReported()).willReturn(records.self);
+		given(this.source.search(any())).willAnswer((i) -> records.search(i.getArgument(0)));
+		String page = this.mvc
+			.perform(get("/contracts/n-1").with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_AUDITOR"))))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		assertThat(page).contains("食い違いなし", "第三者の記録との比較", "事務サービス ← 営業 AI エージェント", "fixed-60");
+		// 冒頭の表に、何と何を比べたかが出て、詳しい記録はその後に続く
+		assertThat(page.indexOf("何と何を比べたか")).isLessThan(page.indexOf("第三者の記録との比較"));
+		assertThat(page.indexOf("比べた値")).isLessThan(page.indexOf("保険会社のシステムの契約の記録（Loki）"));
+		assertThat(page).contains("保険会社のシステムの自己申告 ↔ Loki の契約の記録").doesNotContain("data-testid=\"mismatches\"");
 	}
 
 	@Test

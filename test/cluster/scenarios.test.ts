@@ -498,6 +498,10 @@ describe("監査サービス（D25）", () => {
     expect(report.chain.map((r: Json) => r.kind)).toEqual(["exchange", "exchange", "issue"]);
     expect(report.tool?.application_hash).toBe(report.contractRecord?.application_hash);
     expect(report.selfReport?.tokenJti).toBe(report.contractRecord?.token_jti);
+    // 何と何を比べたかが、書いた者つきで示され、判定と食い違わない
+    const compared = (report.checks as Json[]).flatMap((c) => c.comparisons as Json[]);
+    expect(compared.find((v) => v.what === "案")).toMatchObject({ left: "fixed-60", leftBy: "保険会社のシステム", right: "fixed-60", rightBy: "事務サービス", ok: true });
+    expect(compared.every((v) => v.ok)).toBe(true);
   });
 
   it("secure: 監査の担当でない者（顧客）は、ログインできても、監査の記録を読めない", async () => {

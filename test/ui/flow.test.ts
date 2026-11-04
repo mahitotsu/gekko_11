@@ -42,6 +42,8 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
     const audited = await auditor.contract(nonce, (status, rows) => status === "食い違いなし" && rows > 0);
     expect(audited.status).toBe("食い違いなし");
     expect(audited.conversationRows).toBeGreaterThan(0);
+    // 詳細の冒頭に、何と何を比べたかが出る
+    expect(await auditor.page.getByTestId("comparison").count()).toBeGreaterThan(0);
   });
 });
 
