@@ -14,16 +14,26 @@ export interface RunInput {
 
 export type AgentEvent = BaseEvent & Record<string, any>;
 
-/** 1 回分を走らせ、イベントを 1 つずつ渡す。RUN_FINISHED か RUN_ERROR で終わる。 */
-export async function runOnce(url: string, headers: Record<string, string>, input: RunInput, onEvent: (e: AgentEvent) => void): Promise<void> {
+/** 営業 AI エージェントが断った。status が 401 なら、トークン A の期限切れなどで、ログインし直す（D-34）。 */
+export class AgentRefused extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** 1 回分を走らせ、イベントを 1 つずつ渡す。RUN_FINISHED か RUN_ERROR で終わる。signal で止められる。 */
+export async function runOnce(url: string, headers: Record<string, string>, input: RunInput, onEvent: (e: AgentEvent) => void, signal?: AbortSignal): Promise<void> {
   const res = await fetch(url, {
+    signal,
     method: "POST",
     headers: { ...headers, "content-type": "application/json", accept: "text/event-stream" },
     body: JSON.stringify(input),
   });
   if (!res.ok || !res.body) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(`営業 AI エージェントが断った: ${body.error ?? res.status}`);
+    throw new AgentRefused(res.status, `営業 AI エージェントが断った: ${body.error ?? res.status}`);
   }
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";

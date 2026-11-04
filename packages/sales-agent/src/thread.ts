@@ -198,6 +198,8 @@ export class Thread {
     } catch {
       return content;
     }
+    // 自由入力の文が、JSON として読めただけの値（「null」「123」など）は、そのままの文として扱う
+    if (answer === null || typeof answer !== "object") return content;
     if (answer.declined) return "顧客は、この書類への署名を断りました。";
     if (name === "present_intent" && answer.assertion) {
       this.signed = { intent: (answer.intent ?? args.intent) as Intent, intentAssertion: answer.assertion as Signed["intentAssertion"] };

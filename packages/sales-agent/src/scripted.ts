@@ -15,7 +15,7 @@ export interface Plan {
 
 /** 顧客の文 1 つに応じる（営業 AI エージェントの 1 回の番）。 */
 export async function scriptedTurn(t: Thread, message: string, call: typeof callMcp = callMcp): Promise<void> {
-  if (/契約|一覧|照会/.test(message)) {
+  if (/契約の?(一覧|状況)|照会/.test(message)) {
     const r = await call(t.ctx, "list_contracts");
     t.say(r.isError ? `契約を調べられませんでした: ${JSON.stringify(r.body)}` : `契約は ${r.body.contracts.length} 件です。`);
     return;

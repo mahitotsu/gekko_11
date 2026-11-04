@@ -1,5 +1,6 @@
 // 画面の基本の流れ: ログイン → passkey と受信箱の登録 → 相談 → 署名を確かめた案 → 確認 → 署名 → 提出 → 直送の照合（architecture の 3 章）。
 // ブラウザは入口を通り、トークンと DPoP の鍵と passkey は、ブラウザの中にある（D-18）。secure では、本物の Claude が案を示す。
+import type { Page } from "playwright-core";
 import { afterEach, describe, expect, it } from "vitest";
 import { publicOrigin, records, setDefenses, type Ns } from "../cluster/world.ts";
 import { BrowserAuditor, BrowserCustomer, PLANS } from "./browser.ts";
@@ -44,6 +45,130 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
     expect(audited.conversationRows).toBeGreaterThan(0);
     // 詳細の冒頭に、何と何を比べたかが出る
     expect(await auditor.page.getByTestId("comparison").count()).toBeGreaterThan(0);
+  });
+});
+
+describe("カードで進む申込み（vulnerable の台本）", () => {
+  const start = async () => {
+    await setDefenses({});
+    alice = await new BrowserCustomer("vulnerable", "alice").ready();
+    return alice.page;
+  };
+  const send = async (page: Page, text: string) => {
+    await page.getByTestId("free-input").fill(text);
+    await page.getByTestId("free-send").click();
+  };
+
+  it("「その他」の文が意向確認書面に出て、入力欄は許したカードにだけある", async () => {
+    const page = await start();
+    await send(page, "老後に備えたい");
+    await expect.poll(() => page.getByTestId("ask-other-input").isVisible()).toBe(true);
+    expect(await page.getByTestId("free-input").count()).toBe(0);
+    await page.getByTestId("ask-other-input").fill("10 年だけ受け取りたい");
+    await page.getByTestId("ask-other-send").click();
+    await page.getByTestId("choose-fixed-60").waitFor();
+    // 案のカードに、入力欄はない。段階も進む
+    expect(await page.locator("textarea:visible").count()).toBe(0);
+    expect(await page.locator("#steps li[aria-current]").getAttribute("data-step")).toBe("offers");
+    expect(await page.locator("#steps li.done").getAttribute("data-step")).toBe("consult");
+    await page.getByTestId("choose-fixed-60").click();
+    await page.getByTestId("sign-intent").waitFor();
+    expect(await page.locator("textarea:visible").count()).toBe(0);
+    expect(await page.getByTestId("intent-confirm").textContent()).toContain("10 年だけ受け取りたい");
+    // 終わったカードは閉じ、答えを 1 行で読める。開けば中身を読める
+    const offers = page.getByTestId("offers");
+    expect(await offers.getAttribute("open")).toBeNull();
+    expect(await offers.locator("summary").textContent()).toContain(PLANS["fixed-60"]!.name);
+  });
+
+  it("「null」と答えても止まらない", async () => {
+    const page = await start();
+    await send(page, "老後に備えたい");
+    await page.getByTestId("ask-other-input").fill("null");
+    await page.getByTestId("ask-other-send").click();
+    await page.getByTestId("choose-fixed-60").waitFor();
+  });
+
+  it("道具なしで番が終わると、続きのカードが出て、そこから案へ進める", async () => {
+    const page = await start();
+    await send(page, "契約の一覧を見せて");
+    await page.locator("[data-tool=continue] .agent").waitFor();
+    expect(await page.locator("[data-tool=continue] .agent").textContent()).toMatch(/契約は \d+ 件/);
+    await send(page, "老後に備えたい");
+    await page.getByTestId("ask-option-0").waitFor();
+  });
+
+  it("新しい申し込みで、案のカードから始め直し、別の nonce で申し込める。完了の後は、照合が押さなくても出る", async () => {
+    const page = await start();
+    expect(await page.getByTestId("new-application").isVisible()).toBe(false);
+    await alice!.chat("老後に備えたい");
+    const first = await alice!.nonce;
+    await page.getByTestId("new-application").click();
+    await page.getByTestId("free-input").waitFor();
+    expect(await page.getByTestId("offers").count()).toBe(0);
+    expect(await page.locator("#steps li[aria-current]").getAttribute("data-step")).toBe("consult");
+
+    await alice!.chat("老後に備えたい");
+    const second = await alice!.nonce;
+    expect(second).not.toBe(first);
+    await alice!.choose("fixed-60");
+    expect(await alice!.approveIfShows(PLANS["fixed-60"]!)).toBe(true);
+    await expect.poll(() => page.getByTestId(`reconcile-${second}`).getAttribute("data-status"), { timeout: 15_000 }).toBe("match");
+    // 完了の後は、確かめずに始め直せる
+    await page.getByTestId("new-application").click();
+    await page.getByTestId("free-input").waitFor();
+    expect(await page.getByTestId("new-confirm-box").isVisible()).toBe(false);
+  });
+
+  it("提出の途中の新しい申し込みは、契約になりうることを確かめてから始め直す", async () => {
+    const page = await start();
+    await alice!.chat("老後に備えたい");
+    await alice!.choose("fixed-60");
+    await page.getByTestId("sign-intent").click();
+    await page.getByTestId("sign-application").waitFor();
+    // 提出の要求を遅らせて、途中の状態を作る
+    await page.route("**/agui", async (route) => {
+      await new Promise((r) => setTimeout(r, 3000));
+      await route.continue().catch(() => undefined);
+    });
+    await page.getByTestId("sign-application").click();
+    await page.getByTestId("agent-status").and(page.locator("[data-state=busy]")).waitFor();
+    await page.getByTestId("new-application").click();
+    await page.getByTestId("new-confirm-box").waitFor();
+    await page.getByTestId("new-back").click();
+    expect(await page.getByTestId("new-confirm-box").isVisible()).toBe(false);
+    await page.getByTestId("new-application").click();
+    await page.getByTestId("new-confirm").click();
+    await page.getByTestId("free-input").waitFor();
+    expect(await page.locator("[data-tool=application]").count()).toBe(0);
+  });
+
+  it("トークンが切れると、token-guard が断り、ログインし直しへ案内する", async () => {
+    const page = await start();
+    // 期限切れと同じく、token-guard が断るトークンに替える
+    await page.evaluate(() => {
+      const session = JSON.parse(sessionStorage.getItem("session")!);
+      sessionStorage.setItem("session", JSON.stringify({ ...session, token: "expired" }));
+    });
+    await page.reload();
+    await send(page, "老後に備えたい");
+    await page.getByTestId("relogin").click();
+    await page.getByTestId("free-input").waitFor({ timeout: 30_000 });
+    expect(await alice!.whoami()).toBe("alice");
+  });
+
+  it("署名した申込書を送れなかったときは、写しを残さない", async () => {
+    const page = await start();
+    await alice!.chat("老後に備えたい");
+    const nonce = await alice!.nonce;
+    await alice!.choose("fixed-60");
+    await page.getByTestId("sign-intent").click();
+    await page.getByTestId("sign-application").waitFor();
+    // 提出の要求が、トークンの期限切れで断られる
+    await page.route("**/agui", (route) => route.fulfill({ status: 401, headers: { "access-control-allow-origin": alice!.app }, json: { error: "expired" } }));
+    await page.getByTestId("sign-application").click();
+    await page.getByTestId("relogin").waitFor();
+    expect(await page.evaluate(() => localStorage.getItem("copies:alice") ?? "[]")).not.toContain(nonce);
   });
 });
 

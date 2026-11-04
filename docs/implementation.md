@@ -58,7 +58,7 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `packages/token-guard/src/verify.ts` | 受け口の確かめ（D1、D5〜D8、D10、D20、D26、D27） |
 | `packages/token-guard/src/exchange.ts` | 出口の交換（D2） |
 | `packages/customer-app/web/checks.ts` | 画面の確かめ（D21〜D23） |
-| `packages/customer-app/web/main.ts` | 画面の流れ（ログイン、登録、相談、確認、署名、照合） |
+| `packages/customer-app/web/main.ts` | 画面の流れ（ログイン、登録、カードで進む申込み、確認、署名、照合。D-34） |
 | `packages/sales-agent/src/agui.ts` | AG-UI の受け口（`POST /agui`。RunAgentInput を確かめ、SSE でイベントを返す） |
 | `packages/sales-agent/src/thread.ts` | 会話ごとの状態と、画面側の道具の呼び出しと待ち合わせ（D-29）。会話の記録を、秘密を伏せて書き出す（D-32） |
 | `packages/sales-agent/src/claude.ts`、`scripted.ts` | Claude と台本。同じ道具を呼ぶ |
@@ -120,6 +120,8 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **`actor_token` は、替えるたびに取り直す:** SVID が入れ替わると、前の証明書に結んだ `actor_token` は使えないためである（F-G54）。
 - **入口は、TLS なしの localhost である:** ブラウザと入口の間は、利用者の端末の中のループバックで、http で受ける。ブラウザは localhost を安全な文脈として扱うので、passkey と WebCrypto が動く（F-G62、F-G63）。本番では、信頼された証明書の HTTPS にする。issuer も http になる。
 - **受信箱の番号は、端末の保存領域にある:** 番号を持つ者は、その受信箱を読める（D-26）。署名済み申込の写しも、同じ保存領域に置く。
+- **新しい申し込みで捨てた会話は、サーバーに残る:** 画面は要求を止めて会話を捨てるが、営業 AI エージェントには、使われなくなるまで最大 15 分残る。提出の途中なら、始め直しても契約になることがある（D-34）。
+- **トークンが切れると、最初からやり直す:** トークン A を更新する仕組みはない。切れたらログインし直し、入力した内容は消える（D-34）。
 - **会話の状態は、営業 AI エージェントのメモリにある:** threadId ごとの会話（Claude の会話、直前の提示、署名した書類）を、1 つの複製のメモリに持つ。再起動で消え、15 分使われなければ捨てる。トークン A は 5 分で切れるので、会話はその間に終える。
 - **記録の集約は、教材の規模である:** Loki は、名前空間ごとに 1 つのプロセスで動き、認証を持たない。記録は、Pod の一時的な領域（emptyDir）のファイルに保存する。Pod を作り直すと、記録は消える。Alloy も 1 つで、止まっている間の記録は届かない。
 - **サインアウトは、もう一方のアプリのセッションを終わらせない:** 押したアプリと認可サーバーのログインだけが終わる（D-33）。

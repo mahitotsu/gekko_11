@@ -61,6 +61,30 @@ describe("台本の会話（AG-UI のイベント）", () => {
     expect(calls[1]?.args).toMatchObject({ application: { plan: plans[0], intentSignature: "sig-1" } });
   });
 
+  it("自由入力の答えで進み、JSON として読める文（null など）でも止まらない", async () => {
+    const t = new Thread("th-free", "alice");
+    const calls: { name: string; args?: Record<string, unknown> }[] = [];
+    const done = scriptedTurn(t, "個人年金の契約を考えています", fakeMcp(calls)).then(() => t.end());
+    // 「契約」の語を含む希望でも、一覧の照会にならず、質問へ進む
+    let c = toolCall(await nextRun(t));
+    expect(c.name).toBe("ask_customer");
+    t.answer(c.id, JSON.stringify({ answer: "10 年だけ受け取りたい" }));
+    c = toolCall(await nextRun(t));
+    t.answer(c.id, JSON.stringify({ planId: "fixed-60" }));
+    c = toolCall(await nextRun(t));
+    expect(JSON.stringify(c.args)).toContain("10 年だけ受け取りたい");
+    t.answer(c.id, JSON.stringify({ declined: true }));
+    await done;
+
+    for (const text of ["null", "123", "true", "\"文\""]) {
+      const n = new Thread(`th-${text}`, "alice");
+      const pending = n.frontend("ask_customer", { question: "質問", options: ["a", "b"] });
+      const q = toolCall(await nextRun(n));
+      n.answer(q.id, text);
+      expect(await pending).toBe(text);
+    }
+  });
+
   it("書類への署名を断ると、提出しない", async () => {
     const t = new Thread("th-2", "alice");
     const calls: { name: string }[] = [];

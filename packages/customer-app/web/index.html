@@ -11,8 +11,26 @@
   .warning { color: #b00; }
   .user { text-align: right; background: #8881; padding: .4rem .8rem; border-radius: .4rem; }
   .agent table, .tool table { border-collapse: collapse; margin: .4rem 0; }
-  .tool { border-left: 4px solid #8886; }
-  .tool h3 { margin: 0 0 .4rem; font-size: 1rem; }
+  #steps { display: flex; flex-wrap: wrap; gap: .4rem; list-style: none; padding: 0; margin: 0 0 1rem; }
+  #steps li { margin: 0; padding: .1rem .7rem; border: 1px solid #8886; border-radius: 1rem; font-size: .9rem; color: #888; }
+  #steps li.done { color: #1a7f37; border-color: #1a7f37; }
+  #steps li.done::before { content: "✓ "; }
+  #steps li[aria-current] { color: inherit; font-weight: bold; border-color: currentColor; }
+  .tool { border: 1px solid #8884; border-left: 4px solid #8886; border-radius: .4rem; padding: .6rem .8rem; margin: .6rem 0; }
+  .tool[open] { border-left-color: #2f6fdd; }
+  .tool button { margin: .2rem .4rem .2rem 0; }
+  .tool td:first-child { white-space: nowrap; }
+  .tool summary { cursor: pointer; font-weight: bold; overflow-wrap: anywhere; }
+  .tool:not([open]) summary { font-weight: normal; color: #888; }
+  .frame-label { margin: 0 0 .2rem; font-size: .8rem; font-weight: bold; color: #888; }
+  .agent { background: #8881; border-radius: .4rem; padding: .5rem .8rem; margin: .5rem 0; }
+  .issued { border: 1px solid #1a7f3788; border-radius: .4rem; padding: .5rem .8rem; margin: .5rem 0; }
+  .issued ul { padding-left: 1.2rem; margin: .2rem 0; }
+  .free { margin-top: .6rem; }
+  .free label { display: block; margin-bottom: .2rem; }
+  .free textarea { display: block; width: 100%; box-sizing: border-box; margin-bottom: .3rem; font: inherit; }
+  .hint { margin: .3rem 0 0; font-size: .8rem; color: #888; }
+  .confirm { border: 1px solid #b00; border-radius: .4rem; padding: .5rem .8rem; }
   .chosen { font-weight: bold; outline: 2px solid #1a7f37; }
   #agent-status { color: #888; }
   .tab { padding: .4rem 1rem; border: 1px solid #8886; background: none; border-radius: .4rem .4rem 0 0; }
@@ -47,23 +65,26 @@
 </section>
 
 <nav id="tabs" hidden>
-  <button id="tab-chat" data-testid="tab-chat" type="button" class="tab active">相談して申し込む</button>
+  <button id="tab-apply" data-testid="tab-apply" type="button" class="tab active">申し込む</button>
   <button id="tab-inbox" data-testid="tab-inbox" type="button" class="tab">受信箱と契約</button>
 </nav>
 
-<section id="chat" hidden>
-  <h2>営業 AI エージェントと相談する</h2>
-  <p>営業 AI エージェントが、質問をし、案を示し、書類を用意して、署名をお願いします。署名した書類は、営業 AI エージェントが保険会社へ取り次ぎます。</p>
-  <div id="conversation" data-testid="conversation"></div>
+<section id="apply" hidden>
+  <ol id="steps" data-testid="steps">
+    <li data-step="consult">相談</li>
+    <li data-step="offers">案</li>
+    <li data-step="intent">意向確認</li>
+    <li data-step="application">申込み</li>
+    <li data-step="reconcile">照合</li>
+  </ol>
+  <div id="cards" data-testid="cards"></div>
   <p id="agent-status" data-testid="agent-status" data-state="idle"></p>
-  <textarea id="chat-input" data-testid="chat-input" rows="2" cols="50">老後に備えて、個人年金保険を考えています。</textarea>
-  <button id="chat-send" data-testid="chat-send" type="button">送る</button>
-  <div id="session-check" hidden>
-    <h2>今回の申込みの照合</h2>
-    <p>保険会社から、営業 AI エージェントを通らずに直接届いた契約内容と、今回署名した申込書の写しを突き合わせます。</p>
-    <button id="check-session" data-testid="check-session" type="button">今回の申込みを照合する</button>
-    <ul id="reconcile"></ul>
+  <div id="new-confirm-box" class="confirm" data-testid="new-confirm-box" hidden>
+    <p>申込書に署名した後で、営業 AI エージェントが提出を進めています。ここで始め直しても、契約になることがあります。結果は「受信箱と契約」で確かめてください。</p>
+    <button id="new-confirm" data-testid="new-confirm" type="button">それでも始め直す</button>
+    <button id="new-back" data-testid="new-back" type="button">戻る</button>
   </div>
+  <p><button id="new-application" data-testid="new-application" type="button" hidden>新しい申し込み</button></p>
 </section>
 
 <section id="inbox" hidden>

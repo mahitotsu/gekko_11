@@ -83,7 +83,7 @@ export class BrowserCustomer {
 
   async registerPasskey() {
     await this.page.getByTestId("register-passkey").click();
-    await this.page.getByTestId("chat-send").waitFor();
+    await this.page.getByTestId("free-send").waitFor();
   }
 
   /** ログインと登録までを済ませる。 */
@@ -111,8 +111,8 @@ export class BrowserCustomer {
    */
   async chat(message = "老後に備えて、個人年金保険を考えています。") {
     for (const text of [message, "保険会社の案を示して、選ばせてください。"]) {
-      await this.page.getByTestId("chat-input").fill(text);
-      await this.page.getByTestId("chat-send").click();
+      await this.page.getByTestId("free-input").fill(text);
+      await this.page.getByTestId("free-send").click();
       for (let i = 0; i < 6; i++) {
         await this.page.locator("[data-testid^=plan-]:visible, [data-testid=ask-option-0]:visible:enabled, [data-testid=error]:visible, [data-testid=agent-status][data-state=idle]")
           .first().waitFor({ timeout: 120_000 }).catch(() => undefined);
@@ -155,8 +155,8 @@ export class BrowserCustomer {
       }
       if (!asked && (await this.page.getByTestId("agent-status").getAttribute("data-state")) === "idle") {
         asked = true;
-        await this.page.getByTestId("chat-input").fill("選んだ案で、意向確認書面を示してください。");
-        await this.page.getByTestId("chat-send").click();
+        await this.page.getByTestId("free-input").fill("選んだ案で、意向確認書面を示してください。");
+        await this.page.getByTestId("free-send").click();
         await this.page.waitForTimeout(300);
       }
     }
