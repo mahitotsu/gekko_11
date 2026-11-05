@@ -5,7 +5,7 @@
 **この文書の読み手:** 実装を読む人、動かす人、手を入れる人。Docker と Node.js を使え、Kubernetes の基本（Pod、名前空間）を知っている。Java と Python は手元に要らない。読んだ後に、どのフォルダに何があるかが分かり、クラスタを組み立ててテストを回せる。構成と標準仕様は[アーキテクチャ](architecture.md)、シナリオと再現手順は[シナリオ](scenarios.md)にある。
 
 ## 要旨
-- **構成:** サービスごとに言語を選び、k3d の 1 つのクラスタの secure と vulnerable の名前空間で動かす（D-22）。保険会社のシステム、認可サーバー、監査サービスは Java、事務サービスは Python、それ以外は TypeScript である。監査の記録は、Alloy が名前空間ごとの Loki に集める（D-30）。
+- **構成:** サービスごとに言語を選び、k3d の 1 つのクラスタの secure と vulnerable の名前空間で動かす（D-22）。ログインサーバーは Keycloak に Java の拡張を足したものである。保険会社のシステム、認可サーバー、監査サービスは Java、事務サービスは Python、それ以外は TypeScript である。監査の記録は、Alloy が名前空間ごとの Loki に集める（D-30）。
 - **動かし方:** `npm test` が 3 つの言語の単体テストを回す。`npm run cluster:deploy` がクラスタを組み立て、`npm run cluster:test` が全シナリオと画面のテストを確かめる。画面は、ブラウザで `http://app.secure.localhost:8081` を開いて使う。監査の画面は `http://audit.secure.localhost:8081` である。
 - **防御を外す受け口は、vulnerable のイメージだけにある:** 防御の ID ごとに、管理のポートで実行中に外す。教材のための意図的な実装で、本番の部品として使わない（D-24）。
 - **営業 AI エージェント:** 顧客と AG-UI 1.0 で会話する（D-29）。secure では本物の Claude（既定は Haiku）、vulnerable では台本で動く（D-23）。
@@ -14,7 +14,8 @@
 ## 1. 技術スタックは、サービスごとに選んだ言語と、k3d の基盤である
 | 領域 | 使うもの | 使う場所 |
 |---|---|---|
-| 認可サーバー | Java 21、Spring Boot 3.5、Spring Authorization Server 1.5、webauthn4j | `services/insurer-auth` |
+| ログインサーバー | Keycloak 26.8.1、Java 21 の拡張（取決めの範囲の処理、発行の記録） | `services/insurer-login` |
+| 認可サーバー | Java 21、Spring Boot 3.5、Spring Authorization Server 1.5、Spring Security の Resource Server 6.5、webauthn4j | `services/insurer-auth` |
 | 保険会社のシステム | Java 21、Spring Boot 3.5、nimbus-jose-jwt、java-json-canonicalization（JCS）、webauthn4j | `services/insurer-backend` |
 | 事務サービス | Python 3.12、FastMCP 4.1、httpx2 | `services/insurer-mcp` |
 | 監査サービス | Java 21、Spring Boot 3.5、Spring Security の OAuth2 Client 6.5、Thymeleaf、java-json-canonicalization（JCS） | `services/insurer-audit` |
@@ -25,12 +26,13 @@
 | 記録の集約 | Grafana Alloy 1.20（`loki.source.kubernetes`）、Grafana Loki 3.7 | `deploy/k8s/logging/`、`deploy/render.ts` |
 | テスト | JUnit、pytest、vitest、Playwright 1.64（Docker のブラウザに playwright-core でつなぐ） | 各サービスの `test`、`test/cluster/`、`test/ui/` |
 
-TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。Java と Python は、Docker の中でビルドし、テストする。部品を選んだ理由は、判断（D-16、D-19、D-22、D-30、D-31）にある。
+TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。Java と Python は、Docker の中でビルドし、テストする。部品を選んだ理由は、判断（D-16、D-19、D-22、D-30、D-31、D-35）にある。
 
 ## 2. フォルダ構成は、言語ごとのサービスと、クラスタの組み立てと、テストである
 ```text
 services/
-  insurer-auth/      認可サーバー（トークンの発行と交換、本人確認の属性、passkey の登録、失効、有効性の問い合わせ）
+  insurer-login/     ログインサーバー（Keycloak の realm の設定と拡張。ログイン、利用者の名簿、本人確認の属性、A と ID トークンと P の発行）
+  insurer-auth/      認可サーバー（A の取り込み、B と C への交換、passkey の登録、失効、有効性の問い合わせ）
   insurer-backend/   保険会社のシステム（案の署名、申込みの検証、契約の記録、直送、監査の役への記録）
   insurer-mcp/       事務サービス（MCP の道具と、ツールの呼び出しの記録）
   insurer-audit/     監査サービス（監査の担当のログイン、記録の読み手、突き合わせ、監査の画面）
@@ -48,9 +50,11 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 
 | ファイル | 役割 |
 |---|---|
-| `services/insurer-auth/src/main/java/jp/gekko11/insurerauth/` | 認可サーバーの拡張点（SAN の照合、交換の前の確かめ、トークンの形、有効性の問い合わせ） |
+| `services/insurer-login/realm/insurer.json` | 利用者、役割、クライアント、スコープ `apply` と `passkeys`、SPIRE との信頼の設定 |
+| `services/insurer-login/src/main/java/jp/gekko11/insurerlogin/` | 取決めの範囲の処理と、A の発行の記録（D-39） |
+| `services/insurer-auth/src/main/java/jp/gekko11/insurerauth/` | 認可サーバーの拡張点（SAN の照合、A の取り込み（D28）、交換の前の確かめ、トークンの形、有効性の問い合わせ） |
 | `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/ApplicationController.java` | 申込みの内容の確かめ（D9、D11〜D18） |
-| `services/*/src/vulnerable/java/` | vulnerable のビルドだけに入る、防御を外す受け口 |
+| `services/*/src/vulnerable/` | vulnerable のビルドだけに入る、防御を外す受け口 |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/Reconciler.java` | 契約ごとの突き合わせ（D25）。書いた者を Pod の印で決める（D-32）。比べた値と書いた者を、根拠の強さごとにまとめて、画面と JSON に渡す |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/ClusterRecords.java` | Loki の問い合わせと、保険会社のシステムの自己申告（`/audit/records`）の読み手 |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/SecurityConfig.java` | 監査の担当のログイン（D-31） |
@@ -89,17 +93,20 @@ npm run cluster:down     # クラスタを消す
 | 名前 | 届く先 |
 |---|---|
 | `app.<名前空間>.localhost` | 顧客のアプリの配信元（画面、設定、提示の公開鍵、受信箱） |
-| `auth.<名前空間>.localhost` | 認可サーバー（ブラウザに出す経路だけ）。issuer も、この名前である |
+| `login.<名前空間>.localhost` | ログインサーバー（ブラウザに出す経路だけ）。A の issuer は `http://login.<名前空間>.localhost:<ポート>/realms/insurer` である |
+| `auth.<名前空間>.localhost` | 認可サーバー（passkey の登録と確かめだけ）。B と C の issuer も、この名前である |
 | `agent.<名前空間>.localhost` | 営業 AI エージェント（AG-UI の受け口 `POST /agui`） |
 | `audit.<名前空間>.localhost` | 監査サービス（監査の画面と、同じ中身の JSON の受け口 `/api/contracts`） |
 
 | 動くもの | ポート | 主な環境変数 |
 |---|---|---|
-| 認可サーバー | 8443（TLS、証明書は任意） | `ISSUER`、`NAMESPACE`、`SVID_DIR`、`RP_ID`、`WEBAUTHN_ORIGINS`、`CUSTOMER_REDIRECT_URI`、`AUDIT_REDIRECT_URI` |
+| ログインサーバー | 8443（Envoy）、8080（Pod の中だけ） | `KC_HOSTNAME`、`KC_TRUSTSTORE_PATHS`。realm の設定が読む `NAMESPACE`、`TRUST_DOMAIN`、`AUTH_ISSUER`、`APP_ORIGIN`、`AUDIT_ORIGIN` |
+| 認可サーバー | 8443（TLS、証明書は任意） | `ISSUER`、`NAMESPACE`、`SVID_DIR`、`RP_ID`、`WEBAUTHN_ORIGINS`、`LOGIN_ISSUER`、`LOGIN_JWKS_URL` |
+| SPIRE の bundle の受け口 | 8443（`spire` の名前空間。証明書は `deploy/cluster.sh` が作り、`.secrets/` に置く） | — |
 | 営業 AI エージェント、顧客のアプリ、監査サービスの受け口（Envoy） | 8443（TLS、証明書なし） | — |
 | 事務サービス、保険会社のシステム、直送の受け口（Envoy） | 9443（mTLS） | — |
 | 入口（Envoy） | 8080（Pod の中）、NodePort 30081 と 30082 | — |
-| Envoy の出口 | 15101（認可サーバー）、15102（次の段）、15103（顧客のアプリ）、15104（顧客のアプリから、保険会社のシステムの提示の公開鍵） | — |
+| Envoy の出口 | 15101（認可サーバー）、15102（次の段）、15103（顧客のアプリ）、15104（顧客のアプリから、保険会社のシステムの提示の公開鍵）、15105（ログインサーバー） | — |
 | アプリ、token-guard | 8080、9100（Pod の中だけ） | `SERVICE`、`INGRESS_PROOF`、`PUBLIC_ORIGIN`、`ALLOWED_CALLERS`、`NEXT_SERVICE`、`CLAUDE_MODEL`、顧客のアプリは `ISSUER`、`RP_ID`、`APP_ORIGIN`、`AGENT_ORIGIN`、監査サービスは `ISSUER`、`PUBLIC_ORIGIN`、`LOKI_URL` |
 | Loki | 3100（名前空間の中の HTTP。Alloy と監査サービスだけが届く） | — |
 | 管理のポート（vulnerable だけ） | 9090（token-guard）、9091（アプリ） | — |
@@ -107,13 +114,13 @@ npm run cluster:down     # クラスタを消す
 イメージのビルドは、Maven、pip、npm の取り込みを BuildKit のキャッシュに置き、ビルドの間で使い回す。
 
 ## 4. 防御は、vulnerable の管理のポートで、防御の ID ごとに外す
-vulnerable のイメージの token-guard、認可サーバー、保険会社のシステム、顧客のアプリの配信元は、管理のポートで `GET /defenses` と `PUT /defenses`（例: `{"off": {"D7": "off"}}`）を受ける。顧客のアプリの画面は、開くときに配信元の `/defenses` を読み、外された D21〜D23 を飛ばす。営業 AI エージェントは、`PUT /tamper` で、乗っ取られた AI の書き換えを入れる。`PUT /forge-audit` は、本文をそのまま監査の記録として書き、ほかのサービスを名乗る記録の偽装を再現する。切り替えはメモリ上で行い、Pod は入れ替えない。どの防御をどの部品が受けるかは、[シナリオ](scenarios.md)の 2-3 の表にある。
+vulnerable のイメージでは、次の部品が、管理のポートで防御を切り替える。token-guard、ログインサーバー、認可サーバー、保険会社のシステム、顧客のアプリの配信元である。これらは、管理のポートで `GET /defenses` と `PUT /defenses`（例: `{"off": {"D7": "off"}}`）を受ける。顧客のアプリの画面は、開くときに配信元の `/defenses` を読み、外された D21〜D23 を飛ばす。営業 AI エージェントは、`PUT /tamper` で、乗っ取られた AI の書き換えを入れる。`PUT /forge-audit` は、本文をそのまま監査の記録として書き、ほかのサービスを名乗る記録の偽装を再現する。切り替えはメモリ上で行い、Pod は入れ替えない。どの防御をどの部品が受けるかは、[シナリオ](scenarios.md)の 2-3 の表にある。
 
-secure のイメージは、ビルドの時点で、この受け口を含まない。Java は Maven の profile、TypeScript はファイルの置き換えで分ける。画面は、置き換えた後にまとめるので、secure の画面は外す道を持たない。事務サービスは、外す防御を token-guard に移したので、イメージは 1 つである。
+secure のイメージは、ビルドの時点で、この受け口を含まない。Java とログインサーバーの拡張は Maven の profile、TypeScript はファイルの置き換えで分ける。画面は、置き換えた後にまとめるので、secure の画面は外す道を持たない。事務サービスは、外す防御を token-guard に移したので、イメージは 1 つである。
 
 ## 5. 簡略化した点
-- **業務の記憶と鍵は、メモリ上にある:** 認可サーバーと保険会社のシステムの記憶（passkey の登録、契約の記録、`nonce`）と、発行と提示の鍵は、起動ごとに作る。再起動で消える。認可サーバーが登録を忘れた後は、顧客のアプリが、ログインの直後に本人の passkey の一覧（`/passkeys/mine`）と照らして気付き、登録し直しに案内する。
-- **ログインは固定ユーザーである:** 顧客の alice、bob、mallory、hanako と、監査の担当の kansa が、パスワード `demo` で入れる。本人確認の記録は、認可サーバーに固定で持つ。alice、bob、mallory はテストが使う。手で画面を試すときは hanako を使う。テストの申込みが、受信箱に混ざらないためである。監査の画面は、kansa で見る。同じブラウザで替えるときは、画面のサインアウトを使う。
+- **業務の記憶と鍵は、メモリ上か Pod の中にある:** 認可サーバーと保険会社のシステムの記憶（passkey の登録、契約の記録、`nonce`）と、発行と提示の鍵は、起動ごとに作る。ログインサーバーは、Pod の中のファイルに記憶を置き、起動ごとに realm の設定を読み込む。どちらも再起動で消える。認可サーバーが登録を忘れた後は、顧客のアプリが、ログインの直後に本人の passkey の一覧（`/passkeys/mine`）と照らして気付き、登録し直しに案内する。
+- **ログインは固定ユーザーである:** 顧客の alice、bob、mallory、hanako と、監査の担当の kansa が、パスワード `demo` で入れる。本人確認の記録は、ログインサーバーの realm の設定に固定で持つ。`sub` は、利用者の ID を固定して、この名前にする。alice、bob、mallory はテストが使う。手で画面を試すときは hanako を使う。テストの申込みが、受信箱に混ざらないためである。監査の画面は、kansa で見る。同じブラウザで替えるときは、画面のサインアウトを使う。
 - **passkey の署名回数を見ない:** 同期される passkey は回数が 0 のままのため、重複は `nonce` で防ぐ。
 - **確かめの役は、乗っ取られた複製として動く:** probe は、そのサービスの ServiceAccount で動き、同じ SPIFFE ID を持つ。別の SVID が要る役は、別のノードに置く（F-G53）。
 - **上流への接続は、要求ごとにつなぎ直す:** SVID が入れ替わった後に、前の証明書の接続を使い回すと、新しい証明書に結んだトークンと食い違う。要求ごとに新しくつなぎ、そのときの SVID で示す（F-G54）。
@@ -124,7 +131,9 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **トークンが切れると、最初からやり直す:** トークン A を更新する仕組みはない。切れたらログインし直し、入力した内容は消える（D-34）。
 - **会話の状態は、営業 AI エージェントのメモリにある:** threadId ごとの会話（Claude の会話、直前の提示、署名した書類）を、1 つの複製のメモリに持つ。再起動で消え、15 分使われなければ捨てる。トークン A は 5 分で切れるので、会話はその間に終える。
 - **記録の集約は、教材の規模である:** Loki は、名前空間ごとに 1 つのプロセスで動き、認証を持たない。記録は、Pod の一時的な領域（emptyDir）のファイルに保存する。Pod を作り直すと、記録は消える。Alloy も 1 つで、止まっている間の記録は届かない。
-- **サインアウトは、もう一方のアプリのセッションを終わらせない:** 押したアプリと認可サーバーのログインだけが終わる（D-33）。
+- **サインアウトは、もう一方のアプリのセッションを終わらせない:** 押したアプリとログインサーバーのログインだけが終わる（D-33）。ログインサーバーが再起動した後は、ID トークンを示せないので、確認の画面を 1 回押す（F-G80）。
+- **同じログインの間は、前回の取決めの範囲が残る:** ログインサーバーは、範囲を求めない次の要求にも、前回の範囲を載せる（F-G78）。顧客のアプリは A を求めるたびに範囲を示すので、A が前の範囲になることはない。P には範囲が載るが、P の受け口は読まない。
+- **Pod の起動が遅い:** ログインサーバーは、起動に 1 分から 3 分かかる。
 - **監査は、AI への指示とモデルの変更を見ない:** 会話の記録に、動いたモデルの名前だけを残す。指示（プロンプト）の変更の記録と、その監査は作っていない。
 - **probe の顧客の役も残る:** 多くのシナリオは、クラスタの中の probe が顧客を演じる。署名と DPoP の proof には、入口の公開名を使う。
 
@@ -132,5 +141,5 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - 画面は、Chromium と仮想の認証器で自動テストした。さらに、Windows の VS Code に内蔵されたブラウザと Windows Hello で、ログインから照合まで手で確かめた（F-G63）。ほかのブラウザ（Chrome、Edge、Safari、Firefox）と、ほかの認証器（スマートフォンの passkey など）では、確かめていない。
 - 顧客のアプリは、保険会社が署名した登録情報から、営業 AI エージェントの名称、所属、扱える範囲を示す（P-12）。この表示は、未実装である。画面は、取決めの範囲だけを示す。
 - Loki の保存期間（7 日）を過ぎた記録が、ファイルの保存で実際に消えることは、確かめていない（F-G70）。
-- 種類の違うトークンで鍵と `iss` を分けること（D3c の一部）は、未実装である。ID トークンとアクセストークンは、同じ鍵と `iss` で出す。
+- 種類の違うトークンで鍵と `iss` を分けること（D3c の一部）は、ログインサーバーの中では未実装である。ID トークンと A は、同じ鍵と `iss` で出す。
 - secure の営業 AI エージェント（Claude）が、質問から提出まで道具を呼んで進めることは、画面の基本の流れで確かめた。Claude の答え方そのものの良し悪しと、道具の順を外れる頻度は、確かめていない。
