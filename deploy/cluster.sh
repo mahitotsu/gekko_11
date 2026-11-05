@@ -43,14 +43,25 @@ bundle_endpoint_cert() {
   done
 }
 
+# マニフェストを置き、設定（ConfigMap）が変わったときだけ、その設定を読むものを作り直す。
+# これらは、設定を起動のときにだけ読み、設定の変更では更新が始まらない。Pod の定義の変更は、kubectl apply が更新する。
+# 使い方: apply_and_restart_on_config_change <名前空間> <kustomize のフォルダ> <ConfigMap> <読むもの> ...
+apply_and_restart_on_config_change() {
+  local namespace="$1" dir="$2" applied
+  shift 2
+  applied=$(kubectl apply -k "$dir")
+  while [ $# -gt 0 ]; do
+    if grep -q "configmap/$1 configured" <<<"$applied"; then
+      kubectl -n "$namespace" rollout restart "$2"
+    fi
+    shift 2
+  done
+}
+
 deploy() {
   bundle_endpoint_cert
-  # SPIRE のサーバーは、設定を読み直さない。設定を替えたときだけ、作り直す
-  local applied
-  applied=$(kubectl apply -k deploy/k8s/spire)
-  if grep -qE 'spire-server-config configured|statefulset.apps/spire-server configured' <<<"$applied"; then
-    kubectl -n spire rollout restart statefulset/spire-server
-  fi
+  apply_and_restart_on_config_change spire deploy/k8s/spire \
+    spire-server-config statefulset/spire-server spire-agent-config daemonset/spire-agent
   kubectl -n spire rollout status statefulset/spire-server --timeout=180s
   kubectl -n spire rollout status daemonset/spire-agent --timeout=180s
 
@@ -99,13 +110,16 @@ deploy() {
     echo "注意: .env に CLAUDE_CODE_OAUTH_TOKEN がないので、secure の営業 AI エージェントは台本で動く"
   fi
 
+  # マニフェストに入らない値の変更も、Pod に伝える（deploy/render.ts の末尾）。値そのものは渡さない
+  CLAUDE_TOKEN_SHA=$(printf %s "$token" | sha256sum | cut -d' ' -f1)
+  BUNDLE_CA_SHA=$(sha256sum .secrets/spire-bundle-endpoint/tls.crt | cut -d' ' -f1)
+  export CLAUDE_TOKEN_SHA BUNDLE_CA_SHA
   for ns in "${NAMESPACES[@]}"; do
     # イメージか設定が変わった Deployment だけが更新される（deploy/render.ts の末尾）
     node deploy/render.ts "$ns" | kubectl apply -f -
   done
   # Alloy は、secure と vulnerable の名前空間ができてから置く（両方の名前空間に、記録を読む権限を置くため）
-  kubectl apply -k deploy/k8s/logging
-  kubectl -n logging rollout restart deployment/alloy
+  apply_and_restart_on_config_change logging deploy/k8s/logging alloy-config deployment/alloy
   for ns in "${NAMESPACES[@]}"; do
     kubectl -n "$ns" rollout status deployment --timeout=300s
   done

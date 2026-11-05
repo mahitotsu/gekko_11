@@ -969,6 +969,12 @@ const imageId = (image: string) => {
   }
 };
 
+/** マニフェストに入らない値のハッシュ。Claude の認証情報（secure だけ）と、bundle の受け口の証明書（deploy/cluster.sh が渡す）。 */
+const OUTSIDE: Record<string, string | undefined> = {
+  "sales-agent": vulnerable ? undefined : process.env.CLAUDE_TOKEN_SHA,
+  "insurer-login": process.env.BUNDLE_CA_SHA,
+};
+
 function stamp(item: any) {
   if (item.kind !== "Deployment") return item;
   const spec = item.spec.template.spec;
@@ -976,7 +982,7 @@ function stamp(item: any) {
   const configs = (spec.volumes ?? [])
     .flatMap((v: { configMap?: { name: string } }) => (v.configMap ? [v.configMap.name] : []))
     .map((name: string) => (items as any[]).find((i) => i.kind === "ConfigMap" && i.metadata.name === name)?.data);
-  const revision = createHash("sha256").update(JSON.stringify({ images, configs })).digest("hex").slice(0, 16);
+  const revision = createHash("sha256").update(JSON.stringify({ images, configs, outside: OUTSIDE[item.metadata.name] })).digest("hex").slice(0, 16);
   item.spec.template.metadata.annotations = { "gekko11/revision": revision };
   return item;
 }
