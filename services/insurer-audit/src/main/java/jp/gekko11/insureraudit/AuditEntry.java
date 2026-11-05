@@ -13,7 +13,7 @@ import java.util.Map;
 record AuditEntry(String app, String container, long at, Map<String, Object> record) {
 
 	/** 記録の種類ごとに、書いてよい Pod とコンテナー（D-32）。 */
-	private static final Map<String, String> WRITER = Map.of("issue", "insurer-auth", "exchange", "insurer-auth",
+	private static final Map<String, String> WRITER = Map.of("issue", "insurer-login", "exchange", "insurer-auth",
 			"tool_call", "insurer-mcp", "contract", "insurer-backend", "conversation", "sales-agent");
 
 	String kind() {

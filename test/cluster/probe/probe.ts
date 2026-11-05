@@ -15,10 +15,10 @@ const SVID_DIR = "/svid";
 const ns = process.env.NAMESPACE!;
 const self = process.env.SERVICE_ACCOUNT!;
 const spiffeId = (sa: string) => `spiffe://${TRUST_DOMAIN}/ns/${ns}/sa/${sa}`;
-const PORTS: Record<string, number> = { "insurer-auth": 8443, "sales-agent": 8443, "customer-app": 8443, "insurer-audit": 8443, "insurer-mcp": 9443, "insurer-backend": 9443 };
+const PORTS: Record<string, number> = { "insurer-auth": 8443, "insurer-login": 8443, "sales-agent": 8443, "customer-app": 8443, "insurer-audit": 8443, "insurer-mcp": 9443, "insurer-backend": 9443 };
 const origin = (service: string) => `https://${service}.${ns}.svc:${PORTS[service]}`;
 /** ブラウザが入口を通って呼ぶ公開名（D-25）。顧客の役は、署名と proof に、この名前を使う。 */
-const publicOrigin = (name: "app" | "agent") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
+const publicOrigin = (name: "app" | "agent" | "login") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
 const CUSTOMER_ORIGIN = publicOrigin("app");
 const RP_ID = `app.${ns}.localhost`;
 const REDIRECT = `${CUSTOMER_ORIGIN}/callback`;
@@ -84,69 +84,95 @@ async function dpopProof(key: SigningKey, jwk: JWK, htm: string, htu: string, to
     .sign(key);
 }
 
-const cookieOf = (r: Reply) => String(r.headers["set-cookie"]?.[0] ?? "").split(";")[0]!;
+/** 応答の Cookie を、持っている Cookie に重ねる。 */
+const cookiesOf = (r: Reply, held = "") => {
+  const jar = new Map(held.split("; ").filter(Boolean).map((c) => [c.split("=")[0]!, c]));
+  for (const c of r.headers["set-cookie"] ?? []) jar.set(c.split("=")[0]!, c.split(";")[0]!);
+  return [...jar.values()].join("; ");
+};
 const pathOf = (location: unknown) => {
   const u = new URL(String(location));
   return u.pathname + u.search;
 };
 
 /**
- * 顧客の役: 固定ユーザーでログインし、passkey を登録し、取決めの範囲に同意して、認可コードと PKCE と DPoP で A を受け取る。
+ * 顧客の役: 固定ユーザーで、ログインサーバーにログインし、取決めの範囲に同意して、認可コードと PKCE と DPoP で A を受け取る。
+ * 続けて、ログインしたまま P を受け取り、認可サーバーに passkey を登録する（D-37）。
  * 返す authenticator と dpopKey は、手元のテストが署名と proof に使う。
  */
 async function customerSetup(args: { user?: string; terms?: unknown }) {
   const html = { accept: "text/html" };
+  const oidc = "/realms/insurer/protocol/openid-connect";
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const jwk = await exportJWK(publicKey);
+  let cookie = "";
+
+  // ログインサーバーは、DPoP の htu を、要求の Host の名前と照らす。ブラウザと同じ公開名で呼ぶ
+  const login = { host: new URL(publicOrigin("login")).host };
+
+  /** 認可コードを、DPoP に結んだトークンに替える。 */
+  const redeem = async (location: unknown, verifier: string) => {
+    const code = new URL(String(location)).searchParams.get("code");
+    if (!code) throw new Error(`認可コードを受け取れない: ${String(location)}`);
+    const path = `${oidc}/token`;
+    return call("insurer-login", path, {
+      method: "POST",
+      headers: { ...FORM, ...login, dpop: await dpopProof(privateKey, jwk, "POST", `${publicOrigin("login")}${path}`) },
+      body: form({ grant_type: "authorization_code", client_id: "customer-app", code, redirect_uri: REDIRECT, code_verifier: verifier }),
+      clientCert: false,
+    });
+  };
+  const authorize = (scope: string, verifier: string, extra: Record<string, string | undefined>) =>
+    `${oidc}/auth?${form({
+      response_type: "code",
+      client_id: "customer-app",
+      scope,
+      redirect_uri: REDIRECT,
+      state: "s",
+      nonce: "n",
+      code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+      code_challenge_method: "S256",
+      ...extra,
+    })}`;
+
+  // A を受け取る
   const verifier = randomUUID() + randomUUID();
-  const authorize = `/oauth2/authorize?${form({
-    response_type: "code",
-    client_id: "customer-app",
-    scope: "openid apply",
-    redirect_uri: REDIRECT,
-    state: "s",
-    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-    code_challenge_method: "S256",
-    authorization_details: args.terms ? JSON.stringify(args.terms) : undefined,
-  })}`;
-  const first = await call("insurer-auth", authorize, { method: "GET", headers: html, clientCert: false });
-  let cookie = cookieOf(first);
-  const login = await call("insurer-auth", "/login", { method: "GET", headers: { ...html, cookie }, clientCert: false });
-  const csrf = login.body.match(/name="_csrf"[^>]*value="([^"]+)"/)?.[1];
-  const posted = await call("insurer-auth", "/login", {
+  const first = await call("insurer-login", authorize("openid apply", verifier, { authorization_details: args.terms ? JSON.stringify(args.terms) : undefined }), { method: "GET", headers: { ...html, ...login }, clientCert: false });
+  cookie = cookiesOf(first);
+  const action = first.body.match(/action="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&");
+  if (!action) throw new Error(`ログインの画面を受け取れない: ${first.status} ${String(first.headers.location)}`);
+  const posted = await call("insurer-login", pathOf(action), {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", cookie },
-    body: form({ username: args.user ?? "alice", password: "demo", _csrf: csrf }),
+    headers: { "content-type": "application/x-www-form-urlencoded", ...login, cookie },
+    body: form({ username: args.user ?? "alice", password: "demo" }),
     clientCert: false,
   });
-  cookie = cookieOf(posted) || cookie;
+  cookie = cookiesOf(posted, cookie);
+  const res = await redeem(posted.headers.location, verifier);
+  const body = JSON.parse(res.body) as { access_token?: string; id_token?: string };
+
+  // P を受け取る（ログインしたまま）
+  const verifierP = randomUUID() + randomUUID();
+  const silent = await call("insurer-login", authorize("openid passkeys", verifierP, { prompt: "none" }), { method: "GET", headers: { ...html, ...login, cookie }, clientCert: false });
+  const p = (JSON.parse((await redeem(silent.headers.location, verifierP)).body) as { access_token: string }).access_token;
+  const passkeys = async (path: string, init: { body?: string }) =>
+    call("insurer-auth", path, {
+      method: "POST",
+      headers: { ...JSON_HEADERS, authorization: `DPoP ${p}`, dpop: await dpopProof(privateKey, jwk, "POST", `${origin("insurer-auth")}${path}`, p) },
+      body: init.body,
+      clientCert: false,
+    });
 
   // passkey の登録（認可サーバーが公開鍵を持ち、保険会社のシステムが引く）
   const authenticator = newAuthenticator();
-  const options = JSON.parse(
-    (await call("insurer-auth", "/passkeys/register/options", { method: "POST", headers: { ...JSON_HEADERS, cookie }, clientCert: false })).body,
-  ) as { challenge: string };
+  const options = JSON.parse((await passkeys("/passkeys/register/options", {})).body) as { challenge: string };
   // 受信箱の番号を、本人が登録する連絡先として、passkey と一緒に登録する（D-26）
   const inbox = randomBytes(16).toString("base64url");
-  const registered = await call("insurer-auth", "/passkeys/register/verify", {
-    method: "POST",
-    headers: { ...JSON_HEADERS, cookie },
+  const registered = await passkeys("/passkeys/register/verify", {
     body: JSON.stringify({ credential: register(authenticator, RP_ID, options.challenge, CUSTOMER_ORIGIN), inbox }),
-    clientCert: false,
   });
   if (registered.status !== 200) throw new Error(`passkey の登録に失敗: ${registered.status} ${registered.body}`);
 
-  const resumed = await call("insurer-auth", pathOf(posted.headers.location), { method: "GET", headers: { ...html, cookie }, clientCert: false });
-  const code = new URL(String(resumed.headers.location)).searchParams.get("code");
-  if (!code) throw new Error(`認可コードを受け取れない: ${resumed.status} ${String(resumed.headers.location)}`);
-
-  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const jwk = await exportJWK(publicKey);
-  const res = await call("insurer-auth", "/oauth2/token", {
-    method: "POST",
-    headers: { ...FORM, dpop: await dpopProof(privateKey, jwk, "POST", `${origin("insurer-auth")}/oauth2/token`) },
-    body: form({ grant_type: "authorization_code", client_id: "customer-app", code, redirect_uri: REDIRECT, code_verifier: verifier }),
-    clientCert: false,
-  });
-  const body = JSON.parse(res.body) as { access_token?: string; id_token?: string };
   return {
     status: res.status,
     token: body.access_token,
@@ -162,33 +188,31 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
 const AUDIT_HOST = `audit.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
 
 /**
- * 監査の担当の役: 監査サービスから認可サーバーへ送られ、固定ユーザーでログインし、監査サービスに戻ってから、その受け口を読む（D-31）。
+ * 監査の担当の役: 監査サービスからログインサーバーへ送られ、固定ユーザーでログインし、監査サービスに戻ってから、その受け口を読む（D-31）。
  * ブラウザと同じ順で進み、公開名の URL を、内部の名前で呼び直す。
  */
 async function auditor(args: { user?: string; path: string }) {
   const html = { accept: "text/html" };
   const audit = (path: string, cookie: string, accept = "text/html") =>
     call("insurer-audit", path, { method: "GET", headers: { accept, host: AUDIT_HOST, ...(cookie ? { cookie } : {}) }, clientCert: false });
-  const start = await audit("/oauth2/authorization/insurer-auth", "");
-  let auditCookie = cookieOf(start);
-  const first = await call("insurer-auth", pathOf(start.headers.location), { method: "GET", headers: html, clientCert: false });
-  let cookie = cookieOf(first);
-  const login = await call("insurer-auth", "/login", { method: "GET", headers: { ...html, cookie }, clientCert: false });
-  const csrf = login.body.match(/name="_csrf"[^>]*value="([^"]+)"/)?.[1];
-  const posted = await call("insurer-auth", "/login", {
+  const start = await audit("/oauth2/authorization/insurer-login", "");
+  let auditCookie = cookiesOf(start);
+  const first = await call("insurer-login", pathOf(start.headers.location), { method: "GET", headers: html, clientCert: false });
+  const cookie = cookiesOf(first);
+  const action = first.body.match(/action="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&");
+  if (!action) return { status: first.status, body: { error: "ログインの画面がない" } };
+  const posted = await call("insurer-login", pathOf(action), {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", cookie },
-    body: form({ username: args.user ?? "kansa", password: "demo", _csrf: csrf }),
+    body: form({ username: args.user ?? "kansa", password: "demo" }),
     clientCert: false,
   });
-  cookie = cookieOf(posted) || cookie;
-  const resumed = await call("insurer-auth", pathOf(posted.headers.location), { method: "GET", headers: { ...html, cookie }, clientCert: false });
-  const back = await audit(pathOf(resumed.headers.location), auditCookie);
+  const back = await audit(pathOf(posted.headers.location), auditCookie);
   // ログインに失敗すると、監査サービスは /login?error へ送る
   if (back.status !== 302 || String(back.headers.location).includes("error")) {
     return { status: back.status, body: { error: "ログインできない", location: back.headers.location } };
   }
-  auditCookie = cookieOf(back) || auditCookie;
+  auditCookie = cookiesOf(back, auditCookie);
   return reply(await audit(args.path, auditCookie, "application/json"));
 }
 

@@ -16,8 +16,8 @@ import org.springframework.security.oauth2.server.authorization.authentication.O
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenExchangeAuthenticationToken;
 
 /**
- * トークンを出すたびに、監査のための記録を 1 行の JSON で書く（D-17、D-30）。Alloy が集め、名前空間の Loki に入れる。
- * ログインでの A の発行は issue、交換は exchange である。出したトークンの jti と、交換の元のトークンの jti で、A → B → C をたどれる。
+ * 交換でトークンを出すたびに、監査のための記録を 1 行の JSON で書く（D-17、D-30）。Alloy が集め、名前空間の Loki に入れる。
+ * 出したトークンの jti と、交換の元のトークンの jti で、A → B → C をたどれる。A の発行は、ログインサーバーが issue として書く。
  * トークンそのものは書かない。
  */
 final class IssuanceRecorder implements AuthenticationProvider {
@@ -39,9 +39,8 @@ final class IssuanceRecorder implements AuthenticationProvider {
 		if (result instanceof OAuth2AccessTokenAuthenticationToken issued) {
 			Map<String, Object> claims = claimsOf(issued.getAccessToken().getTokenValue());
 			if (claims != null) {
-				boolean exchange = authentication instanceof OAuth2TokenExchangeAuthenticationToken;
 				Map<String, Object> record = new LinkedHashMap<>();
-				record.put("kind", exchange ? "exchange" : "issue");
+				record.put("kind", "exchange");
 				record.put("at", Instant.now().getEpochSecond());
 				record.put("service", "insurer-auth");
 				record.put("client", issued.getRegisteredClient().getClientId());
@@ -49,10 +48,8 @@ final class IssuanceRecorder implements AuthenticationProvider {
 				record.put("aud", claims.get("aud"));
 				record.put("jti", claims.get("jti"));
 				record.put("act", claims.get("act"));
-				if (exchange) {
-					Map<String, Object> from = claimsOf(((OAuth2TokenExchangeAuthenticationToken) authentication).getSubjectToken());
-					record.put("from_jti", (from == null) ? null : from.get("jti"));
-				}
+				Map<String, Object> from = claimsOf(((OAuth2TokenExchangeAuthenticationToken) authentication).getSubjectToken());
+				record.put("from_jti", (from == null) ? null : from.get("jti"));
 				write(record);
 			}
 		}

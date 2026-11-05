@@ -63,7 +63,7 @@ export class BrowserCustomer {
     await this.context?.close();
   }
 
-  /** 取決めに同意して、認可サーバーのログイン画面で、固定ユーザーのパスワードを入れる。 */
+  /** 取決めに同意して、ログインサーバーのログイン画面で、固定ユーザーのパスワードを入れる。 */
   async login() {
     await this.page.getByTestId("login").click();
     await this.page.locator("#username").fill(this.user);

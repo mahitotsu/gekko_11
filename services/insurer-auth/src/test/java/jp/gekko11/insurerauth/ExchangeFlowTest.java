@@ -23,7 +23,6 @@ import com.nimbusds.jose.jwk.Curve;
 import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,24 +55,37 @@ class ExchangeFlowTest extends AuthTestSupport {
 		.svid("spiffe://gekko11.internal/ns/vulnerable/sa/sales-agent");
 
 	@Test
-	void tokenAIsBoundToTheDpopKeyAndMayBeActedOnBySalesAgent() throws Exception {
+	void tokenAFromTheLoginServerIsExchangedOnlyWhenVerified() throws Exception {
 		ECKey dpopKey = new ECKeyGenerator(Curve.P_256).generate();
-		Map<String, Object> a = claims(customerToken(dpopKey));
+		String actor = actorToken(SALES_AGENT, "sales-agent");
+		JWTClaimsSet good = aClaims(dpopKey, "alice").build();
 
-		assertThat(a.get("sub")).isEqualTo("alice");
-		assertThat(audience(a)).isEqualTo("sales-agent");
-		assertThat(cnf(a)).containsEntry("jkt", dpopKey.computeThumbprint().toString()).doesNotContainKey("x5t#S256");
-		assertThat(map(a.get("may_act"))).containsEntry("sub", "sales-agent").containsEntry("iss", "http://localhost");
-	}
+		assertThat(exchange(SALES_AGENT, "sales-agent", loginToken(LOGIN_KEY, "at+jwt", good), actor, "insurer-mcp"))
+			.isNotBlank();
 
-	@Test
-	void customerTokenWithoutDpopIsRefused() throws Exception {
-		MvcResult result = this.mvc.perform(post("/oauth2/token").param("grant_type", "authorization_code")
-			.param("client_id", "customer-app")
-			.param("code", authorizationCode("v".repeat(43)))
-			.param("redirect_uri", REDIRECT)
-			.param("code_verifier", "v".repeat(43))).andReturn();
-		assertThat(result.getResponse().getStatus()).isEqualTo(400);
+		// 別の鍵で、発行者を名乗る
+		assertThat(refusal(SALES_AGENT, "sales-agent", loginToken(rsaKey(), "at+jwt", good), actor, "insurer-mcp"))
+			.contains("subject_token could not be verified");
+		// 別の発行者
+		JWTClaimsSet otherIssuer = aClaims(dpopKey, "alice").issuer("http://other.test").build();
+		assertThat(refusal(SALES_AGENT, "sales-agent", loginToken(LOGIN_KEY, "at+jwt", otherIssuer), actor, "insurer-mcp"))
+			.contains("subject_token could not be verified");
+		// 種類が違う（ID トークンなど）
+		assertThat(refusal(SALES_AGENT, "sales-agent", loginToken(LOGIN_KEY, "JWT", good), actor, "insurer-mcp"))
+			.contains("subject_token could not be verified");
+		// 期限切れ
+		JWTClaimsSet expired = aClaims(dpopKey, "alice").expirationTime(new Date(System.currentTimeMillis() - 1000)).build();
+		assertThat(refusal(SALES_AGENT, "sales-agent", loginToken(LOGIN_KEY, "at+jwt", expired), actor, "insurer-mcp"))
+			.contains("subject_token could not be verified");
+		// 代理の認可がない
+		JWTClaimsSet noMayAct = aClaims(dpopKey, "alice").claim("may_act", null).build();
+		assertThat(refusal(SALES_AGENT, "sales-agent", loginToken(LOGIN_KEY, "at+jwt", noMayAct), actor, "insurer-mcp"))
+			.contains("subject_token is not a token A");
+		// 代理に認められた者が違う
+		JWTClaimsSet otherActor = aClaims(dpopKey, "alice")
+			.claim("may_act", Map.of("iss", "http://localhost", "sub", "insurer-mcp"))
+			.build();
+		refusal(SALES_AGENT, "sales-agent", loginToken(LOGIN_KEY, "at+jwt", otherActor), actor, "insurer-mcp");
 	}
 
 	@Test
@@ -83,6 +95,7 @@ class ExchangeFlowTest extends AuthTestSupport {
 		String b = exchange(SALES_AGENT, "sales-agent", a, actorToken(SALES_AGENT, "sales-agent"), "insurer-mcp");
 		Map<String, Object> bc = claims(b);
 		assertThat(bc.get("sub")).isEqualTo("alice");
+		assertThat(bc.get("iss")).isEqualTo("http://localhost");
 		assertThat(audience(bc)).isEqualTo("insurer-mcp");
 		assertThat(cnf(bc)).containsEntry("x5t#S256", thumbprint(SALES_AGENT)).doesNotContainKey("jkt");
 		assertThat(map(bc.get("act"))).containsEntry("sub", "sales-agent").doesNotContainKey("act");

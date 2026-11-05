@@ -79,7 +79,7 @@ class ReconcilerTest {
 		String hash = Reconciler.hash(APPLICATION);
 		Map<String, Object> contract = rec("contractId", "C-1", "customer", "alice", "plan", contractPlan, "nonce", NONCE);
 		Memory m = new Memory();
-		m.add("insurer-auth", "insurer-auth", rec("kind", "issue", "client", "customer-app", "sub", "alice", "jti", "jA"))
+		m.add("insurer-login", "app", rec("kind", "issue", "client", "customer-app", "sub", "alice", "jti", "jA"))
 			.add("insurer-auth", "insurer-auth",
 					rec("kind", "exchange", "client", "sales-agent", "sub", "alice", "jti", "jB", "from_jti", "jA", "act",
 							Map.of("sub", "sales-agent")))

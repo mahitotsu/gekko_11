@@ -9,6 +9,7 @@ import {
   jwtVerify,
   type JWK,
   type JWTPayload,
+  type JWTVerifyGetKey,
 } from "jose";
 import { config } from "./config.ts";
 import { enabled } from "./defenses.ts";
@@ -41,7 +42,17 @@ export interface IngressRequest {
   xfcc?: string;
 }
 
-const jwks = createRemoteJWKSet(new URL(`${config.authUrl}/oauth2/jwks`), { cooldownDuration: 0 });
+const jwks = createRemoteJWKSet(new URL(config.jwksUrl), { cooldownDuration: 0 });
+const otherJwks = config.otherJwksUrl ? createRemoteJWKSet(new URL(config.otherJwksUrl), { cooldownDuration: 0 }) : undefined;
+/** 悪い確かめ（D29 を外す）: どちらの発行者の鍵でも認める。 */
+const anyIssuerKey: JWTVerifyGetKey = async (header, token) => {
+  try {
+    return await jwks(header, token);
+  } catch (e) {
+    if (!otherJwks) throw e;
+    return otherJwks(header, token);
+  }
+};
 const b64url = (bytes: Buffer) => bytes.toString("base64url");
 
 /** Envoy が付ける XFCC（SANITIZE_SET）から、相手の SPIFFE ID と証明書のハッシュを読む。 */
@@ -107,10 +118,11 @@ async function verifyToken(token: string): Promise<Checked["claims"]> {
   const aud = checks.aud === undefined || enabled(checks.aud);
   const exp = checks.exp === undefined || enabled(checks.exp);
   const typ = checks.typ === undefined || enabled(checks.typ);
+  const issuer = checks.issuer === undefined || enabled(checks.issuer);
   if (signature) {
-    const { payload } = await jwtVerify(token, jwks, {
+    const { payload } = await jwtVerify(token, issuer ? jwks : anyIssuerKey, {
       algorithms: ["RS256"],
-      issuer: config.issuer,
+      issuer: issuer ? config.issuer : undefined,
       audience: aud ? config.service : undefined,
       typ: typ ? "at+jwt" : undefined,
       requiredClaims: ["sub"],

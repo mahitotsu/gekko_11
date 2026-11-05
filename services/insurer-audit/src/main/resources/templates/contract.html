@@ -60,7 +60,7 @@
   <h2>保険会社のシステムの自己申告（/audit/records）</h2>
   <pre th:text="${pretty.of(report.selfReport)}">{}</pre>
 
-  <h2>認可サーバーの記録（C から A へ遡った順）</h2>
+  <h2>認可サーバーとログインサーバーの記録（C から A へ遡った順）</h2>
   <pre data-testid="chain" th:text="${pretty.of(report.chain)}">[]</pre>
 
   <h2>事務サービスのツールの記録</h2>

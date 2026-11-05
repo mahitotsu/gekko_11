@@ -2,7 +2,7 @@
 // ログインと passkey と受信箱の登録の後は、営業 AI エージェントと AG-UI でやりとりし、カードを積んで進む（D-29、D-34）。営業 AI エージェントが、
 // 質問、案の提示、意向確認書面、申込書を、画面側の道具として呼び、この画面が顧客の答え（選択と署名）を返す。
 // 契約内容は、営業 AI エージェントを通らずに受信箱へ届き、端末に残した写しと照合する（architecture の 3 章）。
-import { createLocalJWKSet, createRemoteJWKSet, type JSONWebKeySet } from "jose";
+import { compactVerify, createLocalJWKSet, createRemoteJWKSet, type JSONWebKeySet } from "jose";
 import type { Message } from "@ag-ui/core";
 import { reconcile, type Copy } from "../src/reconcile.ts";
 import { AgentRefused, FRONTEND_TOOLS, runOnce, type AgentEvent } from "./agui.ts";
@@ -15,7 +15,10 @@ import { createPasskey, dpopProof, signWithPasskey } from "./keys.ts";
 import { markdownToHtml } from "./markdown.ts";
 
 interface Config {
+  /** ログインサーバーの iss。 */
   issuer: string;
+  /** 認可サーバーの公開名（passkey と受信箱の登録）。 */
+  authOrigin: string;
   agentOrigin: string;
   appOrigin: string;
   rpId: string;
@@ -26,8 +29,10 @@ interface Config {
 interface Session {
   token: string;
   sub: string;
-  /** サインアウトのときに、認可サーバーへ示す（D-33）。 */
+  /** サインアウトのときに、ログインサーバーへ示す（D-33）。 */
   idToken: string;
+  /** passkey の登録だけに使うトークン P（宛先は認可サーバー。D-37）。 */
+  passkeyToken?: string;
 }
 
 interface Device {
@@ -84,33 +89,46 @@ function table(rows: Row[], prefix: string): HTMLTableElement {
 const cfg = (await (await fetch("/config.json")).json()) as Config;
 const enabled = await loadDefenses();
 const redirectUri = `${cfg.appOrigin}/callback`;
+const oidc = `${cfg.issuer}/protocol/openid-connect`;
 
 // ---- 1. ログイン（認可コードと PKCE（S256）。D-12） ----
 
-async function startLogin() {
-  const login = { verifier: randomB64u(), state: randomB64u(16), nonce: randomB64u(16) };
+type LoginKind = "apply" | "passkeys";
+
+async function startAuthorization(kind: LoginKind, extra: Record<string, string>) {
+  const login = { kind, verifier: randomB64u(), state: randomB64u(16), nonce: randomB64u(16) };
   store.set(sessionStorage, "login", login);
   const q = new URLSearchParams({
     response_type: "code",
     client_id: cfg.clientId,
-    scope: "openid apply",
     redirect_uri: redirectUri,
     state: login.state,
     nonce: login.nonce,
     code_challenge: b64u(await sha256(login.verifier)),
     code_challenge_method: "S256",
-    authorization_details: JSON.stringify(cfg.terms),
+    ...extra,
   });
-  location.assign(`${cfg.issuer}/oauth2/authorize?${q}`);
+  location.assign(`${oidc}/auth?${q}`);
 }
 
-// ---- 2. 戻り先: DPoP に結んだトークン A を受け取り、ID トークンを確かめる（D21） ----
+/** A を受け取るログイン。取決めの範囲を一緒に求める。 */
+const startLogin = () => startAuthorization("apply", { scope: "openid apply", authorization_details: JSON.stringify(cfg.terms) });
 
-async function finishLogin(params: URLSearchParams) {
-  const login = store.get<{ verifier: string; state: string; nonce: string }>(sessionStorage, "login");
+/** ログインしたまま、利用者の操作なしで、passkey の登録に使う P を受け取る（D-37）。 */
+const startPasskeyToken = () => startAuthorization("passkeys", { scope: "openid passkeys", prompt: "none" });
+
+const stillValid = (token: string | undefined) =>
+  Boolean(token) && (JSON.parse(atob(token!.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/"))) as { exp: number }).exp * 1000 > Date.now() + 5000;
+
+// ---- 2. 戻り先: DPoP に結んだトークンを受け取り、ID トークンを確かめる（D21） ----
+
+/** 戻り先を片付ける。A を受け取ったときは、続けて P を求めるので、真を返す（画面は作らない）。 */
+async function finishLogin(params: URLSearchParams): Promise<boolean> {
+  const login = store.get<{ kind: LoginKind; verifier: string; state: string; nonce: string }>(sessionStorage, "login");
   history.replaceState(null, "", "/");
   if (!login || params.get("state") !== login.state) throw new Error("ログインの state が違う");
-  const tokenUrl = `${cfg.issuer}/oauth2/token`;
+  if (params.get("error")) throw new Error(`ログインできない: ${params.get("error")}`);
+  const tokenUrl = `${oidc}/token`;
   const res = await fetch(tokenUrl, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", dpop: await dpopProof("POST", tokenUrl) },
@@ -126,38 +144,60 @@ async function finishLogin(params: URLSearchParams) {
   if (!res.ok || !body.access_token || !body.id_token) throw new Error(`トークンを受け取れない: ${body.error ?? res.status}`);
   let sub: string;
   if (enabled("D21")) {
-    const keys = createRemoteJWKSet(new URL(`${cfg.issuer}/oauth2/jwks`));
+    const keys = createRemoteJWKSet(new URL(`${oidc}/certs`));
     sub = (await verifyIdToken(body.id_token, keys, { issuer: cfg.issuer, clientId: cfg.clientId, nonce: login.nonce })).sub;
   } else {
     // 悪い実装: ID トークンを確かめずに、中身を読むだけ
     sub = JSON.parse(atob(body.id_token.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/"))).sub;
   }
   sessionStorage.removeItem("login");
+  if (login.kind === "passkeys") {
+    const session = store.get<Session>(sessionStorage, "session");
+    if (!session) throw new Error("ログインの情報がない");
+    store.set(sessionStorage, "session", { ...session, passkeyToken: body.access_token } satisfies Session);
+    return false;
+  }
   store.set(sessionStorage, "session", { token: body.access_token, sub, idToken: body.id_token } satisfies Session);
+  await startPasskeyToken();
+  return true;
 }
 
 /**
- * サインアウト（OpenID Connect の RP-Initiated Logout。D-33）。手元のセッションを消してから、認可サーバーのログインも終わらせる。
- * 認可サーバーのログインが残ると、次にログインを押したときに、前の人のまま通ってしまう。端末の passkey と写しは、人ごとに残す。
+ * サインアウト（OpenID Connect の RP-Initiated Logout。D-33）。手元のセッションを消してから、ログインサーバーのログインも終わらせる。
+ * ログインサーバーのログインが残ると、次にログインを押したときに、前の人のまま通ってしまう。端末の passkey と写しは、人ごとに残す。
+ * ログインサーバーが再起動して鍵が替わると、前の ID トークンはエラーの画面になるので、確かめられるものだけを示す。
+ * 示さなければ、ログインサーバーが確認の画面を出し、利用者の操作で終わる。
  */
-function signOut() {
+async function signOut() {
   const session = store.get<Session>(sessionStorage, "session");
   sessionStorage.removeItem("session");
   const q = new URLSearchParams({ client_id: cfg.clientId, post_logout_redirect_uri: `${location.origin}/` });
-  if (session?.idToken) q.set("id_token_hint", session.idToken);
-  location.assign(`${cfg.issuer}/connect/logout?${q}`);
+  if (session?.idToken) {
+    const verified = await compactVerify(session.idToken, createRemoteJWKSet(new URL(`${oidc}/certs`))).catch(() => undefined);
+    if (verified) q.set("id_token_hint", session.idToken);
+  }
+  location.assign(`${oidc}/logout?${q}`);
 }
 
 // ---- 3. この端末の passkey と、受信箱の番号を登録する（D-26） ----
 
+/** 認可サーバーの passkey の受け口を、P と DPoP の proof で呼ぶ（D-37）。 */
+async function callPasskeys(session: Session, method: "GET" | "POST", path: string, body?: unknown) {
+  const url = `${cfg.authOrigin}${path}`;
+  return fetch(url, {
+    method,
+    headers: {
+      accept: "application/json",
+      authorization: `DPoP ${session.passkeyToken}`,
+      dpop: await dpopProof(method, url, session.passkeyToken),
+      ...(method === "POST" ? { "content-type": "application/json" } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
 async function registerDevice(session: Session) {
-  const auth = (path: string, body?: unknown) =>
-    fetch(`${cfg.issuer}${path}`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+  const auth = (path: string, body?: unknown) => callPasskeys(session, "POST", path, body);
   const options = await (await auth("/passkeys/register/options")).json();
   const credential = await createPasskey(options);
   const inbox = randomB64u(16);
@@ -168,11 +208,12 @@ async function registerDevice(session: Session) {
 
 /**
  * この端末の passkey が、認可サーバーに登録されたまま残っているかを確かめる（認可サーバーの記憶はメモリにあり、再起動で消える）。
- * ログインの Cookie で、本人の passkey の識別子の一覧を問い合わせる。確かめられなければ、unknown を返して、今までどおり進める。
+ * P で、本人の passkey の識別子の一覧を問い合わせる。確かめられなければ、unknown を返して、今までどおり進める。
  */
-async function deviceStatus(device: Device): Promise<"ok" | "missing" | "unknown"> {
+async function deviceStatus(session: Session, device: Device): Promise<"ok" | "missing" | "unknown"> {
+  if (!stillValid(session.passkeyToken)) return "unknown";
   try {
-    const res = await fetch(`${cfg.issuer}/passkeys/mine`, { credentials: "include", headers: { accept: "application/json" } });
+    const res = await callPasskeys(session, "GET", "/passkeys/mine");
     if (!res.ok) return "unknown";
     const { credentialIds } = (await res.json()) as { credentialIds: string[] };
     return credentialIds.includes(device.credentialId) ? "ok" : "missing";
@@ -597,14 +638,14 @@ function showTab(tab: "apply" | "inbox", session: Session, device: Device) {
 async function render() {
   $("terms").replaceChildren(table(termsRowsOf(cfg.terms as { kinds: string[]; maxBenefit: number }[]), "terms"));
   const params = new URLSearchParams(location.search);
-  if (location.pathname === "/callback" && params.get("code")) await finishLogin(params);
+  if (location.pathname === "/callback" && (params.get("code") || params.get("error")) && (await finishLogin(params))) return;
   const session = store.get<Session>(sessionStorage, "session");
   show("login", !session);
   if (!session) return;
   $("whoami").textContent = session.sub;
   show("signed-in");
   let device = store.get<Device>(localStorage, `device:${session.sub}`);
-  if (device && (await deviceStatus(device)) === "missing") {
+  if (device && (await deviceStatus(session, device)) === "missing") {
     // 認可サーバーに登録が残っていない: 端末の記録を消し、登録し直しに案内する
     localStorage.removeItem(`device:${session.sub}`);
     device = undefined;
@@ -626,10 +667,13 @@ async function render() {
 }
 
 $("login-button").onclick = () => startLogin().catch(fail);
-$("signout-button").onclick = signOut;
+$("signout-button").onclick = () => signOut().catch(fail);
 $("register-button").onclick = async () => {
   try {
-    await registerDevice(store.get<Session>(sessionStorage, "session")!);
+    const session = store.get<Session>(sessionStorage, "session")!;
+    // P は 5 分で切れる。切れていたら受け取り直し、戻ったところで、もう一度押してもらう
+    if (!stillValid(session.passkeyToken)) return await startPasskeyToken();
+    await registerDevice(session);
     await render();
   } catch (e) {
     fail(e);

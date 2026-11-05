@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 顧客の passkey を登録し、保険会社のシステムに公開鍵を渡す（D-1、D13）。
  * 登録のときに、顧客の端末が作った受信箱の番号を、本人が登録した連絡先として一緒に受け取る（P-14、D-26）。
- * 登録は、ログインした顧客だけが行う。公開鍵と連絡先の参照は、保険会社のシステムの SPIFFE ID だけが行える。
+ * 登録は、ログインサーバーが出した P を示した顧客だけが行う（D-37）。公開鍵と連絡先の参照は、保険会社のシステムの SPIFFE ID だけが行える。
  */
 @RestController
 class PasskeyController {

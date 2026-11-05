@@ -5,7 +5,7 @@ import { createConnection } from "node:net";
 import { BROWSER_PORT, PLAYWRIGHT_VERSION } from "./browser.ts";
 
 const NAME = "gekko11-browser";
-const ENTRANCE_HOSTS = ["secure", "vulnerable"].flatMap((ns) => ["app", "auth", "agent", "audit"].map((name) => `${name}.${ns}.localhost`));
+const ENTRANCE_HOSTS = ["secure", "vulnerable"].flatMap((ns) => ["app", "login", "auth", "agent", "audit"].map((name) => `${name}.${ns}.localhost`));
 
 const open = () =>
   new Promise<boolean>((resolve) => {

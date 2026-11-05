@@ -37,13 +37,13 @@ class AuditAccessTest {
 	ClientRegistrationRepository clients;
 
 	@Test
-	void notLoggedInGoesToTheAuthorizationServerWithPkce() throws Exception {
+	void notLoggedInGoesToTheLoginServerWithPkce() throws Exception {
 		MvcResult first = this.mvc.perform(get("/api/contracts")).andReturn();
-		assertThat(first.getResponse().getRedirectedUrl()).endsWith("/oauth2/authorization/insurer-auth");
-		MvcResult authorize = this.mvc.perform(get("/oauth2/authorization/insurer-auth")).andReturn();
-		assertThat(authorize.getResponse().getRedirectedUrl()).startsWith("http://auth.secure.localhost:8081/oauth2/authorize?")
+		assertThat(first.getResponse().getRedirectedUrl()).endsWith("/oauth2/authorization/insurer-login");
+		MvcResult authorize = this.mvc.perform(get("/oauth2/authorization/insurer-login")).andReturn();
+		assertThat(authorize.getResponse().getRedirectedUrl()).startsWith("http://login.secure.localhost:8081/realms/insurer/protocol/openid-connect/auth?")
 			.contains("code_challenge=")
-			.contains("redirect_uri=http://audit.secure.localhost:8081/login/oauth2/code/insurer-auth");
+			.contains("redirect_uri=http://audit.secure.localhost:8081/login/oauth2/code/insurer-login");
 	}
 
 	@Test
@@ -65,12 +65,12 @@ class AuditAccessTest {
 	}
 
 	@Test
-	void signOutAlsoEndsTheLoginAtTheAuthorizationServer() throws Exception {
+	void signOutAlsoEndsTheLoginAtTheLoginServer() throws Exception {
 		MvcResult result = this.mvc
 			.perform(post("/logout").with(csrf())
-				.with(oidcLogin().clientRegistration(this.clients.findByRegistrationId("insurer-auth"))))
+				.with(oidcLogin().clientRegistration(this.clients.findByRegistrationId("insurer-login"))))
 			.andReturn();
-		assertThat(result.getResponse().getRedirectedUrl()).startsWith("http://auth.secure.localhost:8081/connect/logout?")
+		assertThat(result.getResponse().getRedirectedUrl()).startsWith("http://login.secure.localhost:8081/realms/insurer/protocol/openid-connect/logout?")
 			.contains("id_token_hint=")
 			.contains("post_logout_redirect_uri=http://audit.secure.localhost:8081/");
 	}

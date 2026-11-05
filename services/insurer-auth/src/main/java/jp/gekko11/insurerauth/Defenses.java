@@ -11,13 +11,14 @@ public interface Defenses {
 
 	String SHORT_TTL = "D3b";
 
-	String ID_TOKEN_AUD = "D3c";
-
 	String KEEP_ACT = "D3d";
 
 	String NARROW_TERMS = "D3e";
 
 	String FIXED_TARGET = "D3f";
+
+	/** 交換に出された A の署名、発行者、種類、有効期間を確かめる。 */
+	String VERIFY_SUBJECT = "D28";
 
 	boolean enabled(String id);
 

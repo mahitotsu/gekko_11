@@ -16,26 +16,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
-import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
-import org.springframework.security.oauth2.core.oidc.endpoint.OidcParameterNames;
 import org.springframework.security.oauth2.server.authorization.OAuth2Authorization;
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenExchangeAuthenticationToken;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
-import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 
 /**
  * トークンの形を整える。cnf と act は、標準の customizer が先に書く（F-G49）。ここでは次を書く。
  * <ul>
  * <li>typ を at+jwt にする（RFC 9068）</li>
- * <li>aud を、トークンを受け取るサービスにする（A は営業 AI エージェント、交換では求めた宛先）</li>
+ * <li>aud を、トークンを受け取るサービスにする（交換では求めた宛先）</li>
  * <li>受け取るサービスが替える窓口なら、may_act にそのサービスを入れる（D-7 の手順 3）</li>
- * <li>取決めの範囲（authorization_details）と、確認済みの属性（verified_claims）を載せ、交換では引き継ぐ</li>
- * <li>ID トークンに、ログインした者の役割（roles）を載せる</li>
+ * <li>取決めの範囲（authorization_details）と、確認済みの属性（verified_claims）を、出されたトークンから引き継ぐ</li>
  * </ul>
- * 顧客のアプリのトークンは、DPoP の proof がなければ出さない（D-18）。
- * 教材のための意図的に悪い発行を含む。vulnerable の名前空間では、D3a〜D3e を外せる。本番の部品として使わないこと。
+ * A と ID トークンは、ログインサーバーが出す（D-35）。
+ * 教材のための意図的に悪い発行を含む。vulnerable の名前空間では、D3a、D3b、D3d、D3e を外せる。本番の部品として使わないこと。
  */
 final class TokenShapeCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 
@@ -47,33 +43,12 @@ final class TokenShapeCustomizer implements OAuth2TokenCustomizer<JwtEncodingCon
 
 	private final Defenses defenses;
 
-	private final UserDirectory users;
-
-	TokenShapeCustomizer(Defenses defenses, UserDirectory users) {
+	TokenShapeCustomizer(Defenses defenses) {
 		this.defenses = defenses;
-		this.users = users;
 	}
 
 	@Override
 	public void customize(JwtEncodingContext context) {
-		if (OidcParameterNames.ID_TOKEN.equals(context.getTokenType().getValue())) {
-			// ログインした者の役割（顧客か、監査の担当か）。監査サービスは、監査の担当にだけ画面を見せる（D-31）
-			context.getClaims()
-				.claim("roles", context.getPrincipal()
-					.getAuthorities()
-					.stream()
-					.map((a) -> a.getAuthority())
-					.filter((a) -> a.startsWith("ROLE_"))
-					.map((a) -> a.substring("ROLE_".length()))
-					.toList());
-			// 悪い発行（D3c を外す）: ID トークンの宛先に、API の識別子まで入れる
-			if (!this.defenses.enabled(Defenses.ID_TOKEN_AUD)) {
-				List<String> aud = new ArrayList<>(List.of(context.getRegisteredClient().getClientId()));
-				aud.addAll(ExchangePolicy.SERVICES);
-				context.getClaims().audience(aud);
-			}
-			return;
-		}
 		if (!OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType())) {
 			return;
 		}
@@ -82,15 +57,7 @@ final class TokenShapeCustomizer implements OAuth2TokenCustomizer<JwtEncodingCon
 		String client = context.getRegisteredClient().getClientId();
 
 		String audience = null;
-		if (AuthorizationGrantType.AUTHORIZATION_CODE.equals(grant) && ExchangePolicy.CUSTOMER_APP.equals(client)) {
-			if (context.get(OAuth2TokenContext.DPOP_PROOF_KEY) == null) {
-				throw new OAuth2AuthenticationException(
-						new OAuth2Error("invalid_dpop_proof", "DPoP proof is required", null));
-			}
-			audience = ExchangePolicy.CUSTOMER_AUDIENCE;
-			customerClaims(context);
-		}
-		else if (AuthorizationGrantType.TOKEN_EXCHANGE.equals(grant)
+		if (AuthorizationGrantType.TOKEN_EXCHANGE.equals(grant)
 				&& context.getAuthorizationGrant() instanceof OAuth2TokenExchangeAuthenticationToken exchange) {
 			Set<String> audiences = exchange.getAudiences();
 			audience = (audiences.size() == 1) ? audiences.iterator().next() : null;
@@ -116,19 +83,6 @@ final class TokenShapeCustomizer implements OAuth2TokenCustomizer<JwtEncodingCon
 		if (!this.defenses.enabled(Defenses.KEEP_ACT)) {
 			context.getClaims().claims((claims) -> claims.remove("act"));
 		}
-	}
-
-	/** A に、顧客が同意した取決めの範囲と、確認済みの属性を載せる。 */
-	private void customerClaims(JwtEncodingContext context) {
-		OAuth2Authorization authorization = context.getAuthorization();
-		OAuth2AuthorizationRequest request = (authorization != null)
-				? authorization.getAttribute(OAuth2AuthorizationRequest.class.getName()) : null;
-		Object requested = (request != null) ? request.getAdditionalParameters().get(TERMS) : null;
-		if (requested instanceof String raw) {
-			context.getClaims().claim(TERMS, parseTerms(raw));
-		}
-		this.users.verifiedClaims(context.getPrincipal().getName())
-			.ifPresent((v) -> context.getClaims().claim(VERIFIED, v));
 	}
 
 	/** 交換では、出されたトークンの取決めと確認済みの属性を引き継ぐ。取決めは、狭めるだけにする（D3e）。 */

@@ -30,7 +30,7 @@ export async function probe(ns: Ns, who: Role, command: string, args: object = {
 }
 
 /** ブラウザが入口を通って呼ぶ公開名（D-25）。 */
-export const publicOrigin = (ns: Ns, name: "app" | "auth" | "agent" | "audit") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
+export const publicOrigin = (ns: Ns, name: "app" | "login" | "auth" | "agent" | "audit") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
 
 export const TERMS = [{ type: "insurance_application", kinds: ["fixed", "lifetime"], maxBenefit: 1_200_000 }];
 
@@ -183,10 +183,11 @@ export async function auditOf(ns: Ns, nonce: string, until: (report: Json) => bo
 /** 防御の ID と、それを持つ部品（サービスと管理のポート）。 */
 const OWNER: Record<string, { service: string; port: number; path: string }> = {};
 const own = (ids: string[], service: string, port: number, path = "/defenses") => ids.forEach((id) => (OWNER[`${service}:${id}`] = { service, port, path }));
-own(["D3a", "D3b", "D3c", "D3d", "D3e", "D3f"], "insurer-auth", 9091);
+own(["D3a", "D3b", "D3c"], "insurer-login", 9091);
+own(["D3a", "D3b", "D3d", "D3e", "D3f", "D28"], "insurer-auth", 9091);
 own(["D9", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18"], "insurer-backend", 9091);
-own(["D5", "D6", "D7", "D8", "D10", "D26", "D27"], "insurer-backend", 9090);
-own(["D1", "D2", "D26", "D27"], "insurer-mcp", 9090);
+own(["D5", "D6", "D7", "D8", "D10", "D26", "D27", "D29"], "insurer-backend", 9090);
+own(["D1", "D2", "D26", "D27", "D29"], "insurer-mcp", 9090);
 own(["D20", "D26"], "sales-agent", 9090);
 own(["D21", "D22", "D23"], "customer-app", 9091);
 
@@ -194,6 +195,7 @@ own(["D21", "D22", "D23"], "customer-app", 9091);
 export type Gaps = Record<string, string>;
 
 const PARTS = [
+  { service: "insurer-login", port: 9091 },
   { service: "insurer-auth", port: 9091 },
   { service: "insurer-backend", port: 9091 },
   { service: "insurer-backend", port: 9090 },
@@ -286,3 +288,4 @@ export async function contractsOf(ns: Ns, nonce: string): Promise<Json[]> {
 }
 
 export const ISSUER = (ns: Ns) => publicOrigin(ns, "auth");
+export const LOGIN_ISSUER = (ns: Ns) => `${publicOrigin(ns, "login")}/realms/insurer`;

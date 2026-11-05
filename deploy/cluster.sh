@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 CLUSTER=gekko11
 TRUST_DOMAIN=gekko11.internal
 NAMESPACES=(secure vulnerable)
-SERVICE_ACCOUNTS=(insurer-auth sales-agent insurer-mcp insurer-backend customer-app insurer-audit entrance intruder operator auditor)
+SERVICE_ACCOUNTS=(insurer-auth insurer-login sales-agent insurer-mcp insurer-backend customer-app insurer-audit entrance intruder operator auditor)
 # SVID の有効期間（秒）。入れ替わりを観察できるよう、短くする。
 SVID_TTL=600
 
@@ -23,8 +23,34 @@ up() {
   k3d cluster list "$CLUSTER" >/dev/null 2>&1 || k3d cluster create --config deploy/k3d/cluster.yaml
 }
 
+# SPIRE の bundle の受け口の TLS の証明書（D-38）。SVID とは関係のない、使い捨ての自己署名の証明書で、一度だけ作る。
+# ログインサーバーは、この証明書を信頼して、JWT-SVID を確かめる公開鍵を取る。
+bundle_endpoint_cert() {
+  local dir=.secrets/spire-bundle-endpoint
+  if [ ! -f "$dir/tls.crt" ]; then
+    mkdir -p "$dir"
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$dir/tls.key" -out "$dir/tls.crt" -days 3650 \
+      -subj "/CN=spire-server.spire.svc.cluster.local" \
+      -addext "subjectAltName=DNS:spire-server.spire.svc.cluster.local" >/dev/null 2>&1
+  fi
+  kubectl create namespace spire --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl -n spire create secret tls spire-bundle-endpoint-tls --cert="$dir/tls.crt" --key="$dir/tls.key" --dry-run=client -o yaml \
+    | kubectl apply -f - >/dev/null
+  for ns in "${NAMESPACES[@]}"; do
+    kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    kubectl -n "$ns" create configmap spire-bundle-ca --from-file=ca.crt="$dir/tls.crt" --dry-run=client -o yaml \
+      | kubectl apply -f - >/dev/null
+  done
+}
+
 deploy() {
-  kubectl apply -k deploy/k8s/spire
+  bundle_endpoint_cert
+  # SPIRE のサーバーは、設定を読み直さない。設定を替えたときだけ、作り直す
+  local applied
+  applied=$(kubectl apply -k deploy/k8s/spire)
+  if grep -qE 'spire-server-config configured|statefulset.apps/spire-server configured' <<<"$applied"; then
+    kubectl -n spire rollout restart statefulset/spire-server
+  fi
   kubectl -n spire rollout status statefulset/spire-server --timeout=180s
   kubectl -n spire rollout status daemonset/spire-agent --timeout=180s
 
@@ -47,9 +73,10 @@ deploy() {
   docker build -q -t gekko11/insurer-audit:dev services/insurer-audit
   for ns in "${NAMESPACES[@]}"; do
     docker build -q --build-arg VARIANT="$ns" -t "gekko11/insurer-auth:$ns" services/insurer-auth
+    docker build -q --build-arg VARIANT="$ns" -t "gekko11/insurer-login:$ns" services/insurer-login
     docker build -q --build-arg VARIANT="$ns" -t "gekko11/insurer-backend:$ns" services/insurer-backend
     docker build -q -f deploy/node.Dockerfile --build-arg VARIANT="$ns" -t "gekko11/node:$ns" .
-    images+=("gekko11/insurer-auth:$ns" "gekko11/insurer-backend:$ns" "gekko11/node:$ns")
+    images+=("gekko11/insurer-auth:$ns" "gekko11/insurer-login:$ns" "gekko11/insurer-backend:$ns" "gekko11/node:$ns")
   done
   k3d image import -c "$CLUSTER" "${images[@]}"
   # 外から取ったイメージは、複数の CPU 向けの目次を持つが、手元には、この PC の CPU の分しかない。そのまま取り込むと、
@@ -73,9 +100,8 @@ deploy() {
   fi
 
   for ns in "${NAMESPACES[@]}"; do
+    # イメージか設定が変わった Deployment だけが更新される（deploy/render.ts の末尾）
     node deploy/render.ts "$ns" | kubectl apply -f -
-    # 設定やイメージを替えたら、Pod を作り直す（Envoy は設定を読み直さない）
-    kubectl -n "$ns" rollout restart deployment
   done
   # Alloy は、secure と vulnerable の名前空間ができてから置く（両方の名前空間に、記録を読む権限を置くため）
   kubectl apply -k deploy/k8s/logging

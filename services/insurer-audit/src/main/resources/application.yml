@@ -1,12 +1,13 @@
-# Envoy が TLS を受け、平文でこのポートへ渡す。認可サーバーと保険会社のシステムは、Envoy の出口から呼ぶ（SVID で mTLS）。
+# Envoy が TLS を受け、平文でこのポートへ渡す。ログインサーバーと保険会社のシステムは、Envoy の出口から呼ぶ。
 server:
   port: ${APP_PORT:8080}
   address: 127.0.0.1
   forward-headers-strategy: framework
 gekko:
   namespace: ${NAMESPACE:secure}
-  issuer: ${ISSUER:http://auth.secure.localhost:8081}
+  issuer: ${ISSUER:http://login.secure.localhost:8081/realms/insurer}
   public-origin: ${PUBLIC_ORIGIN:http://audit.secure.localhost:8081}
-  auth-url: ${AUTH_EGRESS_URL:http://127.0.0.1:15101}
+  login-url: ${LOGIN_EGRESS_URL:http://127.0.0.1:15105}
+  jwt-svid-file: ${JWT_SVID_FILE:/svid/jwt_svid.token}
   backend-url: ${BACKEND_EGRESS_URL:http://127.0.0.1:15102}
   loki-url: ${LOKI_URL:http://loki.secure.svc.cluster.local:3100}

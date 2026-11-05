@@ -18,6 +18,8 @@ export interface Checks {
   exp?: string;
   aud?: string;
   typ?: string;
+  /** 自分の段の発行者だけを認める（D29）。 */
+  issuer?: string;
   /** 出口で、トークンを替える（D2）。 */
   exchange?: string;
   /** 受け口で、取り次いだ窓口の登録が有効かを、認可サーバーに問い合わせる（D10）。 */
@@ -29,8 +31,8 @@ export interface Checks {
 
 const CHECKS: Record<string, Omit<Checks, "binding" | "caller">> = {
   "sales-agent": { verify: "D20" },
-  "insurer-mcp": { aud: "D1", typ: "D1", exchange: "D2" },
-  "insurer-backend": { signature: "D5", exp: "D6", aud: "D7", typ: "D8", introspect: "D10" },
+  "insurer-mcp": { aud: "D1", typ: "D1", issuer: "D29", exchange: "D2" },
+  "insurer-backend": { signature: "D5", exp: "D6", aud: "D7", typ: "D8", issuer: "D29", introspect: "D10" },
 };
 
 const service = env("SERVICE");
@@ -41,7 +43,12 @@ export const config = {
   adminPort: Number(env("TOKEN_GUARD_ADMIN_PORT", "9090")),
   /** このサービスの名前。受け取るトークンの aud で、替えるときの client_id。 */
   service,
+  /** 受け取るトークンの発行者。営業 AI エージェントはログインサーバー（A）、ほかは認可サーバー（B、C）である（D-35）。 */
   issuer: env("ISSUER"),
+  /** 発行者の公開鍵（Envoy の出口を通す）。 */
+  jwksUrl: env("JWKS_URL", `${env("AUTH_EGRESS_URL", "http://127.0.0.1:15101")}/oauth2/jwks`),
+  /** もう一方の発行者の公開鍵。vulnerable で D29 を外すときだけ使う。 */
+  otherJwksUrl: process.env.OTHER_JWKS_URL,
   /** 顧客が呼ぶ公開名（入口の名前）。DPoP の htu は、この名前とパスで照らす。 */
   publicOrigin: process.env.PUBLIC_ORIGIN,
   /** 受け口で求める証明: 顧客のアプリからは DPoP、サービスからは mTLS の証明書（D-7）。 */

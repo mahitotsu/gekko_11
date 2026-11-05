@@ -29,6 +29,7 @@ const INBOX = /^[A-Za-z0-9_-]{22,64}$/;
 /** 画面に渡す設定。入口の名前は、マニフェストの生成で決まる（D-25）。 */
 const config = () => ({
   issuer: process.env.ISSUER,
+  authOrigin: process.env.AUTH_ORIGIN,
   agentOrigin: process.env.AGENT_ORIGIN,
   appOrigin: process.env.APP_ORIGIN,
   rpId: process.env.RP_ID,

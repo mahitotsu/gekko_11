@@ -13,11 +13,8 @@ final class ExchangePolicy {
 
 	static final String INSURER_BACKEND = "insurer-backend";
 
-	/** 監査サービス。トークンの宛先にはならず、監査の担当のログインにだけ使う（D-31）。 */
-	static final String INSURER_AUDIT = "insurer-audit";
-
-	/** 顧客のアプリが受け取るトークン A の宛先。 */
-	static final String CUSTOMER_AUDIENCE = SALES_AGENT;
+	/** 認可サーバー自身。passkey の登録に使う P の宛先（D-37）。 */
+	static final String INSURER_AUTH = "insurer-auth";
 
 	/** 替えを頼む窓口ごとに、替えてよい宛先。 */
 	private static final Map<String, String> NEXT = Map.of(SALES_AGENT, INSURER_MCP, INSURER_MCP, INSURER_BACKEND);

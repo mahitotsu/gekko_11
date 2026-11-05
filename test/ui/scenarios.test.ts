@@ -124,7 +124,7 @@ describe("補足: 顧客のアプリは、ID トークンを確かめる（D21�
     const c = new BrowserCustomer(ns, "alice");
     opened.push(c);
     await c.open();
-    await c.page.route("**/oauth2/token", async (route) => {
+    await c.page.route("**/protocol/openid-connect/token", async (route) => {
       if (route.request().method() !== "POST") return route.continue();
       try {
         const res = await route.fetch();

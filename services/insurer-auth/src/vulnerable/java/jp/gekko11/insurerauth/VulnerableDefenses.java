@@ -24,8 +24,8 @@ import org.springframework.stereotype.Component;
 @Primary
 class VulnerableDefenses implements Defenses {
 
-	private static final List<String> KNOWN = List.of(AUD_ONE, SHORT_TTL, ID_TOKEN_AUD, KEEP_ACT, NARROW_TERMS,
-			FIXED_TARGET);
+	private static final List<String> KNOWN = List.of(AUD_ONE, SHORT_TTL, KEEP_ACT, NARROW_TERMS, FIXED_TARGET,
+			VERIFY_SUBJECT);
 
 	private final Map<String, String> off = new ConcurrentHashMap<>();
 

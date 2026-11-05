@@ -1,9 +1,7 @@
 package jp.gekko11.insurerauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import java.nio.charset.StandardCharsets;
@@ -11,6 +9,7 @@ import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -19,31 +18,41 @@ import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.ECDSASigner;
-import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.ECKey;
-import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.web.util.UriComponentsBuilder;
 
 /** 認可サーバーのテストの共通の手順。証明書は、TLS の層が確かめた後の形（要求の属性）で渡す。 */
-@SpringBootTest(properties = { "gekko.issuer=http://localhost", "gekko.namespace=secure" })
+@SpringBootTest(properties = { "gekko.issuer=http://localhost", "gekko.namespace=secure",
+		"gekko.login-issuer=" + AuthTestSupport.LOGIN_ISSUER })
 @AutoConfigureMockMvc
+@Import(AuthTestSupport.LoginServer.class)
 abstract class AuthTestSupport {
 
 	static final String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
 
 	static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 
-	static final String REDIRECT = "http://127.0.0.1:4000/callback";
+	static final String LOGIN_ISSUER = "http://login.test/realms/insurer";
+
+	/** ログインサーバーの発行の鍵の代わり。 */
+	static final RSAKey LOGIN_KEY = rsaKey();
 
 	static final String TERMS = "[{\"type\":\"insurance_application\",\"kinds\":[\"annuity\"],\"maxBenefit\":1200000}]";
 
@@ -56,48 +65,60 @@ abstract class AuthTestSupport {
 
 	final ObjectMapper json = new ObjectMapper();
 
+	/** ログインサーバーの代わりに、公開鍵を渡す。 */
+	@TestConfiguration
+	static class LoginServer {
+
+		@Bean
+		@Primary
+		LoginKeys testLoginKeys() {
+			return new LoginKeys(new ImmutableJWKSet<>(new JWKSet(LOGIN_KEY.toPublicJWK())));
+		}
+
+	}
+
 	String customerToken(ECKey dpopKey) throws Exception {
 		return customerToken(dpopKey, "alice");
 	}
 
+	/** ログインサーバーが出す A（realm の設定と同じ形）。 */
 	String customerToken(ECKey dpopKey, String user) throws Exception {
-		String verifier = UUID.randomUUID() + "-" + UUID.randomUUID();
-		MvcResult result = this.mvc
-			.perform(post("/oauth2/token").param("grant_type", "authorization_code")
-				.param("client_id", "customer-app")
-				.param("code", authorizationCode(verifier, user))
-				.param("redirect_uri", REDIRECT)
-				.param("code_verifier", verifier)
-				.header("DPoP", dpopProof(dpopKey)))
-			.andReturn();
-		assertThat(result.getResponse().getStatus()).as(result.getResponse().getContentAsString()).isEqualTo(200);
-		Map<?, ?> body = this.json.readValue(result.getResponse().getContentAsString(), Map.class);
-		assertThat(body.get("token_type")).isEqualTo("DPoP");
-		return (String) body.get("access_token");
+		return loginToken(LOGIN_KEY, "at+jwt", aClaims(dpopKey, user).build());
 	}
 
-	String authorizationCode(String verifier) throws Exception {
-		return authorizationCode(verifier, "alice");
+	JWTClaimsSet.Builder aClaims(ECKey dpopKey, String user) throws Exception {
+		JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder().issuer(LOGIN_ISSUER)
+			.subject(user)
+			.audience("sales-agent")
+			.jwtID("onrtac:" + UUID.randomUUID())
+			.issueTime(new Date())
+			.expirationTime(new Date(System.currentTimeMillis() + 300_000))
+			.claim("azp", "customer-app")
+			.claim("scope", "openid apply")
+			.claim("cnf", Map.of("jkt", dpopKey.computeThumbprint().toString()))
+			.claim("may_act", Map.of("iss", "http://localhost", "sub", "sales-agent"))
+			.claim("authorization_details", this.json.readValue(TERMS, List.class));
+		if (!"mallory".equals(user)) {
+			claims.claim("verified_claims", Map.of("verification", Map.of("trust_framework", "jp_aml")));
+		}
+		return claims;
 	}
 
-	String authorizationCode(String verifier, String user) throws Exception {
-		MvcResult result = this.mvc
-			.perform(get(UriComponentsBuilder.fromPath("/oauth2/authorize")
-				.queryParam("response_type", "code")
-				.queryParam("client_id", "customer-app")
-				.queryParam("scope", "openid apply")
-				.queryParam("authorization_details", TERMS)
-				.queryParam("redirect_uri", REDIRECT)
-				.queryParam("state", "s")
-				.queryParam("code_challenge", challenge(verifier))
-				.queryParam("code_challenge_method", "S256")
-				.build()
-				.encode()
-				.toUri()).with(user(user)))
-			.andReturn();
-		String location = result.getResponse().getRedirectedUrl();
-		assertThat(location).startsWith(REDIRECT);
-		return UriComponentsBuilder.fromUriString(location).build().getQueryParams().getFirst("code");
+	static String loginToken(RSAKey key, String type, JWTClaimsSet claims) throws Exception {
+		SignedJWT token = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.getKeyID())
+			.type(new JOSEObjectType(type))
+			.build(), claims);
+		token.sign(new RSASSASigner(key));
+		return token.serialize();
+	}
+
+	static RSAKey rsaKey() {
+		try {
+			return new RSAKeyGenerator(2048).keyID("login").generate();
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	String actorToken(X509Certificate cert, String clientId) throws Exception {
@@ -143,13 +164,17 @@ abstract class AuthTestSupport {
 		return request;
 	}
 
-	static String dpopProof(ECKey key) throws Exception {
+	/** passkey の受け口へ示す proof。 */
+	static String dpopProof(ECKey key, String method, String uri, String token) throws Exception {
 		SignedJWT proof = new SignedJWT(
 				new JWSHeader.Builder(JWSAlgorithm.ES256).type(new JOSEObjectType("dpop+jwt"))
 					.jwk(key.toPublicJWK())
 					.build(),
-				new JWTClaimsSet.Builder().claim("htm", "POST")
-					.claim("htu", "http://localhost/oauth2/token")
+				new JWTClaimsSet.Builder().claim("htm", method)
+					.claim("htu", uri)
+					.claim("ath", Base64.getUrlEncoder()
+						.withoutPadding()
+						.encodeToString(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.US_ASCII))))
 					.issueTime(new Date())
 					.jwtID(UUID.randomUUID().toString())
 					.build());
@@ -176,11 +201,6 @@ abstract class AuthTestSupport {
 	@SuppressWarnings("unchecked")
 	static Map<String, Object> map(Object value) {
 		return (Map<String, Object>) value;
-	}
-
-	static String challenge(String verifier) throws Exception {
-		byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
-		return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
 	}
 
 	static String thumbprint(X509Certificate cert) throws Exception {

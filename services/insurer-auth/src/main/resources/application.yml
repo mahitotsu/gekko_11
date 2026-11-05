@@ -2,7 +2,7 @@ gekko:
   issuer: ${ISSUER:http://localhost}
   trust-domain: ${TRUST_DOMAIN:gekko11.internal}
   namespace: ${NAMESPACE:secure}
-  customer-redirect-uri: ${CUSTOMER_REDIRECT_URI:http://127.0.0.1:4000/callback}
-  audit-redirect-uri: ${AUDIT_REDIRECT_URI:http://127.0.0.1:4100/login/oauth2/code/insurer-auth}
+  login-issuer: ${LOGIN_ISSUER:http://localhost/realms/insurer}
+  login-jwks-url: ${LOGIN_JWKS_URL:http://127.0.0.1:15105/realms/insurer/protocol/openid-connect/certs}
   rp-id: ${RP_ID:localhost}
   origins: ${WEBAUTHN_ORIGINS:http://localhost:4000}

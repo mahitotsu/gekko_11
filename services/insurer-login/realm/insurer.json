@@ -1,0 +1,290 @@
+{
+  "realm": "insurer",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "roles": {
+    "realm": [
+      {
+        "name": "CUSTOMER"
+      },
+      {
+        "name": "AUDITOR"
+      }
+    ]
+  },
+  "users": [
+    {
+      "id": "alice",
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.invalid",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Alice",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo"
+        }
+      ],
+      "realmRoles": [
+        "CUSTOMER"
+      ],
+      "attributes": {
+        "verified_claims": [
+          "{\"verification\":{\"trust_framework\":\"jp_aml\",\"method\":\"対面で本人確認書類を確認\",\"time\":\"2026-01-15\"},\"claims\":{\"name\":\"Alice\"}}"
+        ]
+      }
+    },
+    {
+      "id": "bob",
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.invalid",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Bob",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo"
+        }
+      ],
+      "realmRoles": [
+        "CUSTOMER"
+      ],
+      "attributes": {
+        "verified_claims": [
+          "{\"verification\":{\"trust_framework\":\"jp_aml\",\"method\":\"対面で本人確認書類を確認\",\"time\":\"2026-01-15\"},\"claims\":{\"name\":\"Bob\"}}"
+        ]
+      }
+    },
+    {
+      "id": "mallory",
+      "username": "mallory",
+      "enabled": true,
+      "email": "mallory@example.invalid",
+      "emailVerified": true,
+      "firstName": "Mallory",
+      "lastName": "Mallory",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo"
+        }
+      ],
+      "realmRoles": [
+        "CUSTOMER"
+      ]
+    },
+    {
+      "id": "hanako",
+      "username": "hanako",
+      "enabled": true,
+      "email": "hanako@example.invalid",
+      "emailVerified": true,
+      "firstName": "Hanako",
+      "lastName": "Hanako",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo"
+        }
+      ],
+      "realmRoles": [
+        "CUSTOMER"
+      ],
+      "attributes": {
+        "verified_claims": [
+          "{\"verification\":{\"trust_framework\":\"jp_aml\",\"method\":\"対面で本人確認書類を確認\",\"time\":\"2026-01-15\"},\"claims\":{\"name\":\"Hanako\"}}"
+        ]
+      }
+    },
+    {
+      "id": "kansa",
+      "username": "kansa",
+      "enabled": true,
+      "email": "kansa@example.invalid",
+      "emailVerified": true,
+      "firstName": "Kansa",
+      "lastName": "Kansa",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo"
+        }
+      ],
+      "realmRoles": [
+        "AUDITOR"
+      ]
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "spire",
+      "providerId": "spiffe",
+      "enabled": true,
+      "config": {
+        "trustDomain": "spiffe://${TRUST_DOMAIN}",
+        "bundleEndpoint": "https://spire-server.spire.svc.cluster.local:8443"
+      }
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "basic",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "multivalued": "true",
+            "claim.name": "roles",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "name": "apply",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "sales-agent",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "may_act",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "may_act",
+            "claim.value": "{\"iss\":\"${AUTH_ISSUER}\",\"sub\":\"sales-agent\"}",
+            "jsonType.label": "JSON",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "verified_claims",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "verified_claims",
+            "claim.name": "verified_claims",
+            "jsonType.label": "JSON",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "issuance",
+          "protocol": "openid-connect",
+          "protocolMapper": "insurer-issuance-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "passkeys",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "insurer-auth",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "customer-app",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "${APP_ORIGIN}/callback"
+      ],
+      "webOrigins": [
+        "${APP_ORIGIN}"
+      ],
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": [
+        "apply",
+        "passkeys"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "dpop.bound.access.tokens": "true",
+        "access.token.header.type.rfc9068": "true",
+        "use.refresh.tokens": "false",
+        "post.logout.redirect.uris": "${APP_ORIGIN}/"
+      }
+    },
+    {
+      "clientId": "insurer-audit",
+      "publicClient": false,
+      "clientAuthenticatorType": "federated-jwt",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "${AUDIT_ORIGIN}/login/oauth2/code/insurer-login"
+      ],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "use.refresh.tokens": "false",
+        "post.logout.redirect.uris": "${AUDIT_ORIGIN}/",
+        "jwt.credential.issuer": "spire",
+        "jwt.credential.sub": "spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/insurer-audit"
+      }
+    }
+  ]
+}

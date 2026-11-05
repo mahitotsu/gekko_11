@@ -6,7 +6,7 @@ import { generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
 import { reconcile } from "../../packages/customer-app/src/reconcile.ts";
 import {
-  applyArgs, atMcp, auditOf, auditorGet, backendPost, checksOf, contractsOf, Customer, exchangeAs, ISSUER, mcpCall, offerFor, probe, records,
+  applyArgs, atMcp, auditOf, auditorGet, backendPost, checksOf, contractsOf, Customer, exchangeAs, ISSUER, LOGIN_ISSUER, mcpCall, offerFor, probe, records,
   setDefenses, setTamper, TERMS, type Gaps, type Json, type Ns, type Offer, type Submission,
 } from "./world.ts";
 
@@ -51,6 +51,9 @@ const D = {
   "D26 営業 AI エージェント": { "D26@sales-agent": "off" },
   "D26 事務サービス": { "D26@insurer-mcp": "off" },
   "D26 保険会社のシステム": { "D26@insurer-backend": "off" },
+  D28: { D28: "off" },
+  "D29 事務サービス": { "D29@insurer-mcp": "off" },
+  "D29 保険会社のシステム": { "D29@insurer-backend": "off" },
   "D27 事務サービス": { "D27@insurer-mcp": "off" },
   "D27 保険会社のシステム": { "D27@insurer-backend": "off" },
 } satisfies Record<string, Gaps>;
@@ -106,6 +109,20 @@ const planOf = (offer: Offer, id: string) => offer.offerSet.plans.find((p) => p.
 const decode = (token: string) => JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString()) as Json;
 const recorded = async (ns: Ns, nonce: string, pred: (c: Json) => boolean = () => true) => (await contractsOf(ns, nonce)).some(pred);
 const offRoute = (c: Json) => JSON.stringify(c.by) !== JSON.stringify(FULL_ROUTE);
+
+/** ログインサーバーの鍵ではない鍵で署名した、偽の A。形は、本物と同じである。 */
+async function forgedA(ns: Ns, sub: string, verified: unknown) {
+  const { privateKey } = await generateKeyPair("RS256");
+  return new SignJWT({ azp: "customer-app", scope: "openid apply", authorization_details: TERMS, verified_claims: verified, may_act: { iss: ISSUER(ns), sub: "sales-agent" } })
+    .setProtectedHeader({ alg: "RS256", kid: "forged", typ: "at+jwt" })
+    .setIssuer(LOGIN_ISSUER(ns))
+    .setSubject(sub)
+    .setAudience("sales-agent")
+    .setJti(crypto.randomUUID())
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
+}
 
 /** 保険会社の鍵ではない鍵で署名した、偽造トークン。結び付けは、出す probe の証明書に合わせる。 */
 async function forged(ns: Ns, sub: string, verified: unknown) {
@@ -170,8 +187,8 @@ scenario(3, "R2 × A3: 偽造したトークンで、本人の知らない申込
 });
 
 scenario(5, "R2 × A5: 顧客の ID トークンを、申込みのトークンとして使う", {
-  defenses: ["D3c", "D7", "D8", "D10", "D11", "D13", "D14", "D15", "D26 保険会社のシステム"],
-  minimal: ["D3c", "D8", "D10", "D11", "D13", "D14", "D15", "D26 保険会社のシステム"],
+  defenses: ["D3c", "D7", "D8", "D10", "D11", "D13", "D14", "D15", "D26 保険会社のシステム", "D29 保険会社のシステム"],
+  minimal: ["D3c", "D8", "D10", "D11", "D13", "D14", "D15", "D26 保険会社のシステム", "D29 保険会社のシステム"],
   prepare: async (ns) => {
     const alice = await customer(ns, "alice");
     const offer = await offerFor(alice);
@@ -354,14 +371,14 @@ const signedFor = async (ns: Ns) => {
 };
 
 scenario(14, "R7 × A6: 営業 AI エージェント宛ての A で、保険会社のシステムへ直接申し込む", {
-  defenses: ["D7", "D26 保険会社のシステム"],
+  defenses: ["D7", "D10", "D26 保険会社のシステム", "D29 保険会社のシステム"],
   prepare: signedFor,
   attack: async (ns, { alice, sub }) => backendPost(ns, alice.token, sub),
   harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
 }, () => {
   it("vulnerable: 事後に、監査サービスが、事務サービスの記録の欠けと、トークンの連鎖の切れを示す（D25）", async () => {
     const { alice, offer, sub } = await signedFor("vulnerable");
-    await setDefenses(gapsOf(["D7", "D26 保険会社のシステム"]));
+    await setDefenses(gapsOf(["D7", "D10", "D26 保険会社のシステム", "D29 保険会社のシステム"]));
     await backendPost("vulnerable", alice.token, sub);
     const report = await auditOf("vulnerable", offer.nonce, (r) => r.contractRecord !== null && r.chain.length > 0);
     expect(report.status).toBe("食い違いあり");
@@ -377,14 +394,14 @@ scenario(15, "R7 × A7: 事務サービスが、受け取った B をそのま�
 });
 
 scenario(16, "R7 × A7: 営業 AI エージェントが、A を事務サービスへそのまま出す", {
-  defenses: ["D1", "D26 事務サービス", "D2 素通し", "D7", "D26 保険会社のシステム"],
+  defenses: ["D1", "D26 事務サービス", "D29 事務サービス", "D2 素通し", "D7", "D10", "D26 保険会社のシステム", "D29 保険会社のシステム"],
   prepare: signedFor,
   attack: async (ns, { alice, sub }) => submitViaMcp(ns, alice.token, sub),
   harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
 });
 
 scenario(17, "R7 × A16: どの窓口でも通る A で、保険会社のシステムへ直接申し込む", {
-  defenses: ["D3a", "D26 保険会社のシステム"],
+  defenses: ["D3a", "D10", "D26 保険会社のシステム", "D29 保険会社のシステム"],
   prepare: signedFor,
   // 発行の防御（D3a）が効くのは、トークンを受け取るときなので、受け取りから攻撃に含める
   attack: async (ns, { sub }) => backendPost(ns, (await new Customer(ns, "alice").setup()).token, sub),
@@ -469,6 +486,26 @@ scenario(21, "R7 × A17: 営業 AI エージェントが、事務サービスを
   harmed: async (ns, { offer }) => recorded(ns, offer.nonce, offRoute),
 });
 
+// ======== 発行者をまたぐ交換: 認可サーバーが、ログインサーバーの A を確かめて替える（D-36） ========
+scenario(25, "R1 × A21: ログインサーバーを名乗って偽の A を作り、bob の代理のトークンに替えさせる", {
+  defenses: ["D28"],
+  prepare: async (ns) => ({ verified: decode((await customer(ns, "bob")).token).verified_claims, sub: undefined as unknown }),
+  attack: async (ns, c) => {
+    const b = await exchangeAs(ns, "probe-sales-agent", await forgedA(ns, "bob", c.verified), "insurer-mcp");
+    c.sub = b.body?.access_token ? decode(b.body.access_token).sub : undefined;
+  },
+  harmed: async (_ns, c) => c.sub === "bob",
+}, () => {
+  for (const [name, off] of [["secure", false], ["vulnerable", true]] as const) {
+    it(`${name}: ID トークンを替えに出しても、${off ? "D28 を外しても、" : ""}B は出ない（宛先と代理の認可で止まる）`, async () => {
+      const ns = name;
+      const alice = await new Customer(ns, "alice").setup();
+      if (off) await setDefenses(gapsOf(["D28"]));
+      expect((await exchangeAs(ns, "probe-sales-agent", alice.idToken, "insurer-mcp")).body?.access_token).toBeUndefined();
+    });
+  }
+});
+
 // ======== R10 本人の契約の情報が、本人以外に漏れる ========
 scenario(22, "R10 × A18: 盗んだ A を、DPoP の鍵なしで使い、契約を照会させる", {
   defenses: ["D26 営業 AI エージェント"],
@@ -527,6 +564,16 @@ describe("監査サービス（D25）", () => {
 });
 
 describe("補足", () => {
+  it("secure: A はログインサーバーが出し、B は認可サーバーが、顧客と経由を保ったまま出す（D-35）", async () => {
+    const alice = await customer("secure", "alice");
+    const a = decode(alice.token);
+    const b = decode(await atMcp(alice));
+    expect(a.iss).toBe(LOGIN_ISSUER("secure"));
+    expect(b.iss).toBe(ISSUER("secure"));
+    expect([a.sub, a.aud, a.authorization_details?.[0].maxBenefit]).toEqual(["alice", "sales-agent", TERMS[0]!.maxBenefit]);
+    expect([b.sub, b.aud, b.act.sub, b.authorization_details[0].maxBenefit]).toEqual(["alice", "insurer-mcp", "sales-agent", TERMS[0]!.maxBenefit]);
+  });
+
   it("secure: 営業 AI エージェントは、自分宛てでないトークン（B）を受け付けない（D20）", async () => {
     const alice = await customer("secure", "alice");
     const b = await atMcp(alice);
@@ -544,6 +591,11 @@ describe("補足", () => {
     if (ns === "vulnerable") await setDefenses({ "D26@insurer-backend": "off" });
     const r = await probe(ns, "probe-mcp-2", "call-service", { service: "insurer-backend", path: "/contracts", method: "GET", token: c });
     expect(r.status).toBe(status);
+  });
+
+  it("secure: ログインサーバーにも、防御を外す受け口がない（D-20）", async () => {
+    const r: Json = await probe("secure", "probe-intruder", "admin", { service: "insurer-login", port: 9091, path: "/defenses", method: "GET" });
+    expect(r.status).toBeUndefined();
   });
 
   it("secure: 防御を外す受け口がない（D-20）", async () => {

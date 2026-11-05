@@ -17,6 +17,20 @@ data:
         organization = ["gekko11"]
         common_name  = ""
       }
+      # ログインサーバーが、JWT-SVID を確かめる公開鍵を取る受け口（D-38）。証明書は deploy/cluster.sh が作る
+      federation {
+        bundle_endpoint {
+          address = "0.0.0.0"
+          port    = 8443
+          profile "https_web" {
+            serving_cert_file {
+              cert_file_path     = "/run/spire/bundle-endpoint-tls/tls.crt"
+              key_file_path      = "/run/spire/bundle-endpoint-tls/tls.key"
+              file_sync_interval = "1h"
+            }
+          }
+        }
+      }
     }
     plugins {
       DataStore "sql" {
@@ -59,6 +73,9 @@ spec:
     - name: grpc
       port: 8081
       targetPort: 8081
+    - name: bundle
+      port: 8443
+      targetPort: 8443
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -85,9 +102,13 @@ spec:
           args: ["-config", "/run/spire/config/server.conf"]
           ports:
             - containerPort: 8081
+            - containerPort: 8443
           volumeMounts:
             - name: spire-config
               mountPath: /run/spire/config
+              readOnly: true
+            - name: bundle-endpoint-tls
+              mountPath: /run/spire/bundle-endpoint-tls
               readOnly: true
             - name: spire-data
               mountPath: /run/spire/data
@@ -107,6 +128,9 @@ spec:
         - name: spire-config
           configMap:
             name: spire-server-config
+        - name: bundle-endpoint-tls
+          secret:
+            secretName: spire-bundle-endpoint-tls
   volumeClaimTemplates:
     - metadata:
         name: spire-data

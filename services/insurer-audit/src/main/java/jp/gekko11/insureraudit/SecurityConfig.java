@@ -1,5 +1,9 @@
 package jp.gekko11.insureraudit;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -38,9 +42,12 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 class SecurityConfig {
 
-	static final String REGISTRATION = "insurer-auth";
+	static final String REGISTRATION = "insurer-login";
 
 	static final String CLIENT_ID = "insurer-audit";
+
+	/** ログインサーバーの受け口のパス。 */
+	private static final String OIDC = "/protocol/openid-connect";
 
 	@Bean
 	SecurityFilterChain auditChain(HttpSecurity http, ClientRegistrationRepository clients, AuditProperties props)
@@ -50,7 +57,7 @@ class SecurityConfig {
 		signedOut.setPostLogoutRedirectUri(props.publicOrigin() + "/");
 		http.authorizeHttpRequests((a) -> a.requestMatchers("/error").permitAll().anyRequest().hasRole("AUDITOR"))
 			.oauth2Login((o) -> o.authorizationEndpoint((e) -> e.authorizationRequestResolver(pkce(clients)))
-				.tokenEndpoint((t) -> t.accessTokenResponseClient(tokenClient()))
+				.tokenEndpoint((t) -> t.accessTokenResponseClient(tokenClient(props)))
 				.userInfoEndpoint((u) -> u.userAuthoritiesMapper(rolesFromIdToken())))
 			.logout((l) -> l.logoutSuccessHandler(signedOut));
 		return http.build();
@@ -61,17 +68,17 @@ class SecurityConfig {
 		// 公開名と内部の名前が違うので、発見の文書（.well-known）は使わず、受け口を 1 つずつ決める
 		ClientRegistration registration = ClientRegistration.withRegistrationId(REGISTRATION)
 			.clientId(CLIENT_ID)
-			.clientAuthenticationMethod(ClientAuthenticationMethod.TLS_CLIENT_AUTH)
+			.clientAuthenticationMethod(new ClientAuthenticationMethod("federated-jwt"))
 			.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
 			.redirectUri(props.publicOrigin() + "/login/oauth2/code/" + REGISTRATION)
 			.scope("openid")
 			.issuerUri(props.issuer())
-			.authorizationUri(props.issuer() + "/oauth2/authorize")
-			.tokenUri(props.authUrl() + "/oauth2/token")
-			.jwkSetUri(props.authUrl() + "/oauth2/jwks")
-			.providerConfigurationMetadata(Map.of("end_session_endpoint", props.issuer() + "/connect/logout"))
+			.authorizationUri(props.issuer() + OIDC + "/auth")
+			.tokenUri(props.loginUrl() + "/realms/insurer" + OIDC + "/token")
+			.jwkSetUri(props.loginUrl() + "/realms/insurer" + OIDC + "/certs")
+			.providerConfigurationMetadata(Map.of("end_session_endpoint", props.issuer() + OIDC + "/logout"))
 			.userNameAttributeName("sub")
-			.clientName("認可サーバー")
+			.clientName("ログインサーバー")
 			.build();
 		return new InMemoryClientRegistrationRepository(registration);
 	}
@@ -85,16 +92,29 @@ class SecurityConfig {
 	}
 
 	/**
-	 * トークンの要求には、client_id だけを付ける。クライアント認証は、Envoy の出口が SVID の mTLS でかける。
-	 * 標準の部品は、tls_client_auth を知らないと断るので、要求の組み立てを明示して、その確かめを外す。
+	 * トークンの要求のクライアント認証には、JWT-SVID を示す（D-38）。秘密の値は持たない。
+	 * 標準の部品は、この認証の方式を知らないと断るので、要求の組み立てを明示して、その確かめを外す。
 	 */
-	private static OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> tokenClient() {
+	private static OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> tokenClient(AuditProperties props) {
 		RestClientAuthorizationCodeTokenResponseClient client = new RestClientAuthorizationCodeTokenResponseClient();
 		client.setParametersConverter(new DefaultOAuth2TokenRequestParametersConverter<>());
+		client.setParametersCustomizer((parameters) -> {
+			parameters.set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-spiffe");
+			parameters.set("client_assertion", jwtSvid(props));
+		});
 		return client;
 	}
 
-	/** ID トークンの roles（認可サーバーが載せる）を、役割にする。 */
+	private static String jwtSvid(AuditProperties props) {
+		try {
+			return Files.readString(Path.of(props.jwtSvidFile())).trim();
+		}
+		catch (IOException ex) {
+			throw new UncheckedIOException(ex);
+		}
+	}
+
+	/** ID トークンの roles（ログインサーバーが載せる）を、役割にする。 */
 	private static GrantedAuthoritiesMapper rolesFromIdToken() {
 		return (Collection<? extends GrantedAuthority> authorities) -> {
 			Set<GrantedAuthority> mapped = new HashSet<>(authorities);

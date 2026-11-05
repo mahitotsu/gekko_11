@@ -173,7 +173,7 @@ describe("カードで進む申込み（vulnerable の台本）", () => {
 });
 
 describe("サインアウト", () => {
-  it("secure: 顧客がサインアウトすると、次のログインで、認可サーバーがまた本人を確かめる", async () => {
+  it("secure: 顧客がサインアウトすると、次のログインで、ログインサーバーがまた本人を確かめる", async () => {
     alice = await new BrowserCustomer("secure", "alice").ready();
     await alice.page.getByTestId("signout").click();
     await alice.page.getByTestId("login").waitFor();
@@ -182,14 +182,16 @@ describe("サインアウト", () => {
     await alice.page.locator("#username").waitFor();
   });
 
-  it("secure: 認可サーバーが再起動して ID トークンを忘れていても、サインアウトで行き止まりにならない", async () => {
+  it("secure: ログインサーバーが再起動して鍵が替わっていても、サインアウトで行き止まりにならない", async () => {
     alice = await new BrowserCustomer("secure", "alice").ready();
-    // 認可サーバーが知らない ID トークンを持つ状態を作る
+    // ログインサーバーが確かめられない ID トークンを持つ状態を作る
     await alice.page.evaluate(() => {
       const session = JSON.parse(sessionStorage.getItem("session")!);
       sessionStorage.setItem("session", JSON.stringify({ ...session, idToken: "unknown" }));
     });
     await alice.page.getByTestId("signout").click();
+    // ID トークンを示せないので、ログインサーバーの確認の画面で、利用者が終わらせる
+    await alice.page.locator("#kc-logout").click();
     await alice.page.getByTestId("login").waitFor();
     expect(alice.page.url()).toBe(`${alice.app}/`);
   });
@@ -212,7 +214,7 @@ describe("サインアウト", () => {
 });
 
 describe("監査の画面", () => {
-  it("secure: 顧客は、認可サーバーにログインできても、監査の画面を見られない", async () => {
+  it("secure: 顧客は、ログインサーバーにログインできても、監査の画面を見られない", async () => {
     auditor = new BrowserAuditor("secure", "alice");
     expect(await auditor.open()).toBe(403);
   });
