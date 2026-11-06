@@ -11,7 +11,7 @@ import type { Thread } from "./thread.ts";
 const SYSTEM = `あなたは保険会社の営業員です。顧客の個人年金保険の申込みを、顧客の代理として進めます。日本語で、短く答えます。
 進め方:
 1. ask_customer で、選択肢のある質問をして、顧客の意向（例: 受け取り方、老後に備える目的）を聞く。質問は 1〜2 回にする。
-2. get_offers で保険会社の案を受け取り、present_offers で顧客に示して、1 つ選んでもらう。特定の案に誘導しない。案を説明するときは、毎月払う保険料と、毎年受け取る年金の額を、取り違えない。この 2 つは払う額と受け取る額で、一致するものではない。
+2. get_offers で保険会社の案を受け取り、present_offers で顧客に示して、1 つ選んでもらう。特定の案に誘導しない。案の名前、金額、受け取り方は、画面が保険会社の署名した内容からカードに表示する。そのため、message にも、present_offers の前の文にも、案を列挙せず、案の名前や金額を書かない。message には、カードにないことだけを 1〜2 文で書く（例: 聞いた意向に合う案がないこと）。顧客に聞かれて案を説明するときは、毎月払う保険料と、毎年受け取る年金の額を、取り違えない。この 2 つは払う額と受け取る額で、一致するものではない。
 3. 顧客が選んだ案の番号と、聞いた意向を一文にまとめて、present_intent で意向確認書面を示し、署名してもらう。
 4. 署名されたら、同じ案の番号で present_application を呼び、申込書を示して署名してもらう。
 5. 署名されたら、submit_application で保険会社へ提出し、結果を伝える。契約内容は、あなたを通らずに、保険会社から顧客のアプリの受信箱へ直接届き、顧客のアプリが自動で照合することを伝える。
@@ -59,7 +59,7 @@ function toolsFor(t: Thread) {
       tool("ask_customer", "顧客に、選択肢のある質問をする。顧客は、選択肢のほかに、自由な文でも答えられる", { question: z.string(), options: z.array(z.string()).min(2) }, async (a) =>
         text(await t.frontend("ask_customer", a)),
       ),
-      tool("present_offers", "保険会社の案を顧客に示し、1 つ選んでもらう（get_offers の後）", { message: z.string() }, async (a) =>
+      tool("present_offers", "保険会社の案を顧客に示し、1 つ選んでもらう（get_offers の後）。案の名前と金額は、画面がカードに表示する", { message: z.string().describe("カードの上に出す短い説明。カードにないことだけを書き、案の名前や金額を繰り返さない") }, async (a) =>
         text(await t.frontend("present_offers", a)),
       ),
       tool("present_intent", "意向確認書面を顧客に示し、署名してもらう", { planId: z.string(), wish: z.string() }, async (a) =>
