@@ -32,6 +32,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts --wo
 COPY packages/token-guard/src packages/token-guard/src
 COPY packages/sales-agent/src packages/sales-agent/src
 COPY packages/customer-app/src packages/customer-app/src
+# BFF は、ID トークンの確かめ（D21）に、画面と同じ確かめの処理を使う（D-41）
+COPY packages/customer-app/web/checks.ts packages/customer-app/web/codec.ts packages/customer-app/web/
 COPY --from=web /app/packages/customer-app/dist packages/customer-app/dist
 COPY test/cluster/probe test/cluster/probe
 RUN if [ "$VARIANT" = "secure" ]; then \

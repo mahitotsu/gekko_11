@@ -21,7 +21,7 @@
 | 監査サービス | Java 21、Spring Boot 3.5、Spring Security の OAuth2 Client 6.5、Thymeleaf、java-json-canonicalization（JCS） | `services/insurer-audit` |
 | 営業 AI エージェント | TypeScript、Claude Agent SDK 0.3.302、@ag-ui/core 1.0.3（AG-UI の型と確かめ）、MCP の SDK、Hono | `packages/sales-agent` |
 | token-guard | TypeScript、Hono、jose | `packages/token-guard` |
-| 顧客のアプリ | React 19、Vite 7、oidc-client-ts、@ag-ui/client、@simplewebauthn/browser、react-markdown、jose、canonicalize（JCS）。配信元は Hono | `packages/customer-app` |
+| 顧客のアプリ | 画面は React 19、Vite 7、@ag-ui/client、@simplewebauthn/browser、react-markdown。BFF は Hono、openid-client、jose、canonicalize（JCS） | `packages/customer-app` |
 | クラスタと基盤 | k3d 5.9（k3s 1.35）、SPIRE 1.15、spiffe-helper 0.12、Envoy 1.31、NetworkPolicy | `deploy/` |
 | 記録の集約 | Grafana Alloy 1.20（`loki.source.kubernetes`）、Grafana Loki 3.7 | `deploy/k8s/logging/`、`deploy/render.ts` |
 | テスト | JUnit、pytest、vitest、Playwright 1.64（Docker のブラウザに playwright-core でつなぐ） | 各サービスの `test`、`test/cluster/`、`test/ui/` |
@@ -38,7 +38,7 @@ services/
   insurer-audit/     監査サービス（監査の担当のログイン、記録の読み手、突き合わせ、監査の画面）
 packages/
   sales-agent/       営業 AI エージェント（AG-UI の受け口、Claude Agent SDK。台本でも動く）
-  customer-app/      顧客のアプリ（web/ が画面、src/ が配信元と受信箱と照合）
+  customer-app/      顧客のアプリ（web/ が画面、src/ が BFF と受信箱）
   token-guard/       各 Pod で、Envoy から呼ばれ、トークンを確かめ、替える
 deploy/              クラスタの構成（k3d、SPIRE、記録の集約）、マニフェストの生成（入口と Loki を含む）、組み立てのスクリプト、Node のイメージ
 test/cluster/        クラスタのシナリオのテストと、クラスタの中で役を演じる probe
@@ -65,7 +65,8 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `packages/token-guard/src/exchange.ts` | 出口の交換（D2） |
 | `packages/customer-app/web/checks.ts` | 画面の確かめ（D21〜D23） |
 | `packages/customer-app/web/components/` | 画面（ログイン、登録、カードで進む申込み、確認、署名、照合。D-34） |
-| `packages/customer-app/web/auth.ts` | ログインと更新（P-18）。ID トークンは、`checks.ts` で確かめる（D21、D-40） |
+| `packages/customer-app/src/bff.ts` | BFF（D-41）。ログイン、セッション、更新（P-18）、ID トークンの確かめ（D21）、営業 AI エージェントと認可サーバーへの中継、CSRF の対策 |
+| `packages/customer-app/web/auth.ts` | 画面の側のログイン。BFF の受け口を呼ぶだけで、トークンを持たない |
 | `packages/customer-app/web/controller.ts`、`conversation.ts` | 申込みの進め方と、会話の状態 |
 | `packages/sales-agent/src/agui.ts` | AG-UI の受け口（`POST /agui`。RunAgentInput を確かめ、SSE でイベントを返す） |
 | `packages/sales-agent/src/thread.ts` | 会話ごとの状態と、画面側の道具の呼び出しと待ち合わせ（D-29）。会話の記録を、秘密を伏せて書き出す（D-32） |
@@ -96,7 +97,7 @@ npm run cluster:down     # クラスタを消す
 
 | 名前 | 届く先 |
 |---|---|
-| `app.<名前空間>.localhost` | 顧客のアプリの配信元（画面、設定、提示の公開鍵、受信箱） |
+| `app.<名前空間>.localhost` | 顧客のアプリの配信元（画面、BFF、設定、提示の公開鍵、受信箱） |
 | `login.<名前空間>.localhost` | ログインサーバー（ブラウザに出す経路だけ）。A の issuer は `http://login.<名前空間>.localhost:<ポート>/realms/insurer` である |
 | `auth.<名前空間>.localhost` | 認可サーバー（passkey の登録と確かめだけ）。B と C の issuer も、この名前である |
 | `agent.<名前空間>.localhost` | 営業 AI エージェント（AG-UI の受け口 `POST /agui`） |
@@ -107,11 +108,12 @@ npm run cluster:down     # クラスタを消す
 | ログインサーバー | 8443（Envoy）、8080（Pod の中だけ） | `KC_HOSTNAME`、`KC_TRUSTSTORE_PATHS`。realm の設定が読む `NAMESPACE`、`TRUST_DOMAIN`、`AUTH_ISSUER`、`APP_ORIGIN`、`AUDIT_ORIGIN` |
 | 認可サーバー | 8443（TLS、証明書は任意） | `ISSUER`、`NAMESPACE`、`SVID_DIR`、`RP_ID`、`WEBAUTHN_ORIGINS`、`LOGIN_ISSUER`、`LOGIN_JWKS_URL` |
 | SPIRE の bundle の受け口 | 8443（`spire` の名前空間。証明書は `deploy/cluster.sh` が作り、`.secrets/` に置く） | — |
-| 営業 AI エージェント、顧客のアプリ、監査サービスの受け口（Envoy） | 8443（TLS、証明書なし） | — |
+| 顧客のアプリ、監査サービスの受け口（Envoy） | 8443（TLS、証明書なし） | — |
+| 営業 AI エージェントの受け口（Envoy） | 8443（mTLS。顧客のアプリの BFF だけ） | — |
 | 事務サービス、保険会社のシステム、直送の受け口（Envoy） | 9443（mTLS） | — |
 | 入口（Envoy） | 8080（Pod の中）、NodePort 30081 と 30082 | — |
-| Envoy の出口 | 15101（認可サーバー）、15102（次の段）、15103（顧客のアプリ）、15104（顧客のアプリから、保険会社のシステムの提示の公開鍵）、15105（ログインサーバー） | — |
-| アプリ、token-guard | 8080、9100（Pod の中だけ） | `SERVICE`、`INGRESS_PROOF`、`PUBLIC_ORIGIN`、`ALLOWED_CALLERS`、`NEXT_SERVICE`、`CLAUDE_MODEL`、顧客のアプリは `ISSUER`、`RP_ID`、`APP_ORIGIN`、`AGENT_ORIGIN`、監査サービスは `ISSUER`、`PUBLIC_ORIGIN`、`LOKI_URL` |
+| Envoy の出口 | 15101（認可サーバー）、15102（次の段）、15103（顧客のアプリ）、15104（顧客のアプリから、保険会社のシステムの提示の公開鍵）、15105（ログインサーバー）、15106（顧客のアプリの BFF から、営業 AI エージェント） | — |
+| アプリ、token-guard | 8080、9100（Pod の中だけ） | `SERVICE`、`INGRESS_PROOF`、`PUBLIC_ORIGIN`、`ALLOWED_CALLERS`、`NEXT_SERVICE`、`CLAUDE_MODEL`、顧客のアプリは `ISSUER`、`RP_ID`、`APP_ORIGIN`、`LOGIN_URL`、`AGENT_URL`、`AGENT_ORIGIN_INTERNAL`、`AUTH_URL`、`AUTH_ORIGIN_INTERNAL`、`JWT_SVID_FILE`、監査サービスは `ISSUER`、`PUBLIC_ORIGIN`、`LOKI_URL` |
 | Loki | 3100（名前空間の中の HTTP。Alloy と監査サービスだけが届く） | — |
 | 管理のポート（vulnerable だけ） | 9090（token-guard）、9091（アプリ） | — |
 
@@ -136,17 +138,19 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **入口は、TLS なしの localhost である:** ブラウザと入口の間は、利用者の端末の中のループバックで、http で受ける。ブラウザは localhost を安全な文脈として扱うので、passkey と WebCrypto が動く（F-G62、F-G63）。本番では、信頼された証明書の HTTPS にする。issuer も http になる。
 - **受信箱の番号は、端末の保存領域にある:** 番号を持つ者は、その受信箱を読める（D-26）。署名済み申込の写しも、同じ保存領域に置く。
 - **新しい申し込みで捨てた会話は、サーバーに残る:** 画面は要求を止めて会話を捨てるが、営業 AI エージェントには、使われなくなるまで最大 15 分残る。提出の途中なら、始め直しても契約になることがある（D-34）。
+- **BFF のセッションは、メモリにある:** 顧客のアプリの BFF は、セッション、トークン、DPoP の鍵を、1 つの複製のメモリに持つ。再起動で消え、ログインし直しになる。複製を増やすには、セッションの置き場所を分ける必要がある（D-41）。
 - **画面のファイルが大きい:** まとめたスクリプトは、分割せず、約 850 kB ある。教材の規模なので、読み込みの遅さを問題にしない（D-40）。
 - **更新できなくなると、最初からやり直す:** 無操作が 30 分続くか、ログインから 1 時間経つと、トークン A を更新できない。ログインし直すと、入力した内容は消える（D-34、P-18）。
 - **会話の状態は、営業 AI エージェントのメモリにある:** threadId ごとの会話（Claude の会話、直前の提示、署名した書類）を、1 つの複製のメモリに持つ。再起動で消え、15 分使われなければ捨てる。会話は、ログインの上限の 1 時間までに終える（P-18）。
 - **記録の集約は、教材の規模である:** Loki は、名前空間ごとに 1 つのプロセスで動き、認証を持たない。記録は、Pod の一時的な領域（emptyDir）のファイルに保存する。Pod を作り直すと、記録は消える。Alloy も 1 つで、止まっている間の記録は届かない。
 - **サインアウトは、もう一方のアプリのセッションを終わらせない:** 押したアプリとログインサーバーのログインだけが終わる（D-33）。ログインサーバーが再起動した後は、ID トークンを示せないので、確認の画面を 1 回押す（F-G80）。
-- **同じログインの間は、前回の取決めの範囲が残る:** ログインサーバーは、範囲を求めない次の要求にも、前回の範囲を載せる（F-G78）。顧客のアプリは A を求めるたびに範囲を示すので、A が前の範囲になることはない。P には範囲が載るが、P の受け口は読まない。
+- **同じログインの間は、前回の取決めの範囲が残る:** ログインサーバーは、範囲を求めない次の要求にも、前回の範囲を載せる（F-G78）。顧客のアプリの BFF は A を求めるたびに範囲を示すので、A が前の範囲になることはない。P には範囲が載るが、P の受け口は読まない。
 - **Pod の起動が遅い:** ログインサーバーは、起動に 1 分から 3 分かかる。
 - **監査は、AI への指示とモデルの変更を見ない:** 会話の記録に、動いたモデルの名前だけを残す。指示（プロンプト）の変更の記録と、その監査は作っていない。
 - **probe の顧客の役も残る:** 多くのシナリオは、クラスタの中の probe が顧客を演じる。署名と DPoP の proof には、入口の公開名を使う。
 
 ## 6. まだ確かめていないこと
+- 顧客のアプリの BFF は、自動テストだけで確かめた。Windows Hello などの本物の認証器と、手での操作では、まだ確かめていない（D-41）。
 - 画面は、Chromium と仮想の認証器で自動テストした。さらに、Windows の VS Code に内蔵されたブラウザと Windows Hello で、ログインから照合まで手で確かめた（F-G63）。ほかのブラウザ（Chrome、Edge、Safari、Firefox）と、ほかの認証器（スマートフォンの passkey など）では、確かめていない。
 - 顧客のアプリは、保険会社が署名した登録情報から、営業 AI エージェントの名称、所属、扱える範囲を示す（P-12）。この表示は、未実装である。画面は、取決めの範囲だけを示す。
 - Loki の保存期間（7 日）を過ぎた記録が、ファイルの保存で実際に消えることは、確かめていない（F-G70）。

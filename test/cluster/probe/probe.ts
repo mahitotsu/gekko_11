@@ -18,13 +18,18 @@ const spiffeId = (sa: string) => `spiffe://${TRUST_DOMAIN}/ns/${ns}/sa/${sa}`;
 const PORTS: Record<string, number> = { "insurer-auth": 8443, "insurer-login": 8443, "sales-agent": 8443, "customer-app": 8443, "insurer-audit": 8443, "insurer-mcp": 9443, "insurer-backend": 9443 };
 const origin = (service: string) => `https://${service}.${ns}.svc:${PORTS[service]}`;
 /** ブラウザが入口を通って呼ぶ公開名（D-25）。顧客の役は、署名と proof に、この名前を使う。 */
-const publicOrigin = (name: "app" | "agent" | "login") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
+const publicOrigin = (name: "app" | "login") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
 const CUSTOMER_ORIGIN = publicOrigin("app");
 const RP_ID = `app.${ns}.localhost`;
 const REDIRECT = `${CUSTOMER_ORIGIN}/callback`;
 const ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const FORM = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
 const JSON_HEADERS = { "content-type": "application/json", accept: "application/json" };
+/** 顧客のアプリ（BFF）のクライアント認証。spiffe-helper が書き出した JWT-SVID を示す（D-38、D-41）。 */
+const clientAssertion = () => ({
+  client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-spiffe",
+  client_assertion: readFileSync(`${SVID_DIR}/jwt_svid.token`, "utf8").trim(),
+});
 
 interface Reply {
   status: number;
@@ -96,6 +101,7 @@ const pathOf = (location: unknown) => {
 };
 
 /**
+ * 顧客のアプリの BFF の役（D-41）。顧客のアプリと同じ身元で動き、JWT-SVID でクライアント認証する。
  * 顧客の役: 固定ユーザーで、ログインサーバーにログインし、取決めの範囲に同意して、認可コードと PKCE と DPoP で A を受け取る。
  * 続けて、ログインしたまま P を受け取り、認可サーバーに passkey を登録する（D-37）。
  * 返す authenticator と dpopKey は、手元のテストが署名と proof に使う。
@@ -118,7 +124,7 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
     return call("insurer-login", path, {
       method: "POST",
       headers: { ...FORM, ...login, dpop: await dpopProof(privateKey, jwk, "POST", `${publicOrigin("login")}${path}`) },
-      body: form({ grant_type: "authorization_code", client_id: "customer-app", code, redirect_uri: REDIRECT, code_verifier: verifier }),
+      body: form({ grant_type: "authorization_code", client_id: "customer-app", code, redirect_uri: REDIRECT, code_verifier: verifier, ...clientAssertion() }),
       clientCert: false,
     });
   };
@@ -217,9 +223,9 @@ async function auditor(args: { user?: string; path: string }) {
   return reply(await audit(args.path, auditCookie, "application/json"));
 }
 
-/** 顧客の役: A を営業 AI エージェントに出す。proof は、正しいもの、なし、別の鍵で作ったもの。 */
+/** BFF の役: A を営業 AI エージェントに出す。自分の SVID で mTLS をかけ、htu は内部の名前にする（D-41）。proof は、正しいもの、なし、別の鍵で作ったもの。 */
 async function callSalesAgent(args: { path: string; body?: unknown; token: string; dpopKey: JWK; proof?: "good" | "none" | "other-key" }) {
-  const htu = `${publicOrigin("agent")}${args.path}`;
+  const htu = `${origin("sales-agent")}${args.path}`;
   const headers: Record<string, string> = { ...JSON_HEADERS, authorization: `DPoP ${args.token}` };
   const proof = args.proof ?? "good";
   if (proof !== "none") {
@@ -228,11 +234,11 @@ async function callSalesAgent(args: { path: string; body?: unknown; token: strin
     const { d: _d, ...publicJwk } = proof === "good" ? args.dpopKey : await exportJWK(signer as KeyObject);
     headers.dpop = await dpopProof(signer, publicJwk, "POST", htu, args.token);
   }
-  return reply(await call("sales-agent", args.path, { method: "POST", headers, body: JSON.stringify(args.body ?? {}), clientCert: false }));
+  return reply(await call("sales-agent", args.path, { method: "POST", headers, body: JSON.stringify(args.body ?? {}), clientCert: true }));
 }
 
 /** 顧客の役: 更新のトークンで A を更新する（P-18）。proof は、正しいもの、なし、別の鍵で作ったもの。 */
-async function refreshLogin(args: { refreshToken: string; dpopKey: JWK; proof?: "good" | "none" | "other-key" }) {
+async function refreshLogin(args: { refreshToken: string; dpopKey: JWK; proof?: "good" | "none" | "other-key"; withoutClientAuth?: boolean }) {
   const path = "/realms/insurer/protocol/openid-connect/token";
   const headers: Record<string, string> = { ...FORM, host: new URL(publicOrigin("login")).host };
   const proof = args.proof ?? "good";
@@ -241,7 +247,7 @@ async function refreshLogin(args: { refreshToken: string; dpopKey: JWK; proof?: 
     const { d: _d, ...publicJwk } = proof === "good" ? args.dpopKey : await exportJWK(signer as KeyObject);
     headers.dpop = await dpopProof(signer, publicJwk, "POST", `${publicOrigin("login")}${path}`);
   }
-  return reply(await call("insurer-login", path, { method: "POST", headers, body: form({ grant_type: "refresh_token", client_id: "customer-app", refresh_token: args.refreshToken }), clientCert: false }));
+  return reply(await call("insurer-login", path, { method: "POST", headers, body: form({ grant_type: "refresh_token", client_id: "customer-app", refresh_token: args.refreshToken, ...(args.withoutClientAuth ? {} : clientAssertion()) }), clientCert: false }));
 }
 
 /** 自分の SVID で、自分のトークン（client_credentials）を受け取る。 */

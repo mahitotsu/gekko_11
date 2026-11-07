@@ -135,37 +135,3 @@ describe("24 の補足（画面）", () => {
   });
 });
 
-// ======== 補足: ID トークン（D21） ========
-
-describe("補足: 顧客のアプリは、ID トークンを確かめる（D21）", () => {
-  /** トークンの応答の ID トークンを、bob の別のログインのものに差し替える。 */
-  const swapIdToken = async (ns: Ns) => {
-    const bob = await new Customer(ns, "bob").setup();
-    const c = new BrowserCustomer(ns, "alice");
-    opened.push(c);
-    await c.open();
-    await c.page.route("**/protocol/openid-connect/token", async (route) => {
-      if (route.request().method() !== "POST") return route.continue();
-      try {
-        const res = await route.fetch();
-        await route.fulfill({ response: res, json: { ...((await res.json()) as Json), id_token: bob.idToken } });
-      } catch {
-        await route.abort();
-      }
-    });
-    await c.login();
-    return c;
-  };
-
-  it("secure: 別のログインの ID トークンを差し込まれても、受け付けない", async () => {
-    const c = await swapIdToken("secure");
-    expect(await c.whoami()).toBeNull();
-    expect(await c.error()).toContain("nonce");
-  });
-
-  it("vulnerable（D21 を外す）: 確かめないと、bob としてログインしたことになる", async () => {
-    await setDefenses({ D21: "off" });
-    const c = await swapIdToken("vulnerable");
-    expect(await c.whoami()).toBe("bob");
-  });
-});

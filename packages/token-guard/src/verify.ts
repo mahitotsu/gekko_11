@@ -72,7 +72,8 @@ export function parseXfcc(header: string | undefined): Peer {
 export async function checkIngress(req: IngressRequest): Promise<Checked> {
   const peer = parseXfcc(req.xfcc);
   const { checks } = config;
-  if (config.ingress === "mtls") {
+  // サービスからの受け口と、呼んでよい相手を決めた DPoP の受け口（営業 AI エージェント。D-41）は、相手の証明書を確かめる
+  if (config.ingress === "mtls" || config.allowedCallers.length > 0) {
     if (!peer.spiffeId) throw new Refusal(401, "相手の証明書がない");
     if (enabled(checks.caller) && !config.allowedCallers.includes(peer.spiffeId)) {
       throw new Refusal(403, `呼んでよい相手ではない: ${peer.spiffeId}`);

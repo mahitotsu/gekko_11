@@ -2,7 +2,7 @@
 import { createLocalJWKSet, type JSONWebKeySet } from "jose";
 import { reconcile, type Copy } from "../src/reconcile.ts";
 import { createAgent, statusOf, type Agent } from "./agent.ts";
-import { LoginExpired, type Auth, type Config, type Session } from "./auth.ts";
+import type { Config, Session } from "./auth.ts";
 import { verifyOffer, type Application, type Intent, type Offer } from "./checks.ts";
 import { challengeOf } from "./codec.ts";
 import type { Action, State } from "./conversation.ts";
@@ -42,7 +42,6 @@ export async function reconciled(session: Session, device: Device) {
 
 export function createController(deps: {
   cfg: Config;
-  auth: Auth;
   enabled: (id: string) => boolean;
   session: Session;
   device: Device;
@@ -50,9 +49,11 @@ export function createController(deps: {
   /** 今の状態を読む（非同期の処理の途中でも、最新を読む）。 */
   state: () => State;
 }) {
-  const { cfg, auth, enabled, session, device, dispatch, state } = deps;
-  const url = `${cfg.agentOrigin}/agui`;
-  let agent: Agent = createAgent(url, () => auth.agentHeaders(url));
+  const { cfg, enabled, session, device, dispatch, state } = deps;
+  // 営業 AI エージェントは、BFF が A と proof を付けて呼ぶ。画面は、BFF の受け口を、事前確認の要るヘッダーを付けて呼ぶ（D-41）
+  const url = "/bff/agui";
+  const headers = async () => ({ "x-bff": "1" });
+  let agent: Agent = createAgent(url, headers);
   /** 始め直すと増える。古い回のイベントと照合を捨てる。 */
   let generation = 0;
   /** 回は 1 つずつ走らせる。走っている間に答えが決まっても、次の回に回す。 */
@@ -66,7 +67,7 @@ export function createController(deps: {
     });
   };
 
-  /** トークン A を更新できないカード。送れなかった申込書の写しは、端末から消す（受信箱に未着として残さない）。 */
+  /** ログインの有効期間が切れたカード（BFF が A を更新できない）。送れなかった申込書の写しは、端末から消す（受信箱に未着として残さない）。 */
   function expired() {
     const nonce = state().submitted;
     if (nonce) {
@@ -124,18 +125,13 @@ export function createController(deps: {
         },
       });
     try {
-      // 番の途中で切れないよう、残りが短ければ先に更新する。切れていたら、1 度だけ更新して送り直す。401 は受け口で断られるので、回は始まっていない
-      if (await auth.tokenIsShort()) await auth.renew();
-      await once().catch(async (e: unknown) => {
-        if (statusOf(e) !== 401 || !current()) throw e;
-        await auth.renew();
-        await once();
-      });
+      // A の更新と送り直しは、BFF が行う（P-18）。BFF が 401 を返すのは、ログインし直すしかないときである
+      await once();
       await Promise.all(tools);
     } catch (e) {
       if (!current()) return; // 始め直した: 止めた回の失敗は見せない
       dispatch({ type: "submitting", submitting: false });
-      if (e instanceof LoginExpired || statusOf(e) === 401) return expired();
+      if (statusOf(e) === 401) return expired();
       if (failed) return;
       throw e;
     }
@@ -189,7 +185,7 @@ export function createController(deps: {
     startOver() {
       agent.abort();
       generation++;
-      agent = createAgent(url, () => auth.agentHeaders(url));
+      agent = createAgent(url, headers);
       queue = Promise.resolve();
       dispatch({ type: "reset" });
     },

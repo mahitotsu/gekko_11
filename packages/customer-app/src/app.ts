@@ -3,6 +3,7 @@
 // 送り手は、Envoy が渡す相手の証明書の情報（XFCC）で、保険会社のシステムの SPIFFE ID に限る。
 import { readFileSync } from "node:fs";
 import { Hono } from "hono";
+import { addBff } from "./bff.ts";
 import { currentDefenses } from "./defenses.ts";
 
 export interface Notice {
@@ -27,13 +28,10 @@ export function peerOf(xfcc: string | undefined): string | undefined {
 const INBOX = /^[A-Za-z0-9_-]{22,64}$/;
 
 /** 画面に渡す設定。入口の名前は、マニフェストの生成で決まる（D-25）。 */
+// トークンと、ログインサーバー、営業 AI エージェント、認可サーバーの宛先は、画面に渡さない（BFF が持つ。D-41）
 const config = () => ({
-  issuer: process.env.ISSUER,
-  authOrigin: process.env.AUTH_ORIGIN,
-  agentOrigin: process.env.AGENT_ORIGIN,
   appOrigin: process.env.APP_ORIGIN,
   rpId: process.env.RP_ID,
-  clientId: "customer-app",
   terms: [{ type: "insurance_application", kinds: ["fixed", "lifetime"], maxBenefit: 1_200_000 }],
 });
 
@@ -52,16 +50,16 @@ let offerKeys: { at: number; body: unknown } | undefined;
 
 /**
  * 画面の CSP（D32。P-18）。画面でコードを動かされたときの第 2 の守りで、XSS をなくすものではない。
- * 読み込むものを配信元のスクリプトとスタイルに限る。つなぐ先を、配信元と、営業 AI エージェント、ログインサーバー、認可サーバーに限る。
+ * 読み込むものを配信元のスクリプトとスタイルに限る。つなぐ先を、自分の配信元（BFF）に限る。
  */
 export function contentSecurityPolicy(): string {
-  const origins = [process.env.AGENT_ORIGIN, process.env.AUTH_ORIGIN, process.env.ISSUER ? new URL(process.env.ISSUER).origin : undefined].filter(Boolean);
   return [
     "default-src 'none'",
     "script-src 'self'",
     "style-src 'self'",
     "img-src 'self'",
-    `connect-src ${["'self'", ...origins].join(" ")}`,
+    // 画面がつなぐのは、自分の配信元（BFF）だけ（D-41）
+    "connect-src 'self'",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
@@ -72,6 +70,8 @@ export function createApp() {
   const app = new Hono();
   const index = file("../dist/index.html");
 
+  // BFF の受け口（D-41）。戻り先の /callback は、認可コードがあれば BFF が受け、なければ画面を返す
+  addBff(app);
   for (const path of ["/", "/callback"]) app.get(path, (c) => (index ? c.html(index, 200, { "content-security-policy": contentSecurityPolicy() }) : c.notFound()));
   // まとめたスクリプトとスタイル。名前に内容のハッシュが入る
   app.get("/assets/:name{[A-Za-z0-9._-]+}", (c) => {

@@ -303,7 +303,7 @@ export function CardView(props: CardProps & { active: boolean }) {
       {data.kind === "expired" && (
         <>
           <p data-testid={live ? "expired-note" : undefined}>ログインの有効期間が切れました。ログインし直すと、最初からやり直します。入力した内容と署名は消え、保険会社には届いていません。</p>
-          <button type="button" data-testid={live ? "relogin" : undefined} onClick={() => auth.startLogin().catch(controller.fail)}>ログインし直す</button>
+          <button type="button" data-testid={live ? "relogin" : undefined} onClick={() => auth.startLogin()}>ログインし直す</button>
         </>
       )}
       {data.kind === "ask" && <Ask {...props} />}

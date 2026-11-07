@@ -3,8 +3,7 @@
 // 質問、案の提示、意向確認書面、申込書を、画面側の道具として呼び、この画面が顧客の答え（選択と署名）を返す。
 // 契約内容は、営業 AI エージェントを通らずに受信箱へ届き、端末に残した写しと照合する（architecture の 3 章）。
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { User } from "oidc-client-ts";
-import type { Auth, Config, Session } from "../auth.ts";
+import { bff, type Auth, type Config, type Session } from "../auth.ts";
 import { termsRowsOf } from "../checks.ts";
 import { randomB64u } from "../codec.ts";
 import { initialState, reducer, type ReconcileRow, type Step } from "../conversation.ts";
@@ -31,30 +30,22 @@ const failText = (e: unknown) => {
   return err?.name === "NotAllowedError" ? "passkey の操作が取り消されたか、時間切れになりました。もう一度ボタンを押してください。" : (err?.message ?? String(e));
 };
 
-/** 認可サーバーの passkey の受け口を、P と DPoP の proof で呼ぶ（D-37）。 */
-async function callPasskeys(cfg: Config, auth: Auth, user: User, method: "GET" | "POST", path: string, body?: unknown) {
-  const url = `${cfg.authOrigin}${path}`;
-  return fetch(url, {
+/** 認可サーバーの passkey の受け口を、BFF を通して呼ぶ。BFF が P と DPoP の proof を付ける（D-37、D-41）。 */
+const callPasskeys = (method: "GET" | "POST", path: string, body?: unknown) =>
+  bff(`/bff${path}`, {
     method,
-    headers: {
-      accept: "application/json",
-      authorization: `DPoP ${user.access_token}`,
-      dpop: await auth.passkeyProof(url, method, user),
-      ...(method === "POST" ? { "content-type": "application/json" } : {}),
-    },
+    headers: { accept: "application/json", ...(method === "POST" ? { "content-type": "application/json" } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-}
 
 /**
  * この端末の passkey が、認可サーバーに登録されたまま残っているかを確かめる（認可サーバーの記憶はメモリにあり、再起動で消える）。
  * P で、本人の passkey の識別子の一覧を問い合わせる。確かめられなければ、unknown を返して、今までどおり進める。
  */
-async function deviceStatus(cfg: Config, auth: Auth, device: Device): Promise<"ok" | "missing" | "unknown"> {
-  const user = await auth.passkeyUser();
-  if (!user) return "unknown";
+async function deviceStatus(session: Session, device: Device): Promise<"ok" | "missing" | "unknown"> {
+  if (!session.passkeyReady) return "unknown";
   try {
-    const res = await callPasskeys(cfg, auth, user, "GET", "/passkeys/mine");
+    const res = await callPasskeys("GET", "/passkeys/mine");
     if (!res.ok) return "unknown";
     const { credentialIds } = (await res.json()) as { credentialIds: string[] };
     return credentialIds.includes(device.credentialId) ? "ok" : "missing";
@@ -74,7 +65,7 @@ function Apply({ cfg, auth, enabled, session, device, hidden, onError }: Props &
     },
     [],
   );
-  const controller = useMemo(() => createController({ cfg, auth, enabled, session, device, dispatch: send, state: () => latest.current }), [cfg, auth, enabled, session, device, send]);
+  const controller = useMemo(() => createController({ cfg, enabled, session, device, dispatch: send, state: () => latest.current }), [cfg, enabled, session, device, send]);
   useEffect(() => controller.startOver(), [controller]);
   useEffect(() => onError(state.error), [state.error, onError]);
   const at = STEPS.findIndex((s) => s.step === state.step);
@@ -134,15 +125,18 @@ export function App({ cfg, auth, enabled }: Props) {
 
   useEffect(() => {
     void (async () => {
+      // 認可コードは BFF が受け取る。失敗したときだけ、理由を付けて画面へ戻す
       const params = new URLSearchParams(location.search);
-      if (location.pathname === "/callback" && (params.get("code") || params.get("error")) && (await auth.finishLogin())) return;
+      const loginError = params.get("login_error");
+      if (location.search) history.replaceState(null, "", "/");
+      if (loginError) setError(loginError);
       const current = await auth.session();
       setSession(current);
       setReady(true);
       if (!current) return;
       const saved = localStorage.getItem(`device:${current.sub}`);
       const known = saved ? (JSON.parse(saved) as Device) : undefined;
-      if (known && (await deviceStatus(cfg, auth, known)) === "missing") {
+      if (known && (await deviceStatus(current, known)) === "missing") {
         // 認可サーバーに登録が残っていない: 端末の記録を消し、登録し直しに案内する
         localStorage.removeItem(`device:${current.sub}`);
         setMissing(true);
@@ -159,11 +153,11 @@ export function App({ cfg, auth, enabled }: Props) {
 
   async function registerDevice() {
     try {
-      // P は 5 分で切れる。切れていたら受け取り直し、戻ったところで、もう一度押してもらう
-      const user = await auth.passkeyUser();
-      if (!user) return await auth.startPasskeyToken();
-      const post = (path: string, body?: unknown) => callPasskeys(cfg, auth, user, "POST", path, body);
-      const options = await (await post("/passkeys/register/options")).json();
+      // P は 5 分で切れる。切れていたら BFF が受け取り直し、戻ったところで、もう一度押してもらう
+      const post = (path: string, body?: unknown) => callPasskeys("POST", path, body);
+      const start = await post("/passkeys/register/options");
+      if (start.status === 401) return auth.startPasskeyToken();
+      const options = await start.json();
       const credential = await createPasskey(options);
       const inbox = randomB64u(16);
       const res = await post("/passkeys/register/verify", { credential, inbox });
@@ -187,7 +181,7 @@ export function App({ cfg, auth, enabled }: Props) {
           <div id="terms" data-testid="terms">
             <RowsTable rows={termsRowsOf(cfg.terms as { kinds: string[]; maxBenefit: number }[])} prefix="terms" />
           </div>
-          <button id="login-button" data-testid="login" type="button" onClick={() => auth.startLogin().catch(fail)}>同意して保険会社にログインする</button>
+          <button id="login-button" data-testid="login" type="button" onClick={() => auth.startLogin()}>同意して保険会社にログインする</button>
         </section>
       )}
       {session && (

@@ -49,7 +49,7 @@ export const config = {
   jwksUrl: env("JWKS_URL", `${env("AUTH_EGRESS_URL", "http://127.0.0.1:15101")}/oauth2/jwks`),
   /** もう一方の発行者の公開鍵。vulnerable で D29 を外すときだけ使う。 */
   otherJwksUrl: process.env.OTHER_JWKS_URL,
-  /** 顧客が呼ぶ公開名（入口の名前）。DPoP の htu は、この名前とパスで照らす。 */
+  /** DPoP で呼ばれる名前。htu は、この名前とパスで照らす。営業 AI エージェントは、BFF が呼ぶ内部の名前である（D-41）。 */
   publicOrigin: process.env.PUBLIC_ORIGIN,
   /** 受け口で求める証明: 顧客のアプリからは DPoP、サービスからは mTLS の証明書（D-7）。 */
   ingress: env("INGRESS_PROOF") as "dpop" | "mtls",

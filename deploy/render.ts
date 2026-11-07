@@ -30,7 +30,7 @@ const host = (service: string) => `${service}.${ns}.svc`;
  * 入口の名前は、ここだけで決める。RP ID、origin、issuer、戻り先、CORS は、ここから作る。
  */
 const ENTRANCE = { domain: "localhost", port: vulnerable ? 8082 : 8081, nodePort: vulnerable ? 30082 : 30081, listen: 8080 };
-type PublicName = "app" | "login" | "auth" | "agent" | "audit";
+type PublicName = "app" | "login" | "auth" | "audit";
 const publicHost = (name: PublicName) => `${name}.${ns}.${ENTRANCE.domain}`;
 const publicOrigin = (name: PublicName) => `http://${publicHost(name)}:${ENTRANCE.port}`;
 /** 認可サーバーの iss（B と C）。 */
@@ -42,6 +42,8 @@ const LOGIN_EGRESS = 15105;
 const LOGIN_JWKS_URL = `http://127.0.0.1:${LOGIN_EGRESS}/realms/insurer/protocol/openid-connect/certs`;
 const AUTH_JWKS_URL = "http://127.0.0.1:15101/oauth2/jwks";
 const CUSTOMER_ORIGIN = publicOrigin("app");
+/** 営業 AI エージェントの内部の名前。BFF は、DPoP の htu に、この名前とパスを使う（D-41）。 */
+const AGENT_INTERNAL = `https://${host("sales-agent")}:8443`;
 /** passkey の RP ID と、署名した画面の origin（顧客のアプリ）。 */
 const WEBAUTHN = { RP_ID: publicHost("app"), WEBAUTHN_ORIGINS: CUSTOMER_ORIGIN };
 
@@ -55,6 +57,8 @@ interface Egress {
   target: Name | "insurer-auth";
   /** token-guard が、受け口で確かめたトークンを、次の段のトークンに替えて付ける。 */
   exchange?: boolean;
+  /** 相手に送る Host。既定は相手の内部の名前。ログインサーバーは、DPoP の htu を Host で照らすので、公開名を送る。 */
+  host?: string;
 }
 
 interface Service {
@@ -62,6 +66,8 @@ interface Service {
   /** 受け口: dpop は顧客（証明書なし）から、mtls はサービスから、open はトークンなしで相手の SPIFFE ID を見る。 */
   ingress: "dpop" | "mtls" | "open";
   port: number;
+  /** DPoP の受け口でも、相手の証明書を求める（営業 AI エージェントは、顧客のアプリの BFF からだけ受ける。D-41）。 */
+  clientCert?: boolean;
   /** トークンを見ない受け口で、サービスから mTLS で受けるポート（顧客のアプリの直送の受け口）。 */
   mtlsPort?: number;
   /** 呼んでよい相手（D27、NetworkPolicy）。probe は、確かめのために全てを呼べる。 */
@@ -75,7 +81,7 @@ interface Service {
     env?: Record<string, string | undefined>;
     /** Java のアプリのメモリ。既定は 256Mi から 512Mi。 */
     memory?: { requests: string; limits: string };
-    /** JWT-SVID をファイルで受け取る（監査サービス。D-38）。 */
+    /** JWT-SVID をファイルで受け取る（監査サービスと顧客のアプリ。D-38、D-41）。 */
     jwtSvid?: boolean;
     /** SPIRE の bundle の受け口の証明書を信頼する（ログインサーバー。D-38）。 */
     bundleCa?: boolean;
@@ -90,8 +96,10 @@ const SERVICES: Service[] = [
   {
     name: "sales-agent",
     ingress: "dpop",
+    clientCert: true,
     port: 8443,
-    callers: [],
+    // 顧客のアプリの BFF だけが、A と DPoP の proof を付けて呼ぶ（D-41）
+    callers: ["customer-app"],
     egress: [
       { port: 15101, target: "insurer-auth" },
       { port: 15102, target: "insurer-mcp", exchange: true },
@@ -140,12 +148,19 @@ const SERVICES: Service[] = [
     port: 8443,
     mtlsPort: 9443,
     callers: ["insurer-backend"],
-    // 提示の公開鍵を、保険会社のシステムから取り、画面に渡す（4-5）
-    egress: [{ port: 15104, target: "insurer-backend" }],
+    egress: [
+      // 提示の公開鍵を、保険会社のシステムから取り、画面に渡す（4-5）
+      { port: 15104, target: "insurer-backend" },
+      // BFF（D-41）: ログインサーバーで A と P を受け取り、営業 AI エージェントと認可サーバーを、顧客の代わりに呼ぶ
+      { port: LOGIN_EGRESS, target: "insurer-login", host: `${publicHost("login")}:${ENTRANCE.port}` },
+      { port: 15106, target: "sales-agent" },
+      { port: 15101, target: "insurer-auth" },
+    ],
     app: {
       image: IMAGES.node,
       command: ["node", "packages/customer-app/src/server.ts"],
-      env: { NAMESPACE: ns, TRUST_DOMAIN, ISSUER: LOGIN_ISSUER, AUTH_ORIGIN: publicOrigin("auth"), RP_ID: WEBAUTHN.RP_ID, APP_ORIGIN: CUSTOMER_ORIGIN, AGENT_ORIGIN: publicOrigin("agent"), APP_ADMIN_PORT: String(ADMIN.app) },
+      env: { NAMESPACE: ns, TRUST_DOMAIN, ISSUER: LOGIN_ISSUER, AUTH_ORIGIN: publicOrigin("auth"), RP_ID: WEBAUTHN.RP_ID, APP_ORIGIN: CUSTOMER_ORIGIN, LOGIN_URL: `http://127.0.0.1:${LOGIN_EGRESS}`, AGENT_URL: "http://127.0.0.1:15106", AGENT_ORIGIN_INTERNAL: AGENT_INTERNAL, AUTH_URL: "http://127.0.0.1:15101", AUTH_ORIGIN_INTERNAL: `https://${host("insurer-auth")}:8443`, JWT_SVID_FILE: "/svid/jwt_svid.token", APP_ADMIN_PORT: String(ADMIN.app) },
+      jwtSvid: true,
     },
   },
   {
@@ -177,7 +192,7 @@ const SERVICES: Service[] = [
     name: "insurer-login",
     ingress: "open",
     port: 8443,
-    callers: ["sales-agent", "insurer-audit", "insurer-auth", ...(vulnerable ? ["insurer-mcp", "insurer-backend"] : [])],
+    callers: ["sales-agent", "insurer-audit", "insurer-auth", "customer-app", ...(vulnerable ? ["insurer-mcp", "insurer-backend"] : [])],
     egress: [],
     app: {
       image: IMAGES.login,
@@ -210,6 +225,8 @@ const PROBES = [
   { name: "probe-intruder", sa: "intruder" },
   { name: "probe-operator", sa: "operator" },
   { name: "probe-auditor", sa: "auditor" },
+  // 顧客のアプリの BFF の役。顧客のアプリと同じ身元で、ログインサーバーにクライアント認証して A を受け取る（D-41）
+  { name: "probe-customer-app", sa: "customer-app", jwtSvid: true },
 ];
 
 const SERVICE_ACCOUNTS = [
@@ -402,7 +419,7 @@ function envoyConfig(s: Service) {
         ),
       ],
     });
-  const ingress = inbound("ingress", s.port, s.ingress === "mtls");
+  const ingress = inbound("ingress", s.port, s.ingress === "mtls" || Boolean(s.clientCert));
   const listeners: object[] = [ingress, ...(s.mtlsPort ? [inbound("ingress_mtls", s.mtlsPort, true)] : [])];
   const clusters: object[] = [
     SPIRE_AGENT_CLUSTER,
@@ -423,7 +440,7 @@ function envoyConfig(s: Service) {
                 {
                   name: e.target,
                   domains: ["*"],
-                  routes: [{ match: { prefix: "/" }, route: { cluster, host_rewrite_literal: `${host(e.target)}:${portOf(e.target)}`, timeout: "120s" } }],
+                  routes: [{ match: { prefix: "/" }, route: { cluster, host_rewrite_literal: e.host ?? `${host(e.target)}:${portOf(e.target)}`, timeout: "120s" } }],
                 },
               ],
               request_headers_to_remove: ["x-auth-ctx"],
@@ -537,7 +554,7 @@ function serviceWorkload(s: Service) {
         JWKS_URL: s.ingress === "dpop" ? LOGIN_JWKS_URL : AUTH_JWKS_URL,
         OTHER_JWKS_URL: vulnerable && s.ingress === "mtls" ? LOGIN_JWKS_URL : undefined,
         INGRESS_PROOF: s.ingress,
-        PUBLIC_ORIGIN: s.ingress === "dpop" ? publicOrigin("agent") : undefined,
+        PUBLIC_ORIGIN: s.ingress === "dpop" ? AGENT_INTERNAL : undefined,
         ALLOWED_CALLERS: s.callers.join(","),
         NEXT_SERVICE: next,
         TOKEN_GUARD_ADMIN_PORT: String(ADMIN.tokenGuard),
@@ -702,12 +719,6 @@ function entranceConfig() {
       ],
     },
     {
-      name: "agent",
-      domains: domains("agent"),
-      typed_per_filter_config: corsFor(false),
-      routes: [{ match: { prefix: "/" }, route: { cluster: "to_sales_agent", timeout: "120s" } }],
-    },
-    {
       // 監査の担当の画面。戻り先を、ブラウザが呼んだ名前で作れるよう、転送のヘッダーを付ける
       name: "audit",
       domains: domains("audit"),
@@ -737,7 +748,6 @@ function entranceConfig() {
         upstream("to_customer_app", "customer-app", 8443, false),
         upstream("to_insurer_auth", "insurer-auth", 8443, false),
         upstream("to_insurer_login", "insurer-login", 8443, false),
-        upstream("to_sales_agent", "sales-agent", 8443, false),
         upstream("to_insurer_audit", "insurer-audit", 8443, false),
       ],
     },
@@ -854,7 +864,7 @@ const probe = (p: (typeof PROBES)[number]) =>
         volumeMounts: [SVID_MOUNT],
       },
     ],
-    volumes: [SOCKET_VOLUME, SVID_VOLUME, HELPER_CONFIG_VOLUME],
+    volumes: [SOCKET_VOLUME, SVID_VOLUME, "jwtSvid" in p ? { name: "helper-config", configMap: { name: "spiffe-helper-jwt" } } : HELPER_CONFIG_VOLUME],
   });
 
 // ---- NetworkPolicy: 全て拒否から始め、2 章の経路だけを許す。名前空間をまたぐ通信は許さない ----
@@ -896,7 +906,7 @@ const networkPolicies = [
     ],
   }),
   // 保険会社のシステムは、トークンを確かめる公開鍵と passkey の公開鍵を、認可サーバーから取る
-  ...allow("insurer-auth", [8443], ["sales-agent", "insurer-mcp", "insurer-backend", "probe"]),
+  ...allow("insurer-auth", [8443], ["sales-agent", "insurer-mcp", "insurer-backend", "customer-app", "probe"]),
   // ログインサーバーは、JWT-SVID を確かめる公開鍵を、SPIRE の bundle の受け口から取る（D-38）
   policy("insurer-login-to-spire", {
     podSelector: { matchLabels: { app: "insurer-login" } },
@@ -904,9 +914,9 @@ const networkPolicies = [
     egress: [{ to: [{ namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "spire" } }, podSelector: { matchLabels: { app: "spire-server" } } }], ports: [{ port: 8443 }] }],
   }),
   ...SERVICES.flatMap((s) => allow(s.name, [s.port, ...(s.mtlsPort ? [s.mtlsPort] : [])], [...s.callers, "probe"])),
-  // クラスタの入口: 外から入口へ。入口からは、ブラウザが使う 5 つの受け口へだけ
+  // クラスタの入口: 外から入口へ。入口からは、ブラウザが使う 4 つの受け口へだけ（営業 AI エージェントは、BFF からだけ受ける。D-41）
   policy("entrance-ingress", { podSelector: { matchLabels: { app: "entrance" } }, policyTypes: ["Ingress"], ingress: [{ ports: [{ port: ENTRANCE.listen }] }] }),
-  ...["insurer-auth", "insurer-login", "sales-agent", "customer-app", "insurer-audit"].flatMap((app) => allow(app, [8443], ["entrance"], "-entrance")),
+  ...["insurer-auth", "insurer-login", "customer-app", "insurer-audit"].flatMap((app) => allow(app, [8443], ["entrance"], "-entrance")),
   ...allow("insurer-backend", [9443], ["customer-app"], "-offer-keys"),
   // 監査サービスは、保険会社のシステムの自己申告（/audit/records）を読む
   ...allow("insurer-backend", [9443], ["insurer-audit"], "-audit"),

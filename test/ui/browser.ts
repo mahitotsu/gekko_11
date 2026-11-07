@@ -129,16 +129,6 @@ export class BrowserCustomer {
     }
   }
 
-  /** 端末に保存したログイン（A と更新のトークンと ID トークン）を読み書きする。テストで、期限切れなどの状態を作る。 */
-  async savedLogin(edit?: Record<string, string | null>): Promise<Record<string, string>> {
-    return this.page.evaluate((e) => {
-      const key = Object.keys(sessionStorage).find((k) => k.startsWith("oidc.apply.user:"))!;
-      const saved = JSON.parse(sessionStorage.getItem(key)!);
-      if (e) sessionStorage.setItem(key, JSON.stringify({ ...saved, ...e }));
-      return saved;
-    }, edit);
-  }
-
   /** 今開いている案のカードの、案の番号と名前。 */
   async shownPlans(): Promise<Pick<Plan, "id" | "name">[]> {
     return this.page.locator("[data-testid^=plan-]:visible").evaluateAll((els) =>
@@ -236,7 +226,7 @@ export class BrowserCustomer {
    * edit は、道具の名前と引数を受け取り、新しい引数を返す。
    */
   async rewriteTool(edit: (name: string, args: Json) => Json) {
-    await this.page.route(`${publicOrigin(this.ns, "agent")}/agui`, async (route: Route) => {
+    await this.page.route(`${this.app}/bff/agui`, async (route: Route) => {
       if (route.request().method() !== "POST") return route.continue();
       try {
         const res = await route.fetch();

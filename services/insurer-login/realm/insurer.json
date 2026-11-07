@@ -241,16 +241,15 @@
   "clients": [
     {
       "clientId": "customer-app",
-      "publicClient": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "federated-jwt",
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "fullScopeAllowed": true,
       "redirectUris": [
         "${APP_ORIGIN}/callback"
       ],
-      "webOrigins": [
-        "${APP_ORIGIN}"
-      ],
+      "webOrigins": [],
       "defaultClientScopes": [
         "basic"
       ],
@@ -263,7 +262,9 @@
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true",
         "use.refresh.tokens": "true",
-        "post.logout.redirect.uris": "${APP_ORIGIN}/"
+        "post.logout.redirect.uris": "${APP_ORIGIN}/",
+        "jwt.credential.issuer": "spire",
+        "jwt.credential.sub": "spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/customer-app"
       }
     },
     {

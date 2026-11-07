@@ -12,7 +12,7 @@ export type Ns = "secure" | "vulnerable";
 export type Json = Record<string, any>;
 
 /** probe の役。ServiceAccount が身元（SPIFFE ID）を決める。 */
-export type Role = "probe-sales-agent" | "probe-mcp-1" | "probe-mcp-2" | "probe-intruder" | "probe-operator" | "probe-auditor";
+export type Role = "probe-customer-app" | "probe-sales-agent" | "probe-mcp-1" | "probe-mcp-2" | "probe-intruder" | "probe-operator" | "probe-auditor";
 
 export async function probe(ns: Ns, who: Role, command: string, args: object = {}): Promise<Json> {
   try {
@@ -57,27 +57,27 @@ export class Customer {
   }
 
   async setup(terms: unknown = TERMS): Promise<this> {
-    const r = await probe(this.ns, "probe-sales-agent", "customer-setup", { user: this.user, terms });
+    const r = await probe(this.ns, "probe-customer-app", "customer-setup", { user: this.user, terms });
     if (r.status !== 200) throw new Error(`顧客の準備に失敗: ${JSON.stringify(r)}`);
     Object.assign(this, { token: r.token, idToken: r.idToken, refreshToken: r.refreshToken, dpopKey: r.dpopKey, authenticator: r.authenticator, inbox: r.inbox });
     return this;
   }
 
   /** A を更新する（P-18）。使えた更新のトークンと A を、新しいものに置き換える。 */
-  async refresh(proof: "good" | "none" | "other-key" = "good", refreshToken = this.refreshToken): Promise<Json> {
-    const r = await probe(this.ns, "probe-sales-agent", "refresh-login", { refreshToken, dpopKey: this.dpopKey, proof });
+  async refresh(proof: "good" | "none" | "other-key" = "good", refreshToken = this.refreshToken, withoutClientAuth = false): Promise<Json> {
+    const r = await probe(this.ns, "probe-customer-app", "refresh-login", { refreshToken, dpopKey: this.dpopKey, proof, withoutClientAuth });
     if (r.status === 200) Object.assign(this, { token: r.body.access_token, refreshToken: r.body.refresh_token });
     return r;
   }
 
   /** 営業 AI エージェントの AG-UI の受け口に、1 回分（RunAgentInput）を、A と DPoP の proof で出す。返すのは、SSE のイベントの列。 */
   async agui(input: Json, proof: "good" | "none" | "other-key" = "good"): Promise<{ status: number; events: Json[]; body: unknown }> {
-    const r = await probe(this.ns, "probe-sales-agent", "call-sales-agent", { path: "/agui", body: input, token: this.token, dpopKey: this.dpopKey, proof });
+    const r = await probe(this.ns, "probe-customer-app", "call-sales-agent", { path: "/agui", body: input, token: this.token, dpopKey: this.dpopKey, proof });
     return { status: r.status, events: typeof r.body === "string" ? parseSse(r.body) : [], body: r.body };
   }
 
   /**
-   * 顧客のアプリの役で、営業 AI エージェントと会話を進める（D-29）。質問には最初の選択肢で答え、案は planId を選び、
+   * 顧客のアプリ（BFF）の役で、営業 AI エージェントと会話を進める（D-29）。質問には最初の選択肢で答え、案は planId を選び、
    * 2 つの書類には、示された内容そのものに署名する。返すのは、提示の nonce と、全てのイベント。
    */
   async converse(planId: string, message = "案を見たい"): Promise<{ nonce: string; events: Json[] }> {
@@ -196,8 +196,8 @@ own(["D3a", "D3b", "D3d", "D3e", "D3f", "D28"], "insurer-auth", 9091);
 own(["D9", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D30"], "insurer-backend", 9091);
 own(["D5", "D6", "D7", "D8", "D10", "D26", "D27", "D29"], "insurer-backend", 9090);
 own(["D1", "D2", "D26", "D27", "D29"], "insurer-mcp", 9090);
-own(["D20", "D26"], "sales-agent", 9090);
-own(["D21", "D22", "D23"], "customer-app", 9091);
+own(["D20", "D26", "D27"], "sales-agent", 9090);
+own(["D22", "D23"], "customer-app", 9091);
 
 /** 外す防御。値は外し方（多くは "off"）。D26 と D27 は、サービスを付けて "D26@insurer-backend" のようにも書ける。 */
 export type Gaps = Record<string, string>;

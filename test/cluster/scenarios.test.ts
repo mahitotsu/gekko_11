@@ -576,7 +576,7 @@ describe("監査サービス（D25）", () => {
   });
 });
 
-describe("補足: ログインの更新（D31。P-18）", () => {
+describe("補足: ログインの更新（D31。P-18、D-41）", () => {
   it("secure: 更新した A は、中身を保ち、B と C は呼び出しの間だけ有効である", async () => {
     const alice = await new Customer("secure", "alice").setup();
     const before = decode(alice.token);
@@ -589,11 +589,17 @@ describe("補足: ログインの更新（D31。P-18）", () => {
     expect(b.exp - b.iat).toBe(60);
   });
 
-  it("secure: 鍵のない更新と、別の鍵の更新は、断られる", async () => {
+  it("secure: 顧客のアプリのクライアント認証のない更新は、断られる（盗んだ更新のトークンだけでは使えない）", async () => {
     const alice = await new Customer("secure", "alice").setup();
-    expect((await alice.refresh("none")).status).toBe(400);
-    expect((await alice.refresh("other-key")).status).toBe(400);
+    expect((await alice.refresh("good", alice.refreshToken, true)).status).toBe(401);
     expect((await alice.refresh()).status).toBe(200);
+  });
+
+  it("secure: 営業 AI エージェントは、顧客のアプリの BFF からだけ受ける（D27。D-41）。正しい A と proof でも、ほかの身元からは断る", async () => {
+    const alice = await customer("secure", "alice");
+    const input = { threadId: crypto.randomUUID(), runId: crypto.randomUUID(), messages: [{ id: "m1", role: "user", content: "見たい" }], tools: [], state: {}, context: [], forwardedProps: {} };
+    const other = await probe("secure", "probe-sales-agent", "call-sales-agent", { path: "/agui", body: input, token: alice.token, dpopKey: alice.dpopKey });
+    expect(other.status).toBe(403);
   });
 
   it("secure: 更新のトークンを使い回すと断られ、最新のものも使えなくなる", async () => {
@@ -631,7 +637,7 @@ describe("補足", () => {
     const alice = await customer("secure", "alice");
     const b = await atMcp(alice);
     const input = { threadId: crypto.randomUUID(), runId: crypto.randomUUID(), messages: [{ id: "m1", role: "user", content: "見たい" }], tools: [], state: {}, context: [], forwardedProps: {} };
-    const r = await probe("secure", "probe-sales-agent", "call-sales-agent", { path: "/agui", body: input, token: b, dpopKey: alice.dpopKey });
+    const r = await probe("secure", "probe-customer-app", "call-sales-agent", { path: "/agui", body: input, token: b, dpopKey: alice.dpopKey });
     expect(r.status).toBe(401);
   });
 
