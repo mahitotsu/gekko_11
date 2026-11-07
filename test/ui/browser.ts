@@ -1,7 +1,7 @@
 // 画面のテストの部品。ブラウザの顧客を演じる。passkey は、CDP の仮想の認証器が持つ（D-28）。
 // ブラウザは、入口（http://app.<ns>.localhost）から、ほかの利用者と同じ経路で画面を使う。
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright-core";
-import { parseSse } from "../../packages/customer-app/web/agui.ts";
+import { parseSse } from "../cluster/sse.ts";
 import { publicOrigin, type Json, type Ns } from "../cluster/world.ts";
 
 export const PLAYWRIGHT_VERSION = "1.64.1";
@@ -127,6 +127,16 @@ export class BrowserCustomer {
         if ((await this.page.getByTestId("agent-status").getAttribute("data-state")) === "idle") break;
       }
     }
+  }
+
+  /** 端末に保存したログイン（A と更新のトークンと ID トークン）を読み書きする。テストで、期限切れなどの状態を作る。 */
+  async savedLogin(edit?: Record<string, string | null>): Promise<Record<string, string>> {
+    return this.page.evaluate((e) => {
+      const key = Object.keys(sessionStorage).find((k) => k.startsWith("oidc.apply.user:"))!;
+      const saved = JSON.parse(sessionStorage.getItem(key)!);
+      if (e) sessionStorage.setItem(key, JSON.stringify({ ...saved, ...e }));
+      return saved;
+    }, edit);
   }
 
   /** 今開いている案のカードの、案の番号と名前。 */

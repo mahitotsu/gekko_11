@@ -2,7 +2,7 @@
 # token-guard、営業 AI エージェント、顧客のアプリ、probe を入れる Node のイメージ。Node 24 は TypeScript をそのまま動かす。
 # VARIANT=secure では、防御を外す受け口と、乗っ取りの再現を、ビルドの時点で除く（D-20）。
 
-# 顧客のアプリの画面を、ブラウザ向けに 1 つのファイルにまとめる。secure は、外す道を持たない版に置き換えてからまとめる（D-24）
+# 顧客のアプリの画面を、ブラウザ向けにまとめる（Vite）。secure は、外す道を持たない版に置き換えてからまとめる（D-24）
 FROM node:24-slim AS web
 ARG VARIANT=secure
 WORKDIR /app
@@ -14,6 +14,7 @@ COPY packages/token-guard/package.json packages/token-guard/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts --workspace @gekko/customer-app
 COPY packages/customer-app/src packages/customer-app/src
 COPY packages/customer-app/web packages/customer-app/web
+COPY packages/customer-app/vite.config.ts packages/customer-app/
 RUN if [ "$VARIANT" = "secure" ]; then \
       mv packages/customer-app/web/defenses.secure.ts packages/customer-app/web/defenses.ts; \
     else rm packages/customer-app/web/defenses.secure.ts; fi && \
@@ -31,7 +32,6 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts --wo
 COPY packages/token-guard/src packages/token-guard/src
 COPY packages/sales-agent/src packages/sales-agent/src
 COPY packages/customer-app/src packages/customer-app/src
-COPY packages/customer-app/web/index.html packages/customer-app/web/index.html
 COPY --from=web /app/packages/customer-app/dist packages/customer-app/dist
 COPY test/cluster/probe test/cluster/probe
 RUN if [ "$VARIANT" = "secure" ]; then \

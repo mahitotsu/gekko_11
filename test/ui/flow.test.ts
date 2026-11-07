@@ -122,11 +122,8 @@ describe("ログインの自動更新（vulnerable の台本。P-18）", () => {
     alice = await new BrowserCustomer("vulnerable", "alice").ready();
     const page = alice.page;
     // 残りの短い A に置き換えて読み直す。本物の A が送られるのは、更新できたときだけである
-    await page.evaluate(() => {
-      const session = JSON.parse(sessionStorage.getItem("session")!);
-      const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 30 })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-      sessionStorage.setItem("session", JSON.stringify({ ...session, token: `x.${payload}.y` }));
-    });
+    const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 30 })).toString("base64url");
+    await alice.savedLogin({ access_token: `x.${payload}.y` });
     await page.reload();
     const refreshes = tokenRequests(page);
     const statuses: number[] = [];
@@ -156,16 +153,39 @@ describe("ログインの自動更新（vulnerable の台本。P-18）", () => {
     expect(refused).toBe(2);
   });
 
-  /** 画面の中で、端末の鍵で更新を頼む（取り出せない鍵なので、画面の外では署名できない）。返すのは、状態と新しい更新のトークン。 */
+  /**
+   * サインアウトで、ライブラリは DPoP の鍵も消す。盗まれた鍵でも使えないことを確かめるために、鍵をテスト用の場所へ写す。
+   * 取り出せない鍵でも、同じブラウザの中なら、CryptoKey のまま写せる。
+   */
+  const keepKey = (page: Page) =>
+    page.evaluate(async () => {
+      const opened = (name: string, upgrade?: (db: IDBDatabase) => void) =>
+        new Promise<IDBDatabase>((resolve, reject) => {
+          const open = indexedDB.open(name);
+          if (upgrade) open.onupgradeneeded = () => upgrade(open.result);
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => resolve(open.result);
+        });
+      const done = <T,>(req: IDBRequest<T>) =>
+        new Promise<T>((resolve, reject) => {
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      const state = await done((await opened("oidc")).transaction("dpop").objectStore("dpop").get("customer-app"));
+      const test = await opened("kept-keys", (db) => db.createObjectStore("keys"));
+      await done(test.transaction("keys", "readwrite").objectStore("keys").put(state.keys, "dpop"));
+    });
+
+  /** 画面の中で、写しておいた鍵で更新を頼む（取り出せない鍵なので、画面の外では署名できない）。返すのは、状態と新しい更新のトークン。 */
   const refreshInPage = (page: Page, tokenUrl: string, refreshToken: string) =>
     page.evaluate(
       async ({ tokenUrl, refreshToken }) => {
         const pair = await new Promise<CryptoKeyPair>((resolve, reject) => {
-          const open = indexedDB.open("gekko-customer-app", 1);
+          const open = indexedDB.open("kept-keys");
           open.onerror = () => reject(open.error);
           open.onsuccess = () => {
             const req = open.result.transaction("keys").objectStore("keys").get("dpop");
-            req.onsuccess = () => resolve(req.result as CryptoKeyPair);
+            req.onsuccess = () => (req.result ? resolve(req.result as CryptoKeyPair) : reject(new Error("鍵がない")));
             req.onerror = () => reject(req.error);
           };
         });
@@ -189,7 +209,8 @@ describe("ログインの自動更新（vulnerable の台本。P-18）", () => {
     alice = await new BrowserCustomer("vulnerable", "alice").ready();
     const page = alice.page;
     const tokenUrl = `${publicOrigin("vulnerable", "login")}/realms/insurer/protocol/openid-connect/token`;
-    const before = (await page.evaluate(() => JSON.parse(sessionStorage.getItem("session")!).refreshToken)) as string;
+    const before = (await alice.savedLogin()).refresh_token!;
+    await keepKey(page);
     // 同じ手順で、サインアウトの前には更新できる（手順の誤りで断られているのではないことを確かめる）
     const renewed = await refreshInPage(page, tokenUrl, before);
     expect(renewed.status, JSON.stringify(renewed)).toBe(200);
@@ -315,11 +336,8 @@ describe("カードで進む申込み（vulnerable の台本）", () => {
 
   it("トークンが切れると、token-guard が断り、ログインし直しへ案内する", async () => {
     const page = await start();
-    // 期限切れと同じく、token-guard が断るトークンに替える
-    await page.evaluate(() => {
-      const session = JSON.parse(sessionStorage.getItem("session")!);
-      sessionStorage.setItem("session", JSON.stringify({ ...session, token: "expired" }));
-    });
+    // 期限切れと同じく、token-guard が断るトークンに替える。更新もできない状態にする（更新できるときは、前の補足のテスト）
+    await alice!.savedLogin({ access_token: "expired", refresh_token: null });
     await page.reload();
     await send(page, "老後に備えたい");
     await page.getByTestId("relogin").click();
@@ -355,10 +373,7 @@ describe("サインアウト", () => {
   it("secure: ログインサーバーが再起動して鍵が替わっていても、サインアウトで行き止まりにならない", async () => {
     alice = await new BrowserCustomer("secure", "alice").ready();
     // ログインサーバーが確かめられない ID トークンを持つ状態を作る
-    await alice.page.evaluate(() => {
-      const session = JSON.parse(sessionStorage.getItem("session")!);
-      sessionStorage.setItem("session", JSON.stringify({ ...session, idToken: "unknown" }));
-    });
+    await alice.savedLogin({ id_token: "unknown" });
     await alice.page.getByTestId("signout").click();
     // ID トークンを示せないので、ログインサーバーの確認の画面で、利用者が終わらせる
     await alice.page.locator("#kc-logout").click();

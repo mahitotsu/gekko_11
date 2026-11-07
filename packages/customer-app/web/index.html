@@ -4,95 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>顧客のアプリ</title>
-<style>
-  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-  body { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
-  section { border: 1px solid #8884; border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
-  .warning { color: #b00; }
-  .user { text-align: right; background: #8881; padding: .4rem .8rem; border-radius: .4rem; }
-  .agent table, .tool table { border-collapse: collapse; margin: .4rem 0; }
-  #steps { display: flex; flex-wrap: wrap; gap: .4rem; list-style: none; padding: 0; margin: 0 0 1rem; }
-  #steps li { margin: 0; padding: .1rem .7rem; border: 1px solid #8886; border-radius: 1rem; font-size: .9rem; color: #888; }
-  #steps li.done { color: #1a7f37; border-color: #1a7f37; }
-  #steps li.done::before { content: "✓ "; }
-  #steps li[aria-current] { color: inherit; font-weight: bold; border-color: currentColor; }
-  .tool { border: 1px solid #8884; border-left: 4px solid #8886; border-radius: .4rem; padding: .6rem .8rem; margin: .6rem 0; }
-  .tool[open] { border-left-color: #2f6fdd; }
-  .tool button { margin: .2rem .4rem .2rem 0; }
-  .tool td:first-child { white-space: nowrap; }
-  .tool summary { cursor: pointer; font-weight: bold; overflow-wrap: anywhere; }
-  .tool:not([open]) summary { font-weight: normal; color: #888; }
-  .frame-label { margin: 0 0 .2rem; font-size: .8rem; font-weight: bold; color: #888; }
-  .agent { background: #8881; border-radius: .4rem; padding: .5rem .8rem; margin: .5rem 0; }
-  .issued { border: 1px solid #1a7f3788; border-radius: .4rem; padding: .5rem .8rem; margin: .5rem 0; }
-  .issued ul { padding-left: 1.2rem; margin: .2rem 0; }
-  .free { margin-top: .6rem; }
-  .free label { display: block; margin-bottom: .2rem; }
-  .free textarea { display: block; width: 100%; box-sizing: border-box; margin-bottom: .3rem; font: inherit; }
-  .hint { margin: .3rem 0 0; font-size: .8rem; color: #888; }
-  .confirm { border: 1px solid #b00; border-radius: .4rem; padding: .5rem .8rem; }
-  .chosen { font-weight: bold; outline: 2px solid #1a7f37; }
-  #agent-status { color: #888; }
-  .tab { padding: .4rem 1rem; border: 1px solid #8886; background: none; border-radius: .4rem .4rem 0 0; }
-  .tab.active { font-weight: bold; border-bottom-color: transparent; }
-  .alert { color: #fff; background: #b00; padding: .6rem 1rem; border-radius: .4rem; }
-  #error { position: sticky; top: 0; z-index: 1; color: #fff; background: #b00; padding: .6rem 1rem; border-radius: .4rem; }
-  td, th { padding: .2rem .6rem; border-bottom: 1px solid #8883; text-align: left; }
-  .step { font-size: .9rem; color: #888; }
-  .signed { color: #1a7f37; font-weight: bold; }
-  li { margin: .4rem 0; }
-</style>
-<script type="module" src="/app.js"></script>
 </head>
 <body>
-<h1>教材保険会社 顧客のアプリ</h1>
-<p id="error" data-testid="error" hidden></p>
-
-<section id="login" hidden>
-  <p>営業 AI エージェントに、次の範囲で申込みの取り次ぎを任せます（取決め）。</p>
-  <div id="terms" data-testid="terms"></div>
-  <button id="login-button" data-testid="login" type="button">同意して保険会社にログインする</button>
-</section>
-
-<section id="signed-in" hidden>
-  <p>ログイン中: <strong id="whoami" data-testid="whoami"></strong> <button id="signout-button" data-testid="signout" type="button">サインアウト</button></p>
-</section>
-
-<section id="register" hidden>
-  <p id="register-note" class="warning" data-testid="register-note" hidden>この端末の登録が、保険会社に見つかりませんでした（保険会社のシステムが入れ替わった可能性があります）。もう一度登録してください。</p>
-  <p>この端末に、署名に使う passkey と、契約内容が届く受信箱を登録します。</p>
-  <button id="register-button" data-testid="register-passkey" type="button">passkey を登録する</button>
-</section>
-
-<nav id="tabs" hidden>
-  <button id="tab-apply" data-testid="tab-apply" type="button" class="tab active">申し込む</button>
-  <button id="tab-inbox" data-testid="tab-inbox" type="button" class="tab">受信箱と契約</button>
-</nav>
-
-<section id="apply" hidden>
-  <ol id="steps" data-testid="steps">
-    <li data-step="consult">相談</li>
-    <li data-step="offers">案</li>
-    <li data-step="intent">意向確認</li>
-    <li data-step="application">申込み</li>
-    <li data-step="reconcile">照合</li>
-  </ol>
-  <div id="cards" data-testid="cards"></div>
-  <p id="agent-status" data-testid="agent-status" data-state="idle"></p>
-  <div id="new-confirm-box" class="confirm" data-testid="new-confirm-box" hidden>
-    <p>申込書に署名した後で、営業 AI エージェントが提出を進めています。ここで始め直しても、契約になることがあります。結果は「受信箱と契約」で確かめてください。</p>
-    <button id="new-confirm" data-testid="new-confirm" type="button">それでも始め直す</button>
-    <button id="new-back" data-testid="new-back" type="button">戻る</button>
-  </div>
-  <p><button id="new-application" data-testid="new-application" type="button" hidden>新しい申し込み</button></p>
-</section>
-
-<section id="inbox" hidden>
-  <h2>受信箱と契約</h2>
-  <p>保険会社から直接届いた全ての契約内容を、この端末に残した申込みの写しと突き合わせます。申し込んだ覚えのない契約が届いていたら、保険会社へ連絡してください。</p>
-  <button id="check-inbox" data-testid="check-inbox" type="button">最新の受信箱を照合する</button>
-  <p id="inbox-alert" class="alert" data-testid="inbox-alert" hidden></p>
-  <ul id="inbox-list"></ul>
-</section>
+<div id="root"></div>
+<script type="module" src="/main.tsx"></script>
 </body>
 </html>

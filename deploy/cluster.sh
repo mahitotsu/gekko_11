@@ -13,8 +13,10 @@ SVID_TTL=600
 spire() { kubectl -n spire exec spire-server-0 -c spire-server -- /opt/spire/bin/spire-server "$@"; }
 
 entry() {
-  local id="$1"; shift
-  if spire entry show -spiffeID "$id" | grep -q "Entry ID"; then return; fi
+  local id="$1" found; shift
+  # 読み終えてから調べる。パイプの途中で読むのをやめると、pipefail で、登録があるのに「ない」と読み違えることがある
+  found=$(spire entry show -spiffeID "$id")
+  if grep -q "Entry ID" <<<"$found"; then return; fi
   spire entry create -spiffeID "$id" "$@" >/dev/null
   echo "entry: $id"
 }

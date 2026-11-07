@@ -129,6 +129,10 @@ export const REFRESH_MARGIN_MS = 120_000;
 
 /** A の残りが短く、更新が要るか（P-18）。中身を読むだけで、確かめは、受け取る側の token-guard が行う。 */
 export function needsRefresh(token: string, now: number, marginMs = REFRESH_MARGIN_MS): boolean {
-  const { exp } = decodeJwt(token);
-  return exp !== undefined && exp * 1000 - now < marginMs;
+  try {
+    const { exp } = decodeJwt(token);
+    return exp !== undefined && exp * 1000 - now < marginMs;
+  } catch {
+    return true; // 読めないトークンは、送っても断られるので、更新する
+  }
 }

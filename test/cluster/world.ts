@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
-import { parseSse } from "../../packages/customer-app/web/agui.ts";
+import { parseSse } from "./sse.ts";
 import { challengeOf, sign, type AuthenticatorState } from "./probe/webauthn.ts";
 
 const run = promisify(execFile);

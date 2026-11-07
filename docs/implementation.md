@@ -21,7 +21,7 @@
 | 監査サービス | Java 21、Spring Boot 3.5、Spring Security の OAuth2 Client 6.5、Thymeleaf、java-json-canonicalization（JCS） | `services/insurer-audit` |
 | 営業 AI エージェント | TypeScript、Claude Agent SDK 0.3.302、@ag-ui/core 1.0.3（AG-UI の型と確かめ）、MCP の SDK、Hono | `packages/sales-agent` |
 | token-guard | TypeScript、Hono、jose | `packages/token-guard` |
-| 顧客のアプリ | TypeScript、jose、canonicalize（JCS）、@ag-ui/core（型だけ）、WebCrypto、WebAuthn。画面は esbuild 0.28 でまとめ、配信元は Hono | `packages/customer-app` |
+| 顧客のアプリ | React 19、Vite 7、oidc-client-ts、@ag-ui/client、@simplewebauthn/browser、react-markdown、jose、canonicalize（JCS）。配信元は Hono | `packages/customer-app` |
 | クラスタと基盤 | k3d 5.9（k3s 1.35）、SPIRE 1.15、spiffe-helper 0.12、Envoy 1.31、NetworkPolicy | `deploy/` |
 | 記録の集約 | Grafana Alloy 1.20（`loki.source.kubernetes`）、Grafana Loki 3.7 | `deploy/k8s/logging/`、`deploy/render.ts` |
 | テスト | JUnit、pytest、vitest、Playwright 1.64（Docker のブラウザに playwright-core でつなぐ） | 各サービスの `test`、`test/cluster/`、`test/ui/` |
@@ -64,12 +64,14 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `packages/token-guard/src/verify.ts` | 受け口の確かめ（D1、D5〜D8、D10、D20、D26、D27） |
 | `packages/token-guard/src/exchange.ts` | 出口の交換（D2） |
 | `packages/customer-app/web/checks.ts` | 画面の確かめ（D21〜D23） |
-| `packages/customer-app/web/main.ts` | 画面の流れ（ログイン、登録、カードで進む申込み、確認、署名、照合。D-34） |
+| `packages/customer-app/web/components/` | 画面（ログイン、登録、カードで進む申込み、確認、署名、照合。D-34） |
+| `packages/customer-app/web/auth.ts` | ログインと更新（P-18）。ID トークンは、`checks.ts` で確かめる（D21、D-40） |
+| `packages/customer-app/web/controller.ts`、`conversation.ts` | 申込みの進め方と、会話の状態 |
 | `packages/sales-agent/src/agui.ts` | AG-UI の受け口（`POST /agui`。RunAgentInput を確かめ、SSE でイベントを返す） |
 | `packages/sales-agent/src/thread.ts` | 会話ごとの状態と、画面側の道具の呼び出しと待ち合わせ（D-29）。会話の記録を、秘密を伏せて書き出す（D-32） |
 | `packages/sales-agent/src/claude.ts`、`scripted.ts` | Claude と台本。同じ道具を呼ぶ |
 | `packages/sales-agent/src/draft.ts`、`submit.ts` | 書類の組み立てと、署名の揃った書類の提出（D-27） |
-| `packages/customer-app/web/agui.ts` | 画面の側の AG-UI の受け手と、画面側の道具の定義 |
+| `packages/customer-app/web/agent.ts` | 画面の側の AG-UI の接続と、画面側の道具の定義 |
 | `packages/*/src/*.secure.ts`、`packages/customer-app/web/defenses.secure.ts` | secure のビルドで、防御を外す受け口と置き換えるファイル |
 | `deploy/render.ts` | 名前空間ごとのマニフェスト（Envoy の設定、NetworkPolicy を含む） |
 | `test/cluster/scenarios.test.ts`、`test/cluster/expiry.test.ts` | probe で確かめるシナリオと補足のテスト |
@@ -134,6 +136,7 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **入口は、TLS なしの localhost である:** ブラウザと入口の間は、利用者の端末の中のループバックで、http で受ける。ブラウザは localhost を安全な文脈として扱うので、passkey と WebCrypto が動く（F-G62、F-G63）。本番では、信頼された証明書の HTTPS にする。issuer も http になる。
 - **受信箱の番号は、端末の保存領域にある:** 番号を持つ者は、その受信箱を読める（D-26）。署名済み申込の写しも、同じ保存領域に置く。
 - **新しい申し込みで捨てた会話は、サーバーに残る:** 画面は要求を止めて会話を捨てるが、営業 AI エージェントには、使われなくなるまで最大 15 分残る。提出の途中なら、始め直しても契約になることがある（D-34）。
+- **画面のファイルが大きい:** まとめたスクリプトは、分割せず、約 850 kB ある。教材の規模なので、読み込みの遅さを問題にしない（D-40）。
 - **更新できなくなると、最初からやり直す:** 無操作が 30 分続くか、ログインから 1 時間経つと、トークン A を更新できない。ログインし直すと、入力した内容は消える（D-34、P-18）。
 - **会話の状態は、営業 AI エージェントのメモリにある:** threadId ごとの会話（Claude の会話、直前の提示、署名した書類）を、1 つの複製のメモリに持つ。再起動で消え、15 分使われなければ捨てる。会話は、ログインの上限の 1 時間までに終える（P-18）。
 - **記録の集約は、教材の規模である:** Loki は、名前空間ごとに 1 つのプロセスで動き、認証を持たない。記録は、Pod の一時的な領域（emptyDir）のファイルに保存する。Pod を作り直すと、記録は消える。Alloy も 1 つで、止まっている間の記録は届かない。

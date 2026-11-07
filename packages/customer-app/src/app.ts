@@ -1,7 +1,6 @@
 // 顧客のアプリの配信元（D-18）。画面（ブラウザで動く公開クライアント）と、その設定と、提示の公開鍵を渡す。
 // 保険会社のシステムが、登録済みの連絡先へ直接送る契約内容を、受信箱の番号ごとに受ける（P-8、P-14、D-26）。AI を通らない。
 // 送り手は、Envoy が渡す相手の証明書の情報（XFCC）で、保険会社のシステムの SPIFFE ID に限る。
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Hono } from "hono";
 import { currentDefenses } from "./defenses.ts";
@@ -53,16 +52,14 @@ let offerKeys: { at: number; body: unknown } | undefined;
 
 /**
  * 画面の CSP（D32。P-18）。画面でコードを動かされたときの第 2 の守りで、XSS をなくすものではない。
- * 読み込むものを配信元の app.js と、ページの中の決まったスタイルに限る。つなぐ先を、配信元と、営業 AI エージェント、ログインサーバー、認可サーバーに限る。
+ * 読み込むものを配信元のスクリプトとスタイルに限る。つなぐ先を、配信元と、営業 AI エージェント、ログインサーバー、認可サーバーに限る。
  */
-export function contentSecurityPolicy(html: string): string {
-  const style = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? "";
-  const hash = createHash("sha256").update(style).digest("base64");
+export function contentSecurityPolicy(): string {
   const origins = [process.env.AGENT_ORIGIN, process.env.AUTH_ORIGIN, process.env.ISSUER ? new URL(process.env.ISSUER).origin : undefined].filter(Boolean);
   return [
     "default-src 'none'",
     "script-src 'self'",
-    `style-src 'sha256-${hash}'`,
+    "style-src 'self'",
     "img-src 'self'",
     `connect-src ${["'self'", ...origins].join(" ")}`,
     "base-uri 'none'",
@@ -73,11 +70,16 @@ export function contentSecurityPolicy(html: string): string {
 
 export function createApp() {
   const app = new Hono();
-  const index = file("../web/index.html");
-  const bundle = file("../dist/app.js");
+  const index = file("../dist/index.html");
 
-  for (const path of ["/", "/callback"]) app.get(path, (c) => (index ? c.html(index, 200, { "content-security-policy": contentSecurityPolicy(index) }) : c.notFound()));
-  app.get("/app.js", (c) => (bundle ? c.body(bundle, 200, { "content-type": "text/javascript; charset=utf-8" }) : c.notFound()));
+  for (const path of ["/", "/callback"]) app.get(path, (c) => (index ? c.html(index, 200, { "content-security-policy": contentSecurityPolicy() }) : c.notFound()));
+  // まとめたスクリプトとスタイル。名前に内容のハッシュが入る
+  app.get("/assets/:name{[A-Za-z0-9._-]+}", (c) => {
+    const name = c.req.param("name");
+    const body = file(`../dist/assets/${name}`);
+    if (!body) return c.notFound();
+    return c.body(body, 200, { "content-type": name.endsWith(".css") ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8" });
+  });
   app.get("/config.json", (c) => c.json(config()));
   app.get("/offers-jwks.json", async (c) => {
     if (!offerKeys || Date.now() - offerKeys.at > 60_000) {
