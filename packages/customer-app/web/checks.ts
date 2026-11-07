@@ -1,6 +1,6 @@
 // 顧客のアプリが、ブラウザの中で確かめること（scenarios の 2-3 の顧客のアプリの表）。
 // D21: ID トークン、D22: 案の署名、D23: 確認画面を署名する内容から作る。画面の部品から切り離し、単体テストで確かめる。
-import { jwtVerify, type JWTVerifyGetKey } from "jose";
+import { decodeJwt, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { challengeOf } from "./codec.ts";
 
 export interface Plan {
@@ -122,4 +122,13 @@ export function termsRowsOf(terms: { kinds: string[]; maxBenefit: number }[]): R
     { key: "kinds", label: "申し込める保険", value: t.kinds.map((k) => kind[k] ?? k).join("、") },
     { key: "max-benefit", label: "年金の年額の上限", value: `${(t.maxBenefit / 10_000).toLocaleString("ja-JP")} 万円` },
   ]);
+}
+
+/** 回を始める前に A を更新する、残り時間の境目。営業 AI エージェントの 1 回の番が、途中で切れないだけの余裕を持つ。 */
+export const REFRESH_MARGIN_MS = 120_000;
+
+/** A の残りが短く、更新が要るか（P-18）。中身を読むだけで、確かめは、受け取る側の token-guard が行う。 */
+export function needsRefresh(token: string, now: number, marginMs = REFRESH_MARGIN_MS): boolean {
+  const { exp } = decodeJwt(token);
+  return exp !== undefined && exp * 1000 - now < marginMs;
 }

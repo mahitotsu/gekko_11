@@ -1,5 +1,5 @@
 // シナリオ 4（R2 × A4）: 期限切れのトークンで、本人の知らない申込みを、保険会社のシステムへ直接出す。
-// トークンの期限（5 分）は実際に過ぎるまで待つ。最初に回数分のトークンを受け取り、期限が切れるのを 1 回だけ待つ。
+// トークン C の期限（1 分）は実際に過ぎるまで待つ。最初に回数分のトークンを受け取り、期限が切れるのを 1 回だけ待つ。
 import { beforeAll, describe, expect, it } from "vitest";
 import { atMcp, backendPost, contractsOf, Customer, exchangeAs, offerFor, setDefenses, type Gaps, type Ns, type Submission } from "./world.ts";
 

@@ -38,6 +38,7 @@ export const TERMS = [{ type: "insurance_application", kinds: ["fixed", "lifetim
 export class Customer {
   token = "";
   idToken = "";
+  refreshToken = "";
   dpopKey: Json = {};
   authenticator!: AuthenticatorState;
   /** passkey と一緒に登録した受信箱の番号（直送の宛先）。 */
@@ -58,8 +59,15 @@ export class Customer {
   async setup(terms: unknown = TERMS): Promise<this> {
     const r = await probe(this.ns, "probe-sales-agent", "customer-setup", { user: this.user, terms });
     if (r.status !== 200) throw new Error(`顧客の準備に失敗: ${JSON.stringify(r)}`);
-    Object.assign(this, { token: r.token, idToken: r.idToken, dpopKey: r.dpopKey, authenticator: r.authenticator, inbox: r.inbox });
+    Object.assign(this, { token: r.token, idToken: r.idToken, refreshToken: r.refreshToken, dpopKey: r.dpopKey, authenticator: r.authenticator, inbox: r.inbox });
     return this;
+  }
+
+  /** A を更新する（P-18）。使えた更新のトークンと A を、新しいものに置き換える。 */
+  async refresh(proof: "good" | "none" | "other-key" = "good", refreshToken = this.refreshToken): Promise<Json> {
+    const r = await probe(this.ns, "probe-sales-agent", "refresh-login", { refreshToken, dpopKey: this.dpopKey, proof });
+    if (r.status === 200) Object.assign(this, { token: r.body.access_token, refreshToken: r.body.refresh_token });
+    return r;
   }
 
   /** 営業 AI エージェントの AG-UI の受け口に、1 回分（RunAgentInput）を、A と DPoP の proof で出す。返すのは、SSE のイベントの列。 */

@@ -1,6 +1,6 @@
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import { describe, expect, it } from "vitest";
-import { applicationRowsOf, intentRowsOf, termsRowsOf, verifyIdToken, verifyOffer, type Offer } from "../web/checks.ts";
+import { applicationRowsOf, intentRowsOf, needsRefresh, REFRESH_MARGIN_MS, termsRowsOf, verifyIdToken, verifyOffer, type Offer } from "../web/checks.ts";
 import { challengeOf } from "../web/codec.ts";
 
 const ISSUER = "http://auth.secure.localhost:8081";
@@ -94,5 +94,16 @@ describe("取決めの表示", () => {
   it("保険の種類と、年額の上限を、読める形にする", () => {
     const rows = termsRowsOf([{ kinds: ["fixed", "lifetime"], maxBenefit: 1_200_000 }]);
     expect(rows.map((r) => r.value)).toEqual(["確定年金、終身年金", "120 万円"]);
+  });
+});
+
+describe("A の更新が要るか（P-18）", () => {
+  const tokenWith = (exp: number) => `x.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.y`;
+  const now = 1_000_000_000_000;
+
+  it("残りが境目より短ければ更新し、長ければしない", () => {
+    expect(needsRefresh(tokenWith((now + REFRESH_MARGIN_MS - 1000) / 1000), now)).toBe(true);
+    expect(needsRefresh(tokenWith((now + REFRESH_MARGIN_MS + 1000) / 1000), now)).toBe(false);
+    expect(needsRefresh(tokenWith((now - 1000) / 1000), now)).toBe(true);
   });
 });

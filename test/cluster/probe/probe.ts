@@ -149,7 +149,7 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
   });
   cookie = cookiesOf(posted, cookie);
   const res = await redeem(posted.headers.location, verifier);
-  const body = JSON.parse(res.body) as { access_token?: string; id_token?: string };
+  const body = JSON.parse(res.body) as { access_token?: string; id_token?: string; refresh_token?: string };
 
   // P を受け取る（ログインしたまま）
   const verifierP = randomUUID() + randomUUID();
@@ -177,6 +177,7 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
     status: res.status,
     token: body.access_token,
     idToken: body.id_token,
+    refreshToken: body.refresh_token,
     dpopKey: await exportJWK(privateKey),
     jkt: await calculateJwkThumbprint(jwk),
     authenticator,
@@ -228,6 +229,19 @@ async function callSalesAgent(args: { path: string; body?: unknown; token: strin
     headers.dpop = await dpopProof(signer, publicJwk, "POST", htu, args.token);
   }
   return reply(await call("sales-agent", args.path, { method: "POST", headers, body: JSON.stringify(args.body ?? {}), clientCert: false }));
+}
+
+/** 顧客の役: 更新のトークンで A を更新する（P-18）。proof は、正しいもの、なし、別の鍵で作ったもの。 */
+async function refreshLogin(args: { refreshToken: string; dpopKey: JWK; proof?: "good" | "none" | "other-key" }) {
+  const path = "/realms/insurer/protocol/openid-connect/token";
+  const headers: Record<string, string> = { ...FORM, host: new URL(publicOrigin("login")).host };
+  const proof = args.proof ?? "good";
+  if (proof !== "none") {
+    const signer: SigningKey = proof === "good" ? await importJWK(args.dpopKey, "ES256") : generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
+    const { d: _d, ...publicJwk } = proof === "good" ? args.dpopKey : await exportJWK(signer as KeyObject);
+    headers.dpop = await dpopProof(signer, publicJwk, "POST", `${publicOrigin("login")}${path}`);
+  }
+  return reply(await call("insurer-login", path, { method: "POST", headers, body: form({ grant_type: "refresh_token", client_id: "customer-app", refresh_token: args.refreshToken }), clientCert: false }));
 }
 
 /** 自分の SVID で、自分のトークン（client_credentials）を受け取る。 */
@@ -335,6 +349,7 @@ async function whoami() {
 const commands: Record<string, (args: never) => Promise<unknown>> = {
   "customer-setup": customerSetup,
   "call-sales-agent": callSalesAgent,
+  "refresh-login": refreshLogin,
   "client-credentials": clientCredentials,
   exchange,
   "call-service": callService,

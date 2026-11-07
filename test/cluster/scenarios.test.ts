@@ -576,6 +576,46 @@ describe("監査サービス（D25）", () => {
   });
 });
 
+describe("補足: ログインの更新（D31。P-18）", () => {
+  it("secure: 更新した A は、中身を保ち、B と C は呼び出しの間だけ有効である", async () => {
+    const alice = await new Customer("secure", "alice").setup();
+    const before = decode(alice.token);
+    expect((await alice.refresh()).status).toBe(200);
+    const after = decode(alice.token);
+    expect(after.jti).not.toBe(before.jti);
+    for (const claim of ["sub", "aud", "cnf", "may_act", "verified_claims", "authorization_details"]) expect(after[claim]).toEqual(before[claim]);
+    expect(after.exp - after.iat).toBe(300);
+    const b = decode(await atMcp(alice));
+    expect(b.exp - b.iat).toBe(60);
+  });
+
+  it("secure: 鍵のない更新と、別の鍵の更新は、断られる", async () => {
+    const alice = await new Customer("secure", "alice").setup();
+    expect((await alice.refresh("none")).status).toBe(400);
+    expect((await alice.refresh("other-key")).status).toBe(400);
+    expect((await alice.refresh()).status).toBe(200);
+  });
+
+  it("secure: 更新のトークンを使い回すと断られ、最新のものも使えなくなる", async () => {
+    const alice = await new Customer("secure", "alice").setup();
+    const stolen = alice.refreshToken;
+    expect((await alice.refresh()).status).toBe(200);
+    expect((await alice.refresh("good", stolen)).status).toBe(400);
+    expect((await alice.refresh()).status).toBe(400);
+  });
+
+  it("secure: 更新した A で申し込んでも、監査は食い違いを示さない", async () => {
+    const alice = await new Customer("secure", "alice").setup();
+    expect((await alice.refresh()).status).toBe(200);
+    const offer = await offerFor(alice);
+    const sub = alice.prepare(offer, "fixed-60");
+    const r = await mcpCall("secure", await atMcp(alice), "submit_application", applyArgs(sub));
+    expect(r.body?.ok, JSON.stringify(r)).toBe(true);
+    const report = await auditOf("secure", offer.nonce, (x) => x.contractRecord !== null && x.chain.length === 3);
+    expect(report.status, JSON.stringify(report)).toBe("食い違いなし");
+  });
+});
+
 describe("補足", () => {
   it("secure: A はログインサーバーが出し、B は認可サーバーが、顧客と経由を保ったまま出す（D-35）", async () => {
     const alice = await customer("secure", "alice");

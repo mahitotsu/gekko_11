@@ -8,6 +8,7 @@ import { reconcile, type Copy } from "../src/reconcile.ts";
 import { AgentRefused, FRONTEND_TOOLS, runOnce, type AgentEvent } from "./agui.ts";
 import {
   applicationRowsOf, intentRowsOf, termsRowsOf, verifyIdToken, verifyOffer, type Application, type Intent, type Offer, type Row,
+  needsRefresh,
 } from "./checks.ts";
 import { b64u, challengeOf, randomB64u, sha256 } from "./codec.ts";
 import { loadDefenses } from "./defenses.ts";
@@ -33,6 +34,8 @@ interface Session {
   idToken: string;
   /** passkey の登録だけに使うトークン P（宛先は認可サーバー。D-37）。 */
   passkeyToken?: string;
+  /** A を更新するトークン。DPoP の鍵に結ばれ、1 度しか使えない（P-18）。 */
+  refreshToken?: string;
 }
 
 interface Device {
@@ -140,7 +143,7 @@ async function finishLogin(params: URLSearchParams): Promise<boolean> {
       code_verifier: login.verifier,
     }),
   });
-  const body = (await res.json()) as { access_token?: string; id_token?: string; error?: string };
+  const body = (await res.json()) as { access_token?: string; id_token?: string; refresh_token?: string; error?: string };
   if (!res.ok || !body.access_token || !body.id_token) throw new Error(`トークンを受け取れない: ${body.error ?? res.status}`);
   let sub: string;
   if (enabled("D21")) {
@@ -157,9 +160,36 @@ async function finishLogin(params: URLSearchParams): Promise<boolean> {
     store.set(sessionStorage, "session", { ...session, passkeyToken: body.access_token } satisfies Session);
     return false;
   }
-  store.set(sessionStorage, "session", { token: body.access_token, sub, idToken: body.id_token } satisfies Session);
+  store.set(sessionStorage, "session", { token: body.access_token, sub, idToken: body.id_token, refreshToken: body.refresh_token } satisfies Session);
   await startPasskeyToken();
   return true;
+}
+
+/** A を更新できない。ログインし直すしかない。 */
+class LoginExpired extends Error {}
+
+let renewing: Promise<void> | undefined;
+
+/**
+ * A を更新する（P-18）。使い回すと、ログインサーバーがログインごと止めるので、同時に 1 つしか走らせない。
+ * 更新するのは顧客のアプリだけで、更新のトークンは、営業 AI エージェントに渡さない。
+ */
+function renew(session: Session): Promise<void> {
+  renewing ??= (async () => {
+    if (!session.refreshToken) throw new LoginExpired("更新のトークンがない");
+    const tokenUrl = `${oidc}/token`;
+    const res = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", dpop: await dpopProof("POST", tokenUrl) },
+      body: new URLSearchParams({ grant_type: "refresh_token", client_id: cfg.clientId, refresh_token: session.refreshToken }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string };
+    if (!res.ok || !body.access_token) throw new LoginExpired(`更新できない: ${res.status}`);
+    session.token = body.access_token;
+    session.refreshToken = body.refresh_token ?? session.refreshToken;
+    store.set(sessionStorage, "session", session);
+  })().finally(() => (renewing = undefined));
+  return renewing;
 }
 
 /**
@@ -265,8 +295,9 @@ async function run(session: Session, device: Device) {
   const calls = new Map<string, { name: string; args: string }>();
   let called = false;
   let failed = false;
-  conversation.abort = new AbortController();
-  try {
+  const abort = new AbortController();
+  conversation.abort = abort;
+  const send = async () => {
     await runOnce(
       url,
       { authorization: `DPoP ${session.token}`, dpop: await dpopProof("POST", url, session.token) },
@@ -298,12 +329,21 @@ async function run(session: Session, device: Device) {
           fail(new Error(e.message));
         }
       },
-      conversation.abort.signal,
+      abort.signal,
     );
+  };
+  try {
+    // 番の途中で切れないよう、残りが短ければ先に更新する。切れていたら、1 度だけ更新して送り直す。401 は受け口で断られるので、回は始まっていない
+    if (needsRefresh(session.token, Date.now())) await renew(session);
+    await send().catch(async (e: unknown) => {
+      if (!(e instanceof AgentRefused && e.status === 401) || !current()) throw e;
+      await renew(session);
+      await send();
+    });
   } catch (e) {
     if (!current()) return; // 始め直した: 止めた回の失敗は見せない
     conversation.submitting = false;
-    if (e instanceof AgentRefused && e.status === 401) return expired(session);
+    if (e instanceof LoginExpired || (e instanceof AgentRefused && e.status === 401)) return expired(session);
     throw e;
   }
   if (!current()) return;
