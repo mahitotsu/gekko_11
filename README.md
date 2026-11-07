@@ -24,7 +24,7 @@ npm install
 npm test                 # サービスごとの単体テスト（TypeScript、Java、Python）
 npm run cluster:up       # k3d のクラスタを作る
 npm run cluster:deploy   # secure と vulnerable の名前空間に、全てのサービスを置く
-npm run cluster:test     # 全シナリオと画面のテストを確かめる（25 分ほど）
+npm run cluster:test     # 全シナリオと画面のテストを確かめる（30 分ほど）
 ```
 
 期待する結果: どちらのテストも、全て通る。防御を外した vulnerable の名前空間では被害が出て、secure の名前空間では出ない。画面のテストのブラウザは、Docker の中で動く。

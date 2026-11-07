@@ -20,17 +20,18 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
     alice = await new BrowserCustomer(ns, "alice").ready();
     await alice.chat();
     expect(await alice.error()).toBeNull();
-    expect(await alice.planIds()).toContain("fixed-60");
     expect(await alice.offerWarning()).toBeNull();
 
-    await alice.choose("fixed-60");
-    expect(await alice.approveIfShows(PLANS["fixed-60"]!)).toBe(true);
+    // secure の案は、本物の Claude が組み立てるので、番号を固定せず、出た案から選ぶ
+    const chosen = ns === "secure" ? (await alice.shownPlans())[0]! : PLANS["fixed-60"]!;
+    await alice.choose(chosen.id);
+    expect(await alice.approveIfShows(chosen)).toBe(true);
     expect(await alice.error()).toBeNull();
 
     const nonce = await alice.nonce;
     const record = (await records(ns)).contracts.find((c) => c.contract.nonce === nonce);
     expect(record?.by).toEqual(["insurer-mcp", "sales-agent"]);
-    expect(record?.contract.plan.id).toBe("fixed-60");
+    expect(record?.contract.plan.id).toBe(chosen.id);
     // 会話の最後には、今回の申込みの行だけが出る
     expect(await alice.reconcile()).toBe("match");
     expect(await alice.page.locator("[data-testid^=reconcile-]").count()).toBe(1);
@@ -45,6 +46,42 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
     expect(audited.conversationRows).toBeGreaterThan(0);
     // 詳細の冒頭に、何と何を比べたかが出る
     expect(await auditor.page.getByTestId("comparison").count()).toBeGreaterThan(0);
+  });
+});
+
+describe("顧客の希望から案を組み立てる（secure の本物の Claude。P-17）", () => {
+  it("希望に近い案が出て、条件を変えて頼み直すと新しい提示になり、最初の文が意向確認書面に残る", async () => {
+    alice = await new BrowserCustomer("secure", "alice").ready();
+    const wish = "年に 80 万円を 15 年受け取れる個人年金を考えています。";
+    await alice.chat(wish);
+    expect(await alice.error()).toBeNull();
+    // 掛け金を変えて探すので、ぴったりとは限らない。受取期間が 15 年で、年額が 80 万円の前後 1 割の案があるかを見る
+    const near = (await alice.shownPlans()).map((p) => /確定年金 15年・年額(\d+)万円/.exec(p.name)?.[1]).filter(Boolean).map(Number);
+    expect(near.some((man) => man >= 72 && man <= 88)).toBe(true);
+    const firstNonce = await alice.page.locator("[data-testid=offers]").last().getAttribute("data-nonce");
+
+    const page = alice.page;
+    await page.getByTestId("offers-other-input").fill("掛け金をもう少し抑えた案も見たいです。");
+    await page.getByTestId("offers-other-send").click();
+    // 古い案は、新しい案が届くまで画面に残るので、nonce が変わるまで待つ。その間の質問には、最初の選択肢で答える
+    await expect
+      .poll(
+        async () => {
+          const ask = page.locator("[data-testid=ask-option-0]:visible:enabled");
+          if (await ask.count()) await ask.click();
+          return page.locator("[data-testid=offers]").last().getAttribute("data-nonce");
+        },
+        { timeout: 180_000, interval: 1_000 },
+      )
+      .not.toBe(firstNonce);
+    expect(await alice.error()).toBeNull();
+
+    const chosen = (await alice.shownPlans())[0]!;
+    await alice.choose(chosen.id);
+    await page.getByTestId("sign-intent").waitFor({ timeout: 120_000 });
+    expect(await page.getByTestId("intent-initial-wish").textContent()).toContain(wish);
+    expect(await alice.approveIfShows(chosen)).toBe(true);
+    expect(await alice.reconcile()).toBe("match");
   });
 });
 
@@ -67,8 +104,9 @@ describe("カードで進む申込み（vulnerable の台本）", () => {
     await page.getByTestId("ask-other-input").fill("10 年だけ受け取りたい");
     await page.getByTestId("ask-other-send").click();
     await page.getByTestId("choose-fixed-60").waitFor();
-    // 案のカードに、入力欄はない。段階も進む
-    expect(await page.locator("textarea:visible").count()).toBe(0);
+    // 案のカードの入力欄は、条件を変えて頼み直す欄だけである。段階も進む
+    expect(await page.locator("textarea:visible").count()).toBe(1);
+    expect(await page.getByTestId("offers-other-input").isVisible()).toBe(true);
     expect(await page.locator("#steps li[aria-current]").getAttribute("data-step")).toBe("offers");
     expect(await page.locator("#steps li.done").getAttribute("data-step")).toBe("consult");
     await page.getByTestId("choose-fixed-60").click();

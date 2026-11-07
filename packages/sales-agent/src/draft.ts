@@ -14,7 +14,12 @@ export interface Intent {
   customer: string;
   offerSetId: string;
   planId: string;
+  /** 最終の意向。LLM が書く。 */
   wish: string;
+  /** 顧客の最初の文。決まった処理が入れ、LLM には書かせない（振返り。P-17）。 */
+  initialWish?: string;
+  /** 最初の希望と最終の意向の違いと、その経緯。LLM が書く。 */
+  changeNote?: string;
   nonce: string;
   expiresAt: number;
 }
@@ -35,9 +40,18 @@ const planIn = (offer: Offer, planId: string, chosen?: Plan) => {
   return plan;
 };
 
-export function intentOf(customer: string, offer: Offer, planId: string, wish: string, chosen?: Plan): Intent {
+export function intentOf(customer: string, offer: Offer, planId: string, wish: string, chosen?: Plan, review: { initialWish?: string; changeNote?: string } = {}): Intent {
   planIn(offer, planId, chosen);
-  return { customer, offerSetId: offer.offerSetId, planId, wish, nonce: offer.nonce, expiresAt: offer.expiresAt };
+  return {
+    customer,
+    offerSetId: offer.offerSetId,
+    planId,
+    wish,
+    ...(review.initialWish ? { initialWish: review.initialWish } : {}),
+    ...(review.changeNote ? { changeNote: review.changeNote } : {}),
+    nonce: offer.nonce,
+    expiresAt: offer.expiresAt,
+  };
 }
 
 export function applicationOf(customer: string, offer: Offer, planId: string, intentSignature: string, chosen?: Plan): Application {

@@ -10,7 +10,7 @@ const offer = { offerJws: "jws", offerSet: { customer: "alice", plans }, offerSe
 function fakeMcp(calls: { name: string; args?: Record<string, unknown> }[]) {
   return async (_ctx: string, name: string, args?: Record<string, unknown>) => {
     calls.push({ name, args });
-    if (name === "get_offers") return { isError: false, body: offer };
+    if (name === "issue_offer") return { isError: false, body: offer };
     return { isError: false, body: { ok: true, contract: { contractId: "C-1" } } };
   };
 }
@@ -26,6 +26,33 @@ const toolCall = (items: Record<string, any>[]) => ({
   id: items.find((e) => e.type === "TOOL_CALL_START")?.toolCallId as string,
   name: items.find((e) => e.type === "TOOL_CALL_START")?.toolCallName as string,
   args: JSON.parse(items.find((e) => e.type === "TOOL_CALL_ARGS")?.delta ?? "{}"),
+});
+
+describe("振返りと推奨の理由（P-17）", () => {
+  it("最初の文を当初の意向として残し、理由を提示に足す", async () => {
+    const t = new Thread("th-review", "alice");
+    t.tell("年に 80 万円ほしい");
+    t.tell("掛け金を抑えたい");
+    t.setOffer(offer);
+    const shown = t.frontend("present_offers", { message: "説明", reasons: { "fixed-60": "意向に近い" } });
+    let c = toolCall(await nextRun(t));
+    expect(c.args.reasons).toEqual({ "fixed-60": "意向に近い" });
+    t.answer(c.id, JSON.stringify({ planId: "fixed-60", plan: plans[0] }));
+    await shown;
+    void t.frontend("present_intent", { planId: "fixed-60", wish: "掛け金を抑えて受け取りたい", changeNote: "額より掛け金を優先した" });
+    c = toolCall(await nextRun(t));
+    expect(c.args.intent).toMatchObject({ initialWish: "年に 80 万円ほしい", wish: "掛け金を抑えて受け取りたい", changeNote: "額より掛け金を優先した" });
+  });
+
+  it("案のカードの自由入力は、選んだ案でなく、文として渡す", async () => {
+    const t = new Thread("th-other", "alice");
+    t.setOffer(offer);
+    const shown = t.frontend("present_offers", { message: "説明" });
+    const c = toolCall(await nextRun(t));
+    t.answer(c.id, JSON.stringify({ answer: "掛け金を抑えたい" }));
+    expect(await shown).toBe("掛け金を抑えたい");
+    expect(t.chosen).toBeUndefined();
+  });
 });
 
 describe("台本の会話（AG-UI のイベント）", () => {
@@ -57,7 +84,7 @@ describe("台本の会話（AG-UI のイベント）", () => {
     await done;
     expect(last.at(-1)).toEqual({ end: true, error: undefined });
     expect(last.find((e) => e.type === "TEXT_MESSAGE_CONTENT")?.delta).toContain("C-1");
-    expect(calls.map((x) => x.name)).toEqual(["get_offers", "submit_application"]);
+    expect(calls.map((x) => x.name)).toEqual(["issue_offer", "submit_application"]);
     expect(calls[1]?.args).toMatchObject({ application: { plan: plans[0], intentSignature: "sig-1" } });
   });
 
@@ -97,7 +124,7 @@ describe("台本の会話（AG-UI のイベント）", () => {
     t.answer(c.id, JSON.stringify({ declined: true }));
     await nextRun(t);
     await done;
-    expect(calls.map((x) => x.name)).toEqual(["get_offers"]);
+    expect(calls.map((x) => x.name)).toEqual(["issue_offer"]);
   });
 });
 

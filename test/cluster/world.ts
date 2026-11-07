@@ -185,7 +185,7 @@ const OWNER: Record<string, { service: string; port: number; path: string }> = {
 const own = (ids: string[], service: string, port: number, path = "/defenses") => ids.forEach((id) => (OWNER[`${service}:${id}`] = { service, port, path }));
 own(["D3a", "D3b", "D3c"], "insurer-login", 9091);
 own(["D3a", "D3b", "D3d", "D3e", "D3f", "D28"], "insurer-auth", 9091);
-own(["D9", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18"], "insurer-backend", 9091);
+own(["D9", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D30"], "insurer-backend", 9091);
 own(["D5", "D6", "D7", "D8", "D10", "D26", "D27", "D29"], "insurer-backend", 9090);
 own(["D1", "D2", "D26", "D27", "D29"], "insurer-mcp", 9090);
 own(["D20", "D26"], "sales-agent", 9090);
@@ -269,11 +269,19 @@ export const applyArgs = (s: Submission, extras?: Json) => ({
   ...(extras ? { extras } : {}),
 });
 
+/** 既定の条件（確定年金は 10 年、払込は 25 年）の 4 案。金額は、保険会社のシステムの試算と同じ値。 */
+export const DEFAULT_PLANS = [
+  { kind: "fixed", monthly: 20_000, benefit: 600_000 },
+  { kind: "fixed", monthly: 40_000, benefit: 1_200_000 },
+  { kind: "lifetime", monthly: 60_000, benefit: 1_200_000 },
+  { kind: "lifetime", monthly: 120_000, benefit: 2_400_000 },
+];
+
 /** 攻撃の材料として、正規の経路で、顧客宛ての提示を受け取る（防御の設定に左右されない）。 */
 export async function offerFor(customer: Customer): Promise<Offer> {
-  let r = await mcpCall(customer.ns, await atMcp(customer), "get_offers");
+  let r = await mcpCall(customer.ns, await atMcp(customer), "issue_offer", { plans: DEFAULT_PLANS });
   // B を受け取ってから呼ぶまでの間に SVID が入れ替わると、前の証明書に結んだ B は拒まれる（F-G54）。B から取り直して 1 度だけやり直す
-  if (String(r.body?.error ?? "").includes("相手の証明書に結ばれていない")) r = await mcpCall(customer.ns, await atMcp(customer), "get_offers");
+  if (String(r.body?.error ?? "").includes("相手の証明書に結ばれていない")) r = await mcpCall(customer.ns, await atMcp(customer), "issue_offer", { plans: DEFAULT_PLANS });
   if (!r.body?.offerJws) throw new Error(`提示を受け取れない: ${JSON.stringify(r)}`);
   return r.body as Offer;
 }

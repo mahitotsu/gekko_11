@@ -5,6 +5,14 @@ import { submitSigned } from "./submit.ts";
 import type { Offer } from "./draft.ts";
 import type { Thread } from "./thread.ts";
 
+/** 台本が組み立てる案。既定の条件（確定年金は 10 年、払込は 25 年）の 4 案で、金額は試算と同じ値。 */
+export const SCRIPTED_PLANS = [
+  { kind: "fixed", monthly: 20_000, benefit: 600_000 },
+  { kind: "fixed", monthly: 40_000, benefit: 1_200_000 },
+  { kind: "lifetime", monthly: 60_000, benefit: 1_200_000 },
+  { kind: "lifetime", monthly: 120_000, benefit: 2_400_000 },
+];
+
 export interface Plan {
   id: string;
   name: string;
@@ -24,7 +32,7 @@ export async function scriptedTurn(t: Thread, message: string, call: typeof call
     question: "年金の受け取り方は、どちらをお考えですか。",
     options: ["決まった期間に受け取る（確定年金）", "生きている間ずっと受け取る（終身年金）"],
   });
-  const r = await call(t.ctx, "get_offers");
+  const r = await call(t.ctx, "issue_offer", { plans: SCRIPTED_PLANS });
   if (r.isError || r.body.error) {
     t.say(`案を取得できませんでした: ${JSON.stringify(r.body)}`);
     return;

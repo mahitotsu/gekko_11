@@ -1,6 +1,7 @@
 package jp.gekko11.insurerbackend;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,14 +17,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 案の提示、契約の照会、申込みの受付（architecture の 3 章の 2〜6 段）。
+ * 商品の規則と試算、提示の確定、契約の照会、申込みの受付（architecture の 3 章の 2〜6 段）。
  * トークンは token-guard が確かめ、ここは内容だけを確かめる（2-2）。経路の途中のデータは、書き換えられうるものとして扱う。
- * 教材のための意図的に悪い実装を含む。vulnerable の名前空間では、D9、D11〜D18 を外せる。本番の部品として使わないこと。
+ * 教材のための意図的に悪い実装を含む。vulnerable の名前空間では、D9、D11〜D18、D30 を外せる。本番の部品として使わないこと。
  */
 @RestController
 class ApplicationController {
 
 	private static final String CLAIMS = "x-auth-claims";
+
+	private static final int MAX_QUOTES = 5;
+
+	private static final int MAX_PLANS = 5;
 
 	private final Store store;
 
@@ -57,20 +62,77 @@ class ApplicationController {
 		return this.offers.jwks();
 	}
 
-	@PostMapping("/offers")
-	ResponseEntity<?> offer(@RequestHeader(CLAIMS) String header,
-			@RequestBody(required = false) Map<String, Object> body) throws Exception {
+	/** 商品の規則。営業 AI エージェントが、案を組み立てるときに読む（P-17）。 */
+	@GetMapping("/products")
+	Map<String, Object> products() {
+		return Products.rules();
+	}
+
+	/** 試算する。署名しないので、顧客には示せない。営業 AI エージェントは、掛け金を変えて繰り返す（P-17）。 */
+	@SuppressWarnings("unchecked")
+	@PostMapping("/quotes")
+	ResponseEntity<?> quotes(@RequestHeader(CLAIMS) String header, @RequestBody Map<String, Object> body) {
 		Claims claims = Claims.from(header);
-		String customer = customerOf(claims, (body != null) ? (String) body.get("for_user") : null);
+		String customer = customerOf(claims, (String) body.get("for_user"));
 		if (!Store.CUSTOMERS.contains(customer)) {
 			return ResponseEntity.status(403).body(Map.of("error", "利用者本人のトークンではない"));
+		}
+		if (!(body.get("conditions") instanceof List<?> conditions) || conditions.isEmpty()
+				|| conditions.size() > MAX_QUOTES) {
+			return ResponseEntity.status(422).body(Map.of("error", "条件は 1〜" + MAX_QUOTES + " 件である"));
+		}
+		Map<String, Object> terms = claims.terms();
+		return ResponseEntity.ok(Map.of("quotes", conditions.stream().map((c) -> {
+			Products.Result result = Products.quote((Map<String, Object>) c);
+			if (result.reason() != null) {
+				return Map.of("condition", c, "rejected", result.reason());
+			}
+			return Map.of("condition", c, "plan", result.plan(), "withinTerms", withinTerms(result.plan(), terms));
+		}).toList()));
+	}
+
+	/** 取決めの範囲か。試算で知らせるだけで、止めるのは申込みのとき（D15）。 */
+	private static boolean withinTerms(Map<String, Object> plan, Map<String, Object> terms) {
+		return terms != null && ((List<?>) terms.getOrDefault("kinds", List.of())).contains(plan.get("kind"))
+				&& ((Number) plan.get("benefit")).longValue() <= ((Number) terms.get("maxBenefit")).longValue();
+	}
+
+	/** 提出された案を、規則と計算で確かめて署名する（D30、P-17）。1 件でも合わなければ、理由を返し、署名しない。 */
+	@SuppressWarnings("unchecked")
+	@PostMapping("/offers")
+	ResponseEntity<?> offer(@RequestHeader(CLAIMS) String header, @RequestBody Map<String, Object> body)
+			throws Exception {
+		Claims claims = Claims.from(header);
+		String customer = customerOf(claims, (String) body.get("for_user"));
+		if (!Store.CUSTOMERS.contains(customer)) {
+			return ResponseEntity.status(403).body(Map.of("error", "利用者本人のトークンではない"));
+		}
+		if (!(body.get("plans") instanceof List<?> submitted) || submitted.isEmpty() || submitted.size() > MAX_PLANS) {
+			return ResponseEntity.status(422).body(Map.of("error", "提出できる案は 1〜" + MAX_PLANS + " 件である"));
+		}
+		List<Map<String, Object>> plans = new ArrayList<>();
+		for (Object item : submitted) {
+			Map<String, Object> plan = (Map<String, Object>) item;
+			if (this.defenses.enabled(Defenses.OFFER_CONTENT)) {
+				String reason = Products.verify(plan);
+				if (reason != null) {
+					return ResponseEntity.status(422).body(Map.of("error", "提示の確定: " + reason, "plan", plan));
+				}
+				plans.add(Products.quote(plan).plan());
+			}
+			else {
+				plans.add(Products.unchecked(plan));
+			}
+		}
+		if (plans.stream().map((p) -> p.get("id")).distinct().count() != plans.size()) {
+			return ResponseEntity.status(422).body(Map.of("error", "提示の確定: 同じ番号の案がある"));
 		}
 		String nonce = UUID.randomUUID().toString();
 		long expiresAt = Instant.now().plusSeconds(600).getEpochSecond();
 		this.store.nonces.put(nonce, new Store.Nonce(customer, expiresAt, false));
-		String jws = this.offers.sign(customer, Store.CATALOG, nonce, expiresAt);
-		return ResponseEntity.ok(Map.of("offerJws", jws, "offerSet", Map.of("customer", customer, "plans", Store.CATALOG),
-				"offerSetId", OfferSigner.offerSetId(customer, Store.CATALOG), "nonce", nonce, "expiresAt", expiresAt));
+		String jws = this.offers.sign(customer, plans, nonce, expiresAt);
+		return ResponseEntity.ok(Map.of("offerJws", jws, "offerSet", Map.of("customer", customer, "plans", plans),
+				"offerSetId", OfferSigner.offerSetId(customer, plans), "nonce", nonce, "expiresAt", expiresAt));
 	}
 
 	@GetMapping("/contracts")

@@ -11,7 +11,7 @@ export interface Plan {
   monthly: number;
 }
 
-/** 営業 AI エージェントが運んできた提示（事務サービスの get_offers の結果）。 */
+/** 営業 AI エージェントが運んできた提示（事務サービスの issue_offer の結果）。 */
 export interface Offer {
   offerJws: string;
   offerSet: { customer: string; plans: Plan[] };
@@ -62,6 +62,8 @@ export interface Intent {
   offerSetId: string;
   planId: string;
   wish: string;
+  initialWish?: string;
+  changeNote?: string;
   nonce: string;
   expiresAt: number;
 }
@@ -94,7 +96,10 @@ export function intentRowsOf(intent: Intent, plans: Plan[]): Row[] {
     { key: "customer", label: "契約者", value: intent.customer },
     { key: "plan-name", label: "選んだ案", value: plans.find((p) => p.id === intent.planId)?.name ?? "（示された案にない）" },
     { key: "plan-id", label: "案の番号", value: intent.planId },
-    { key: "wish", label: "意向", value: intent.wish },
+    // 振返り: 当初の意向と最終の意向を比べて読めるようにする（P-17）
+    ...(intent.initialWish ? [{ key: "initial-wish", label: "当初の意向", value: intent.initialWish }] : []),
+    { key: "wish", label: intent.initialWish ? "最終の意向" : "意向", value: intent.wish },
+    ...(intent.changeNote ? [{ key: "change-note", label: "違いと経緯", value: intent.changeNote }] : []),
   ];
 }
 

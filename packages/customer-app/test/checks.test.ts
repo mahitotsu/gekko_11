@@ -75,6 +75,11 @@ describe("確認画面を、署名する内容から作る（D23）", () => {
     const rows = intentRowsOf(intent, [fixed, life]);
     expect(value(rows, "plan-name")).toBe("終身年金・年額120万円");
     expect(value(intentRowsOf(intent, [fixed]), "plan-name")).toBe("（示された案にない）");
+    // 振返り: 当初の意向があれば、最終の意向と並べ、違いと経緯も出す
+    const reviewed = intentRowsOf({ ...intent, initialWish: "年に 80 万円", changeNote: "掛け金を抑えた" }, [fixed, life]);
+    expect(value(reviewed, "initial-wish")).toBe("年に 80 万円");
+    expect(reviewed.find((r) => r.key === "wish")?.label).toBe("最終の意向");
+    expect(value(reviewed, "change-note")).toBe("掛け金を抑えた");
   });
 
   it("申込書（2/2）は、説明文ではなく、申込みの内容を行にする", () => {

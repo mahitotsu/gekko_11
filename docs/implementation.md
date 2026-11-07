@@ -33,7 +33,7 @@ TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。J
 services/
   insurer-login/     ログインサーバー（Keycloak の realm の設定と拡張。ログイン、利用者の名簿、本人確認の属性、A と ID トークンと P の発行）
   insurer-auth/      認可サーバー（A の取り込み、B と C への交換、passkey の登録、失効、有効性の問い合わせ）
-  insurer-backend/   保険会社のシステム（案の署名、申込みの検証、契約の記録、直送、監査の役への記録）
+  insurer-backend/   保険会社のシステム（商品の規則と試算、案の確かめと署名、申込みの検証、契約の記録、直送、監査の役への記録）
   insurer-mcp/       事務サービス（MCP の道具と、ツールの呼び出しの記録）
   insurer-audit/     監査サービス（監査の担当のログイン、記録の読み手、突き合わせ、監査の画面）
 packages/
@@ -53,7 +53,8 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `services/insurer-login/realm/insurer.json` | 利用者、役割、クライアント、スコープ `apply` と `passkeys`、SPIRE との信頼の設定 |
 | `services/insurer-login/src/main/java/jp/gekko11/insurerlogin/` | 取決めの範囲の処理と、A の発行の記録（D-39） |
 | `services/insurer-auth/src/main/java/jp/gekko11/insurerauth/` | 認可サーバーの拡張点（SAN の照合、A の取り込み（D28）、交換の前の確かめ、トークンの形、有効性の問い合わせ） |
-| `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/ApplicationController.java` | 申込みの内容の確かめ（D9、D11〜D18） |
+| `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/ApplicationController.java` | 試算の受け口、提示の確定（D30）、申込みの内容の確かめ（D9、D11〜D18） |
+| `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/Products.java` | 商品の規則と計算（D30。P-17） |
 | `services/*/src/vulnerable/` | vulnerable のビルドだけに入る、防御を外す受け口 |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/Reconciler.java` | 契約ごとの突き合わせ（D25）。書いた者を Pod の印で決める（D-32）。比べた値と書いた者を、根拠の強さごとにまとめて、画面と JSON に渡す |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/ClusterRecords.java` | Loki の問い合わせと、保険会社のシステムの自己申告（`/audit/records`）の読み手 |
@@ -82,7 +83,7 @@ npm install
 npm test                 # 3 つの言語の単体テスト
 npm run cluster:up       # k3d のクラスタを作る
 npm run cluster:deploy   # SPIRE、イメージ、secure と vulnerable の名前空間を置く
-npm run cluster:test     # 全シナリオと画面のテスト（25 分ほど）。期待する結果: 全て通る
+npm run cluster:test     # 全シナリオと画面のテスト（30 分ほど）。期待する結果: 全て通る
 npm run cluster:down     # クラスタを消す
 ```
 
@@ -123,6 +124,8 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 ## 5. 簡略化した点
 - **業務の記憶と鍵は、メモリ上か Pod の中にある:** 認可サーバーと保険会社のシステムの記憶（passkey の登録、契約の記録、`nonce`）と、発行と提示の鍵は、起動ごとに作る。ログインサーバーは、Pod の中のファイルに記憶を置き、起動ごとに realm の設定を読み込む。どちらも再起動で消える。認可サーバーが登録を忘れた後は、顧客のアプリが、ログインの直後に本人の passkey の一覧（`/passkeys/mine`）と照らして気付き、登録し直しに案内する。
 - **ログインは固定ユーザーである:** 顧客の alice、bob、mallory、hanako と、監査の担当の kansa が、パスワード `demo` で入れる。本人確認の記録は、ログインサーバーの realm の設定に固定で持つ。`sub` は、利用者の ID を固定して、この名前にする。alice、bob、mallory はテストが使う。手で画面を試すときは hanako を使う。テストの申込みが、受信箱に混ざらないためである。監査の画面は、kansa で見る。同じブラウザで替えるときは、画面のサインアウトを使う。
+- **商品の規則と料率は、教材用の仮の値である:** 確定年金と終身年金の 2 商品で、年齢、性別、受取開始年齢で金額を変えない。年金の年額は、`月額 × 12 × 払込年数 ÷ 換算年数` を 1 万円単位に切り捨てる。換算年数は、確定年金が受取期間、終身年金が 15 年である。実在の料率ではない（P-17）。受取期間と年額の下限の例は I-A7 に沿わせた。
+- **台本は、案を組み立てない:** vulnerable の名前空間と認証情報のない環境の台本は、既定の条件（確定年金は 10 年、払込は 25 年）の 4 案を提出する。案のカードで頼み直すと、そこで止まる。希望が案に届くのは、Claude が動く secure だけである。
 - **passkey の署名回数を見ない:** 同期される passkey は回数が 0 のままのため、重複は `nonce` で防ぐ。
 - **確かめの役は、乗っ取られた複製として動く:** probe は、そのサービスの ServiceAccount で動き、同じ SPIFFE ID を持つ。別の SVID が要る役は、別のノードに置く（F-G53）。
 - **上流への接続は、要求ごとにつなぎ直す:** SVID が入れ替わった後に、前の証明書の接続を使い回すと、新しい証明書に結んだトークンと食い違う。要求ごとに新しくつなぎ、そのときの SVID で示す（F-G54）。
@@ -131,7 +134,7 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **受信箱の番号は、端末の保存領域にある:** 番号を持つ者は、その受信箱を読める（D-26）。署名済み申込の写しも、同じ保存領域に置く。
 - **新しい申し込みで捨てた会話は、サーバーに残る:** 画面は要求を止めて会話を捨てるが、営業 AI エージェントには、使われなくなるまで最大 15 分残る。提出の途中なら、始め直しても契約になることがある（D-34）。
 - **トークンが切れると、最初からやり直す:** トークン A を更新する仕組みはない。切れたらログインし直し、入力した内容は消える（D-34）。
-- **会話の状態は、営業 AI エージェントのメモリにある:** threadId ごとの会話（Claude の会話、直前の提示、署名した書類）を、1 つの複製のメモリに持つ。再起動で消え、15 分使われなければ捨てる。トークン A は 5 分で切れるので、会話はその間に終える。
+- **会話の状態は、営業 AI エージェントのメモリにある:** threadId ごとの会話（Claude の会話、直前の提示、署名した書類）を、1 つの複製のメモリに持つ。再起動で消え、15 分使われなければ捨てる。トークン A は 5 分で切れるので、会話はその間に終える。試算と頼み直しを重ねると、この時間に届きやすくなる（P-17）。
 - **記録の集約は、教材の規模である:** Loki は、名前空間ごとに 1 つのプロセスで動き、認証を持たない。記録は、Pod の一時的な領域（emptyDir）のファイルに保存する。Pod を作り直すと、記録は消える。Alloy も 1 つで、止まっている間の記録は届かない。
 - **サインアウトは、もう一方のアプリのセッションを終わらせない:** 押したアプリとログインサーバーのログインだけが終わる（D-33）。ログインサーバーが再起動した後は、ID トークンを示せないので、確認の画面を 1 回押す（F-G80）。
 - **同じログインの間は、前回の取決めの範囲が残る:** ログインサーバーは、範囲を求めない次の要求にも、前回の範囲を載せる（F-G78）。顧客のアプリは A を求めるたびに範囲を示すので、A が前の範囲になることはない。P には範囲が載るが、P の受け口は読まない。

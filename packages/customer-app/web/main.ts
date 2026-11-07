@@ -434,7 +434,7 @@ function startOver(session: Session, device: Device) {
 
 async function showTool(session: Session, device: Device, id: string, name: string, args: Record<string, any>) {
   if (name === "ask_customer") return askCustomer(session, device, id, args as { question: string; options: string[] });
-  if (name === "present_offers") return presentOffers(session, device, id, args as { message?: string; offer: Offer });
+  if (name === "present_offers") return presentOffers(session, device, id, args as { message?: string; reasons?: Record<string, string>; offer: Offer });
   if (name === "present_intent") return presentDocument(session, device, id, "intent", args.intent as Intent);
   if (name === "present_application") return presentDocument(session, device, id, "application", args.application as Application);
   await answer(session, device, id, { error: `この画面にない道具: ${name}` });
@@ -462,7 +462,7 @@ function askCustomer(session: Session, device: Device, id: string, args: { quest
   const other = box.querySelector<HTMLElement>(".free")!;
 }
 
-async function presentOffers(session: Session, device: Device, id: string, args: { message?: string; offer: Offer }) {
+async function presentOffers(session: Session, device: Device, id: string, args: { message?: string; reasons?: Record<string, string>; offer: Offer }) {
   setStep("offers");
   const box = card("offers", "保険会社の案");
   box.dataset.nonce = args.offer.nonce;
@@ -490,17 +490,27 @@ async function presentOffers(session: Session, device: Device, id: string, args:
   const list = el("ul");
   for (const p of offer.offerSet.plans) {
     const li = el("li", {}, `plan-${p.id}`);
-    li.append(el("strong", { textContent: p.name }), el("span", { textContent: ` 年金の年額 ${p.benefit.toLocaleString("ja-JP")} 円・月額 ${p.monthly.toLocaleString("ja-JP")} 円 ` }));
+    li.append(el("strong", { textContent: p.name }), el("span", { textContent: ` 毎月の保険料 ${p.monthly.toLocaleString("ja-JP")} 円 / 毎年の年金 ${p.benefit.toLocaleString("ja-JP")} 円 ` }));
     li.append(el("button", { type: "button", textContent: "この案を選ぶ", onclick: () => {
       for (const b of list.querySelectorAll("button")) b.disabled = true;
       li.classList.add("chosen");
+      box.querySelector(".free")?.remove();
       conclude(box, p.name);
       answer(session, device, id, { planId: p.id, plan: p }).catch(fail);
     } }, `choose-${p.id}`));
+    // 推奨の理由は AI の言葉なので、保険会社の内容と見分けられる枠で出す（P-17）
+    const reason = args.reasons?.[p.id];
+    if (reason) li.append(agentNote(reason));
     list.append(li);
   }
   frame.append(list);
   box.append(frame);
+  // 条件を変えたいときは、営業 AI エージェントが組み立て直し、新しい提示を示す（P-17）
+  freeInput(box, "offers-other", "条件を変えて頼み直す", "例: 掛け金をもう少し抑えたいです。", (text) => {
+    for (const b of list.querySelectorAll("button")) b.disabled = true;
+    conclude(box, text);
+    answer(session, device, id, { answer: text }).catch(fail);
+  });
 }
 
 const GUIDE = {

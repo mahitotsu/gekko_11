@@ -61,10 +61,28 @@ async def _backend(method: str, path: str, **kwargs: Any) -> Any:
 
 
 @mcp.tool
-async def get_offers(on_behalf_of: str | None = None) -> Any:
-    """保険会社が署名した案の一式と、提示集合の識別子、nonce を取る。on_behalf_of は窓口の申告で、保険会社のシステムは信じない。"""
-    result = await _backend("POST", "/offers", json={"for_user": on_behalf_of} if on_behalf_of else {})
-    _record("get_offers", {"nonce": result.get("nonce") if isinstance(result, dict) else None})
+async def get_products() -> Any:
+    """商品の規則を取る。案を組み立てる前に読む。"""
+    result = await _backend("GET", "/products")
+    _record("get_products", {})
+    return result
+
+
+@mcp.tool
+async def quote_plan(conditions: list[dict[str, Any]], on_behalf_of: str | None = None) -> Any:
+    """条件（kind、termYears、payYears、monthly）から、年金の年額を試算する。署名はない。掛け金を変えて繰り返せる。
+    示さなかった案も後から追えるように、全ての試算を記録に残す（P-17）。on_behalf_of は窓口の申告で、保険会社のシステムは信じない。"""
+    result = await _backend("POST", "/quotes", json={"conditions": conditions, **({"for_user": on_behalf_of} if on_behalf_of else {})})
+    _record("quote_plan", {"conditions": conditions, "quotes": result.get("quotes") if isinstance(result, dict) else None})
+    return result
+
+
+@mcp.tool
+async def issue_offer(plans: list[dict[str, Any]], on_behalf_of: str | None = None) -> Any:
+    """組み立てた案を提出する。保険会社のシステムが、規則と金額を確かめて署名する。合わなければ、理由を返す。"""
+    result = await _backend("POST", "/offers", json={"plans": plans, **({"for_user": on_behalf_of} if on_behalf_of else {})})
+    _record("issue_offer", {"plans": plans, "nonce": result.get("nonce") if isinstance(result, dict) else None,
+                            "status": result.get("status", 200) if isinstance(result, dict) else None})
     return result
 
 

@@ -48,6 +48,7 @@ const D = {
   D16: { D16: "off" },
   D17: { D17: "off" },
   D18: { D18: "off" },
+  D30: { D30: "off" },
   "D26 営業 AI エージェント": { "D26@sales-agent": "off" },
   "D26 事務サービス": { "D26@insurer-mcp": "off" },
   "D26 保険会社のシステム": { "D26@insurer-backend": "off" },
@@ -256,6 +257,18 @@ async function forgedOffer(alice: Customer) {
     .sign(privateKey);
   return { offer, forged: { ...offer, offerSet: { customer: "alice", plans }, offerSetId, offerJws } };
 }
+
+// シナリオ 26、27: 営業 AI エージェントが組み立てた案を、保険会社のシステムが確かめずに署名すると、顧客に偽の内容を示せる
+const issueScenario = (plan: Json) => ({
+  defenses: ["D30"] as DefName[],
+  prepare: async (ns: Ns) => ({ alice: await customer(ns, "alice"), issued: {} as Json }),
+  attack: async (ns: Ns, c: { alice: Customer; issued: Json }) => {
+    c.issued.result = await mcpCall(ns, await atMcp(c.alice), "issue_offer", { plans: [plan] });
+  },
+  harmed: async (_ns: Ns, c: { issued: Json }) => Boolean(c.issued.result?.body?.offerJws),
+});
+scenario(26, "R4 × A22 保険料を安く書き換えた案に、署名させる", issueScenario({ kind: "fixed", monthly: 1_000, benefit: 600_000 }));
+scenario(27, "R4 × A23 商品の規則の外の案に、署名させる", issueScenario({ kind: "lump-sum", monthly: 20_000, benefit: 600_000 }));
 
 // シナリオ 8（R4 × A9）は、顧客のアプリの D22 と合わせて、画面のテスト（test/ui/scenarios.test.ts）で確かめる
 describe("8 の補足（保険会社のシステムの D12）", () => {

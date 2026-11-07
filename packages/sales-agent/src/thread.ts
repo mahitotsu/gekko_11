@@ -53,6 +53,8 @@ export class Thread {
   signed: Signed = {};
   /** 顧客が画面で選んだ案（画面が返した案の中身）。 */
   chosen?: Plan;
+  /** 顧客の最初の文。意向確認書面の「当初の意向」に、そのまま入れる（P-17）。 */
+  initialWish?: string;
   lastUsed = Date.now();
 
   private inbox: string[] = [];
@@ -78,6 +80,7 @@ export class Thread {
   /** 顧客の文（user message）を、営業 AI エージェントに渡す。 */
   tell(text: string) {
     this.record("customer_text", { text });
+    this.initialWish ??= text;
     this.inbox.push(text);
     this.inboxWake?.();
   }
@@ -94,7 +97,7 @@ export class Thread {
   /** 事務サービスから受け取った提示を覚え、会話の記録に、nonce と識別子を残す。 */
   setOffer(offer: Offer) {
     this.offer = offer;
-    this.record("agent_tool", { name: "get_offers", nonce: offer.nonce, offerSetId: offer.offerSetId });
+    this.record("agent_tool", { name: "issue_offer", nonce: offer.nonce, offerSetId: offer.offerSetId });
   }
 
   get waitingFor(): string | undefined {
@@ -177,11 +180,16 @@ export class Thread {
       case "ask_customer":
         return { question: String(llm.question ?? ""), options: (llm.options as string[]) ?? [] };
       case "present_offers":
-        if (!this.offer) throw new Error("示す提示がない（先に get_offers を使う）");
-        return { message: String(llm.message ?? ""), offer: this.offer };
+        if (!this.offer) throw new Error("示す提示がない（先に issue_offer を使う）");
+        return { message: String(llm.message ?? ""), ...(llm.reasons ? { reasons: llm.reasons } : {}), offer: this.offer };
       case "present_intent":
-        if (!this.offer) throw new Error("示す提示がない（先に get_offers を使う）");
-        return { intent: intentOf(this.sub, this.offer, String(llm.planId), String(llm.wish ?? ""), this.chosen) };
+        if (!this.offer) throw new Error("示す提示がない（先に issue_offer を使う）");
+        return {
+          intent: intentOf(this.sub, this.offer, String(llm.planId), String(llm.wish ?? ""), this.chosen, {
+            initialWish: this.initialWish,
+            changeNote: llm.changeNote ? String(llm.changeNote) : undefined,
+          }),
+        };
       case "present_application":
         if (!this.offer || !this.signed.intentAssertion) throw new Error("意向確認書面の署名がない（先に present_intent を使う）");
         return {
@@ -220,7 +228,7 @@ export class Thread {
 /** 提示は、nonce と識別子と案の一覧だけを残す（署名の JWS は残さない）。 */
 function offerSummary(args: Record<string, unknown>) {
   const offer = args.offer as Offer;
-  return { message: args.message, offer: { nonce: offer.nonce, offerSetId: offer.offerSetId, plans: offer.offerSet.plans } };
+  return { message: args.message, reasons: args.reasons, offer: { nonce: offer.nonce, offerSetId: offer.offerSetId, plans: offer.offerSet.plans } };
 }
 
 /** threadId ごとの会話。1 つの複製で動き、15 分使われなければ捨てる。 */

@@ -22,5 +22,8 @@ describe("書類の組み立て", () => {
 
   it("示していない案では作らない", () => {
     expect(() => intentOf("alice", offer, "life-240", "")).toThrow();
+    // 振返りの欄は、あるときだけ入れる（ない欄は、署名する内容に現れない）
+    expect(intentOf("alice", offer, "fixed-60", "最終", undefined, { initialWish: "最初", changeNote: "違い" })).toMatchObject({ initialWish: "最初", changeNote: "違い", wish: "最終" });
+    expect(Object.keys(intentOf("alice", offer, "fixed-60", "最終", undefined, {}))).not.toContain("initialWish");
   });
 });

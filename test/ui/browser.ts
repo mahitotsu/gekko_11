@@ -25,7 +25,7 @@ export interface Plan {
   monthly: number;
 }
 
-/** 案の一覧（Store の CATALOG と同じ）。 */
+/** 既定の条件の案（台本が組み立てる案。world.ts の DEFAULT_PLANS と同じ）。 */
 export const PLANS: Record<string, Plan> = {
   "fixed-60": { id: "fixed-60", name: "確定年金 10年・年額60万円", kind: "fixed", benefit: 600_000, monthly: 20_000 },
   "fixed-120": { id: "fixed-120", name: "確定年金 10年・年額120万円", kind: "fixed", benefit: 1_200_000, monthly: 40_000 },
@@ -129,6 +129,13 @@ export class BrowserCustomer {
     }
   }
 
+  /** 今開いている案のカードの、案の番号と名前。 */
+  async shownPlans(): Promise<Pick<Plan, "id" | "name">[]> {
+    return this.page.locator("[data-testid^=plan-]:visible").evaluateAll((els) =>
+      els.map((e) => ({ id: e.getAttribute("data-testid")!.slice(5), name: e.querySelector("strong")!.textContent! })),
+    );
+  }
+
   async planIds(): Promise<string[]> {
     return this.page.locator("[data-testid^=plan-]").evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")!.slice(5)));
   }
@@ -169,14 +176,14 @@ export class BrowserCustomer {
   }
 
   /** 選んだ案の名前が出ていて、ほかの案の名前が出ていないか（顧客が画面を読む判断を演じる）。 */
-  private async shows(step: "intent" | "application", chosen: Plan): Promise<boolean> {
+  private async shows(step: "intent" | "application", chosen: Pick<Plan, "id" | "name">): Promise<boolean> {
     const text = await this.confirmation(step);
     const others = Object.values(PLANS).filter((p) => p.id !== chosen.id);
     return text.includes(chosen.name) && !others.some((p) => text.includes(p.name));
   }
 
   /** 意向確認書面と申込書を順に読み、どちらも選んだ案なら署名する。違えば、そこでやめる。 */
-  async approveIfShows(chosen: Plan): Promise<boolean> {
+  async approveIfShows(chosen: Pick<Plan, "id" | "name">): Promise<boolean> {
     if (!(await this.shows("intent", chosen))) {
       await this.page.getByTestId("cancel-intent").click();
       return false;

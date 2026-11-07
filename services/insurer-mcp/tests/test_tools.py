@@ -17,6 +17,10 @@ def backend(monkeypatch):
 
     def handle(request: httpx.Request) -> httpx.Response:
         calls.append(request)
+        if request.url.path == "/products":
+            return httpx.Response(200, json={"products": []})
+        if request.url.path == "/quotes":
+            return httpx.Response(200, json={"quotes": [{"plan": {"id": "fixed-60"}}]})
         if request.url.path == "/offers":
             return httpx.Response(200, json={"nonce": "n-1", "offerJws": "jws"})
         if request.url.path == "/applications":
@@ -37,9 +41,26 @@ def claims() -> str:
 
 async def test_tools_forward_the_context_handle_not_a_token(backend):
     async with Client(app.mcp) as client:
-        await client.call_tool("get_offers", {})
+        await client.call_tool("get_products", {})
     assert backend[0].headers["x-auth-ctx"] == "ctx-1"
     assert "authorization" not in backend[0].headers
+
+
+async def test_quotes_and_offers_are_passed_on_and_recorded(backend, capsys):
+    conditions = [{"kind": "fixed", "monthly": 20000}]
+    plans = [{"kind": "fixed", "monthly": 20000, "benefit": 600000}]
+    async with Client(app.mcp) as client:
+        await client.call_tool("quote_plan", {"conditions": conditions})
+        result = await client.call_tool("issue_offer", {"plans": plans})
+    assert json.loads(backend[0].content) == {"conditions": conditions}
+    assert json.loads(backend[1].content) == {"plans": plans}
+    assert result.data["offerJws"] == "jws"
+    lines = [json.loads(line)["audit"] for line in capsys.readouterr().out.strip().splitlines()]
+    assert lines[0]["tool"] == "quote_plan"
+    assert lines[0]["conditions"] == conditions
+    assert lines[1]["tool"] == "issue_offer"
+    assert lines[1]["plans"] == plans
+    assert lines[1]["nonce"] == "n-1"
 
 
 async def test_submit_application_passes_extras_and_records_the_call(backend, capsys):

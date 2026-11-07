@@ -87,7 +87,7 @@ class ReconcilerTest {
 					rec("kind", "exchange", "client", "insurer-mcp", "sub", "alice", "jti", "jC", "from_jti", "jB", "act",
 							act))
 			.add("sales-agent", "app",
-					rec("kind", "conversation", "thread", "t-1", "event", "agent_tool", "name", "get_offers", "nonce", NONCE))
+					rec("kind", "conversation", "thread", "t-1", "event", "agent_tool", "name", "issue_offer", "nonce", NONCE))
 			.add("sales-agent", "app", rec("kind", "conversation", "thread", "t-1", "event", "frontend_tool", "name",
 					"present_application", "document_hash", hash))
 			.add("insurer-mcp", "app",

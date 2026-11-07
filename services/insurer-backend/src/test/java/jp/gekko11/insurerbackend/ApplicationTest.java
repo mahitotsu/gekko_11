@@ -34,6 +34,11 @@ class ApplicationTest {
 
 	private static final String TERMS_OK = "fixed,lifetime";
 
+	/** 既定の条件（確定年金は 10 年、払込は 25 年）の 4 案。 */
+	private static final List<Map<String, Object>> CATALOG = List.of(
+			Products.plan("fixed", 10, 25, 600_000, 20_000), Products.plan("fixed", 10, 25, 1_200_000, 40_000),
+			Products.plan("lifetime", 15, 25, 1_200_000, 60_000), Products.plan("lifetime", 15, 25, 2_400_000, 120_000));
+
 	@Autowired
 	MockMvc mvc;
 
@@ -70,13 +75,13 @@ class ApplicationTest {
 	void customerComesFromTheTokenNotFromTheAgent() throws Exception {
 		MvcResult offer = this.mvc.perform(post("/offers").header("x-auth-claims", claims("alice", true))
 			.contentType(MediaType.APPLICATION_JSON)
-			.content("{\"for_user\":\"bob\"}")).andReturn();
+			.content(this.json.writeValueAsString(Map.of("for_user", "bob", "plans", CATALOG)))).andReturn();
 		assertThat(read(offer).get("offerSet").toString()).contains("customer=alice");
 
 		TestBackendConfig.OFF.put(Defenses.CUSTOMER_FROM_SUB, "off");
 		offer = this.mvc.perform(post("/offers").header("x-auth-claims", claims("alice", true))
 			.contentType(MediaType.APPLICATION_JSON)
-			.content("{\"for_user\":\"bob\"}")).andReturn();
+			.content(this.json.writeValueAsString(Map.of("for_user", "bob", "plans", CATALOG)))).andReturn();
 		assertThat(read(offer).get("offerSet").toString()).contains("customer=bob");
 	}
 
@@ -92,7 +97,7 @@ class ApplicationTest {
 
 	@Test
 	void planOutsideTheSignedOfferIsRefused() throws Exception {
-		Map<String, Object> forged = new HashMap<>(Store.CATALOG.get(0));
+		Map<String, Object> forged = new HashMap<>(CATALOG.get(0));
 		forged.put("monthly", 1);
 		MvcResult result = submit(claims("alice", true), prepare("alice", forged, Map.of()));
 		assertThat(body(result)).contains("提示にない案");
@@ -106,7 +111,7 @@ class ApplicationTest {
 	void applicationChangedAfterSigningIsRefused() throws Exception {
 		Map<String, Object> body = prepare("alice", "fixed-60", Map.of());
 		Map<String, Object> application = new LinkedHashMap<>((Map<String, Object>) body.get("application"));
-		application.put("plan", Store.CATALOG.get(3));
+		application.put("plan", CATALOG.get(3));
 		body.put("application", application);
 		assertThat(body(submit(claims("alice", true), body))).contains("申込みの署名の照合");
 
@@ -144,7 +149,7 @@ class ApplicationTest {
 
 	@Test
 	void recordAndContactIgnoreWhatTheAgentAdds() throws Exception {
-		Map<String, Object> extras = Map.of("contractEntry", Map.of("plan", Store.CATALOG.get(3)), "contact",
+		Map<String, Object> extras = Map.of("contractEntry", Map.of("plan", CATALOG.get(3)), "contact",
 				"http://attacker.invalid/notices");
 		assertThat(submit(claims("alice", true), prepare("alice", "fixed-60", extras)).getResponse().getStatus())
 			.isEqualTo(200);
@@ -184,10 +189,65 @@ class ApplicationTest {
 			.getStatus()).isEqualTo(403);
 	}
 
+	@Test
+	void quoteComputesThePensionFromThePremium() {
+		assertThat(Products.quote(Map.of("kind", "fixed", "monthly", 20_000)).plan()).isEqualTo(CATALOG.get(0));
+		assertThat(Products.quote(Map.of("kind", "lifetime", "monthly", 120_000)).plan()).isEqualTo(CATALOG.get(3));
+		Map<String, Object> custom = Products.quote(Map.of("kind", "fixed", "termYears", 15, "payYears", 30, "monthly", 33_000)).plan();
+		assertThat(custom).containsEntry("id", "fixed-15y-79-30p").containsEntry("benefit", 790_000L)
+			.containsEntry("name", "確定年金 15年・年額79万円・払込30年");
+	}
+
+	@Test
+	void quoteRefusesConditionsOutsideTheRules() {
+		assertThat(Products.quote(Map.of("kind", "lump", "monthly", 20_000)).reason()).contains("扱う商品");
+		assertThat(Products.quote(Map.of("kind", "fixed", "termYears", 7, "monthly", 20_000)).reason()).contains("受取期間");
+		assertThat(Products.quote(Map.of("kind", "lifetime", "termYears", 10, "monthly", 20_000)).reason()).contains("受取期間はない");
+		assertThat(Products.quote(Map.of("kind", "fixed", "payYears", 9, "monthly", 20_000)).reason()).contains("払込期間");
+		assertThat(Products.quote(Map.of("kind", "fixed", "monthly", 20_500)).reason()).contains("刻み");
+		assertThat(Products.quote(Map.of("kind", "fixed", "monthly", 1_000)).reason()).contains("範囲");
+		assertThat(Products.quote(Map.of("kind", "fixed", "monthly", 121_000)).reason()).contains("範囲");
+	}
+
+	@Test
+	void quotesAreUnsignedAndTellWhetherThePlanIsWithinTheTerms() throws Exception {
+		MvcResult result = this.mvc.perform(post("/quotes").header("x-auth-claims", claims("alice", true))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(this.json.writeValueAsString(Map.of("conditions",
+					List.of(Map.of("kind", "fixed", "monthly", 20_000), Map.of("kind", "lifetime", "monthly", 120_000),
+							Map.of("kind", "lump", "monthly", 20_000))))))
+			.andReturn();
+		assertThat(body(result)).doesNotContain("offerJws").contains("\"withinTerms\":true").contains("\"withinTerms\":false")
+			.contains("扱う商品");
+	}
+
+	@Test
+	void offerSignsOnlyPlansThatMatchTheCalculation() throws Exception {
+		Map<String, Object> cheap = new HashMap<>(CATALOG.get(1));
+		cheap.put("monthly", 10_000);
+		MvcResult refused = issue("alice", List.of(CATALOG.get(0), cheap));
+		assertThat(refused.getResponse().getStatus()).isEqualTo(422);
+		assertThat(body(refused)).contains("計算と違う").doesNotContain("offerJws");
+		assertThat(issue("alice", List.of(Map.of("kind", "fixed", "termYears", 7, "monthly", 20_000, "benefit", 342_000)))
+			.getResponse().getStatus()).isEqualTo(422);
+		assertThat(issue("alice", List.of(CATALOG.get(0), CATALOG.get(0))).getResponse().getStatus()).isEqualTo(422);
+
+		TestBackendConfig.OFF.put(Defenses.OFFER_CONTENT, "off");
+		MvcResult signed = issue("alice", List.of(cheap));
+		assertThat(signed.getResponse().getStatus()).isEqualTo(200);
+		assertThat(read(signed).get("offerSet").toString()).contains("monthly=10000");
+	}
+
+	private MvcResult issue(String customer, List<Map<String, Object>> plans) throws Exception {
+		return this.mvc.perform(post("/offers").header("x-auth-claims", claims(customer, true))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(this.json.writeValueAsString(Map.of("plans", plans)))).andReturn();
+	}
+
 	// ---- 手順 ----
 
 	private Map<String, Object> prepare(String customer, String planId, Map<String, Object> extras) throws Exception {
-		Map<String, Object> plan = Store.CATALOG.stream().filter((p) -> p.get("id").equals(planId)).findFirst().orElseThrow();
+		Map<String, Object> plan = CATALOG.stream().filter((p) -> p.get("id").equals(planId)).findFirst().orElseThrow();
 		return prepare(customer, plan, extras);
 	}
 
@@ -195,8 +255,9 @@ class ApplicationTest {
 	@SuppressWarnings("unchecked")
 	private Map<String, Object> prepare(String customer, Map<String, Object> plan, Map<String, Object> extras)
 			throws Exception {
-		Map<String, Object> offer = read(this.mvc.perform(post("/offers").header("x-auth-claims", claims(customer, true)))
-			.andReturn());
+		Map<String, Object> offer = read(this.mvc.perform(post("/offers").header("x-auth-claims", claims(customer, true))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(this.json.writeValueAsString(Map.of("plans", CATALOG)))).andReturn());
 		Map<String, Object> intent = new LinkedHashMap<>();
 		intent.put("customer", customer);
 		intent.put("offerSetId", offer.get("offerSetId"));

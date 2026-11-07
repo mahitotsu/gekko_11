@@ -27,6 +27,8 @@ public interface Defenses {
 
 	String REGISTERED_CONTACT = "D18";
 
+	String OFFER_CONTENT = "D30";
+
 	boolean enabled(String id);
 
 	/** 外したときの外し方（D13 は "off"、"mtls-only"、"agent-signed"）。 */
