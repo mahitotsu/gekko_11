@@ -228,9 +228,11 @@ function Document({ card, live, controller, state, enabled }: CardProps) {
         )}
       </div>
       {!outcome && (
-        <p>
+        <p aria-busy={state.signing || undefined}>
+          {/* 端末の確認画面が出るまで数秒かかることがあるので、待っている間は押せなくし、待っていることを示す */}
           <button
             type="button"
+            disabled={state.signing}
             data-testid={id(`sign-${step}`)}
             onClick={async () => {
               try {
@@ -247,6 +249,7 @@ function Document({ card, live, controller, state, enabled }: CardProps) {
           </button>
           <button
             type="button"
+            disabled={state.signing}
             data-testid={id(`cancel-${step}`)}
             onClick={() => {
               setOutcome("declined");
@@ -256,6 +259,11 @@ function Document({ card, live, controller, state, enabled }: CardProps) {
           >
             やめる
           </button>
+        </p>
+      )}
+      {!outcome && state.signing && (
+        <p className="waiting" role="status" data-testid={id("signing-status")}>
+          端末の確認画面（PIN、指紋、顔）を待っています。表示まで数秒かかることがあります。
         </p>
       )}
     </>

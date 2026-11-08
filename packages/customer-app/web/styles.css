@@ -34,3 +34,8 @@ td, th { padding: .2rem .6rem; border-bottom: 1px solid #8883; text-align: left;
 .step { font-size: .9rem; color: #888; }
 .signed { color: #1a7f37; font-weight: bold; }
 li { margin: .4rem 0; }
+.waiting { color: #888; }
+.waiting::before { content: ""; display: inline-block; width: .8em; height: .8em; margin-right: .4em; vertical-align: -.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .waiting::before { animation: none; } }
+[aria-busy] button:disabled { cursor: wait; }

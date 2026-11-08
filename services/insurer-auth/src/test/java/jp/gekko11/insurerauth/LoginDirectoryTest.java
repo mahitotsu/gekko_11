@@ -22,6 +22,15 @@ class LoginDirectoryTest {
 	}
 
 	@Test
+	void readsTransports() {
+		assertThat(this.directory.transportsOf("{\"credentialId\":\"AAAA\",\"transports\":[\"internal\",\"hybrid\"]}")).containsExactly("internal", "hybrid");
+		assertThat(this.directory.transportsOf("{\"credentialId\":\"AAAA\",\"transports\":\"internal,hybrid\"}")).containsExactly("internal", "hybrid");
+		// 経路は署名の正しさに関わらないので、なければ空にする
+		assertThat(this.directory.transportsOf("{\"credentialId\":\"AAAA\"}")).isEmpty();
+		assertThat(this.directory.transportsOf("not json")).isEmpty();
+	}
+
+	@Test
 	void reportsWhatIsMissing() {
 		assertThatThrownBy(() -> this.directory.keyOf("{\"credentialId\":\"AAAA\"}")).hasMessageContaining("値がない");
 	}

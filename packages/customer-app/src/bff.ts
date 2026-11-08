@@ -79,7 +79,7 @@ type PasskeyResult = "success" | "cancelled" | "error";
 /** 本人の passkey の一覧。userHandle は passkey の利用者の ID（base64url）。公開鍵は含まない（D-43）。 */
 export interface Passkeys {
   userHandle: string;
-  passkeys: { id: string; ref: string; label: string; created: number }[];
+  passkeys: { id: string; ref: string; label: string; created: number; transports?: string[] }[];
 }
 /** ログインサーバーが戻り先に付ける、登録の結果。値がないか分からなければ、失敗とみなす。 */
 export const passkeyResult = (status: string | null): PasskeyResult => (status === "success" || status === "cancelled" ? status : "error");

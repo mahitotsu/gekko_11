@@ -38,6 +38,8 @@ export interface State {
   offer?: Offer;
   step: Step;
   busy: boolean;
+  /** passkey の署名を頼んでから、端末が答えるまでの間。署名とページを離れる操作を止める。 */
+  signing: boolean;
   error?: string;
   /** 今回署名した申込書の nonce（完了カードの照合で使う）。 */
   submitted: string;
@@ -53,7 +55,7 @@ export interface State {
 }
 
 export const initialState: State = {
-  cards: [], nextId: 1, pendingText: [], lastText: "", step: "consult", busy: false, submitted: "", submitting: false,
+  cards: [], nextId: 1, pendingText: [], lastText: "", step: "consult", busy: false, signing: false, submitted: "", submitting: false,
   started: false, confirmNew: false, reconcile: [], reconcileGaveUp: false,
 };
 
@@ -63,6 +65,7 @@ export type Action =
   | { type: "conclude"; id: number; result: string }
   | { type: "text"; content: string }
   | { type: "busy"; busy: boolean }
+  | { type: "signing"; signing: boolean }
   | { type: "error"; message?: string }
   | { type: "started" }
   | { type: "submitted"; nonce: string }
@@ -101,6 +104,8 @@ export function reducer(state: State, action: Action): State {
       return { ...state, lastText: action.content, pendingText: [...state.pendingText, action.content] };
     case "busy":
       return { ...state, busy: action.busy };
+    case "signing":
+      return { ...state, signing: action.signing };
     case "error":
       return { ...state, error: action.message, busy: action.message ? false : state.busy };
     case "started":

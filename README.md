@@ -29,4 +29,4 @@ npm run cluster:test     # 全シナリオと画面のテストを確かめる�
 
 期待する結果: どちらのテストも、全て通る。防御を外した vulnerable の名前空間では被害が出て、secure の名前空間では出ない。画面のテストのブラウザは、Docker の中で動く。
 
-画面を手で使うには、ブラウザで `http://app.secure.localhost:8081` を開く（防御を外せる複製は `http://app.vulnerable.localhost:8082`）。ログインは、手で試す人のための `hanako` で、パスワードは `demo` である（alice、bob、mallory はテストが使う）。申し込んだ後にサインアウトし、監査の画面 `http://audit.secure.localhost:8081` を開いて、監査の担当の `kansa`（パスワード `demo`）でログインすると、その契約の突き合わせと会話の記録を見られる。クラスタの構成と環境変数、Claude の認証情報の置き方は、[implementation.md](docs/implementation.md) にある。
+画面を手で使うには、ブラウザで `http://app.secure.localhost:8081` を開く（防御を外せる複製は `http://app.vulnerable.localhost:8082`）。ログインは、手で試す人のための `hanako` で、パスワードは `demo` である（alice、bob、mallory はテストが使う）。申し込んだ後にサインアウトし、監査の画面 `http://audit.secure.localhost:8081` を開いて、監査の担当の `kansa`（パスワード `demo`）でログインすると、その契約の突き合わせと会話の記録を見られる。passkey の確認画面は、VS Code に内蔵されたブラウザより、外部のブラウザ（Chrome）のほうが早く出る（F-G99）。配置し直すとログインサーバーの登録が消えるので、パスワードでログインし、「パスキー」の欄で作り直す。クラスタの構成と環境変数、Claude の認証情報の置き方は、[implementation.md](docs/implementation.md) にある。

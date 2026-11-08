@@ -29,7 +29,8 @@ const failText = (e: unknown) => {
   return err?.name === "NotAllowedError" ? "passkey の操作が取り消されたか、時間切れになりました。もう一度ボタンを押してください。" : (err?.message ?? String(e));
 };
 
-function Apply({ cfg, auth, enabled, session, device, hidden, onError }: Props & { session: Session; device: Device; hidden: boolean; onError: (message?: string) => void }) {
+function Apply(props: Props & { session: Session; device: Device; hidden: boolean; onError: (message?: string) => void; onSigning: (signing: boolean) => void }) {
+  const { cfg, auth, enabled, session, device, hidden, onError, onSigning } = props;
   const [state, dispatch] = useReducer(reducer, initialState);
   // 非同期の処理の途中でも、最新の状態を読む。dispatch の結果を、描画を待たずに反映する
   const latest = useRef(state);
@@ -43,6 +44,7 @@ function Apply({ cfg, auth, enabled, session, device, hidden, onError }: Props &
   const controller = useMemo(() => createController({ cfg, enabled, session, device, dispatch: send, state: () => latest.current }), [cfg, enabled, session, device, send]);
   useEffect(() => controller.startOver(), [controller]);
   useEffect(() => onError(state.error), [state.error, onError]);
+  useEffect(() => onSigning(state.signing), [state.signing, onSigning]);
   const at = STEPS.findIndex((s) => s.step === state.step);
   return (
     <section id="apply" hidden={hidden}>
@@ -60,7 +62,7 @@ function Apply({ cfg, auth, enabled, session, device, hidden, onError }: Props &
       </div>
       <p>
         {/* 提出の途中で始め直しても、契約になることがあるので、確かめてから始め直す */}
-        <button id="new-application" data-testid="new-application" type="button" hidden={!state.started} onClick={() => (state.submitting ? send({ type: "confirmNew", on: true }) : controller.startOver())}>新しい申し込み</button>
+        <button id="new-application" data-testid="new-application" type="button" hidden={!state.started} disabled={state.signing} onClick={() => (state.submitting ? send({ type: "confirmNew", on: true }) : controller.startOver())}>新しい申し込み</button>
       </p>
     </section>
   );
@@ -138,6 +140,8 @@ export function App({ cfg, auth, enabled }: Props) {
   const [notice, setNotice] = useState<string>();
   // 誤りではない知らせ（passkey を作った、消した）
   const [info, setInfo] = useState<string>();
+  // passkey の署名を待っている間。ページを離れると署名の要求が壊れるので、サインアウトを止める
+  const [signing, setSigning] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -193,7 +197,7 @@ export function App({ cfg, auth, enabled }: Props) {
         <section id="signed-in">
           <p>
             ログイン中: <strong id="whoami" data-testid="whoami">{session.sub}</strong>{" "}
-            <button id="signout-button" data-testid="signout" type="button" onClick={() => auth.signOut().catch((e) => setError(failText(e)))}>サインアウト</button>{" "}
+            <button id="signout-button" data-testid="signout" type="button" disabled={signing} onClick={() => auth.signOut().catch((e) => setError(failText(e)))}>サインアウト</button>{" "}
           </p>
         </section>
       )}
@@ -211,7 +215,7 @@ export function App({ cfg, auth, enabled }: Props) {
             <button id="tab-inbox" data-testid="tab-inbox" type="button" className={tab === "inbox" ? "tab active" : "tab"} onClick={() => setTab("inbox")}>受信箱と契約</button>
             <button id="tab-passkeys" data-testid="tab-passkeys" type="button" className={tab === "passkeys" ? "tab active" : "tab"} onClick={() => setTab("passkeys")}>パスキー</button>
           </nav>
-          <Apply cfg={cfg} auth={auth} enabled={enabled} session={session} device={device} hidden={tab !== "apply"} onError={setError} />
+          <Apply cfg={cfg} auth={auth} enabled={enabled} session={session} device={device} hidden={tab !== "apply"} onError={setError} onSigning={setSigning} />
           <Inbox session={session} device={device} hidden={tab !== "inbox"} visible={tab === "inbox"} onError={setError} />
           <Passkeys session={session} auth={auth} hidden={tab !== "passkeys"} />
         </>

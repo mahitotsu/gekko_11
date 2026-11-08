@@ -198,7 +198,8 @@ const SERVICES: Service[] = [
     egress: [],
     app: {
       image: IMAGES.login,
-      command: ["/opt/keycloak/bin/kc.sh", "start", "--optimized", "--import-realm", "--http-enabled=true", "--http-host=127.0.0.1", "--http-port=8080"],
+      // 画面のスクリプトは、配置で替わっても URL が変わらない。ブラウザに古いものを使わせないよう、キャッシュさせない
+      command: ["/opt/keycloak/bin/kc.sh", "start", "--optimized", "--import-realm", "--http-enabled=true", "--http-host=127.0.0.1", "--http-port=8080", "--spi-theme--static-max-age=-1"],
       env: {
         KC_HOSTNAME: publicOrigin("login"),
         KC_TRUSTSTORE_PATHS: "/bundle-ca/ca.crt",

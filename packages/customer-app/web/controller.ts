@@ -195,10 +195,20 @@ export function createController(deps: {
     },
     answerTool,
     conclude: (id: number, result: string) => dispatch({ type: "conclude", id, result }),
-    /** 署名して答える。申込書は、顧客が承認した写しを端末に残す（事後の照合に使う）。 */
+    /**
+     * 署名して答える。申込書は、顧客が承認した写しを端末に残す（事後の照合に使う）。
+     * 端末の確認画面が出るまで数秒かかることがあるので、その間は二度押しを受け付けない（答えを 2 回送らない）。
+     */
     async sign(id: string, step: "intent" | "application", doc: Intent | Application, onSigned: () => void) {
+      if (state().signing) return;
       dispatch({ type: "error" });
-      const assertion = await signWithPasskey(await challengeOf(doc), cfg.rpId, (session.passkeys?.passkeys ?? []).map((k) => k.id));
+      dispatch({ type: "signing", signing: true });
+      let assertion: Awaited<ReturnType<typeof signWithPasskey>>;
+      try {
+        assertion = await signWithPasskey(await challengeOf(doc), cfg.rpId, session.passkeys?.passkeys ?? []);
+      } finally {
+        dispatch({ type: "signing", signing: false });
+      }
       // どの passkey がこの端末で使えたかを覚え、「パスキー」の欄で印を付ける（D-43）
       usedPasskey.set(session.sub, assertion.id);
       onSigned();

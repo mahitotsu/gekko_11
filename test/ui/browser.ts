@@ -149,6 +149,34 @@ export class BrowserCustomer {
     });
   }
 
+  /**
+   * passkey の要求（navigator.credentials.get）を、releasePasskey を呼ぶまで認証器へ渡さずに止める。端末の確認画面が出るまでの待ちを作る。
+   * 止めた要求の数と、要求に添えた allowCredentials を記録する。今のページに仕込むので、ページを移ると外れる。
+   */
+  async holdPasskey() {
+    await this.page.evaluate(() => {
+      const w = window as unknown as { __held: { allow: unknown }[]; __release?: () => void };
+      const original = navigator.credentials.get.bind(navigator.credentials);
+      let gate = new Promise<void>((r) => (w.__release = r));
+      w.__held = [];
+      navigator.credentials.get = async (options?: CredentialRequestOptions) => {
+        const allow = options?.publicKey?.allowCredentials?.map((c) => ({ transports: c.transports ?? [] }));
+        w.__held.push({ allow });
+        await gate;
+        gate = Promise.resolve();
+        return original(options);
+      };
+    });
+  }
+
+  async releasePasskey() {
+    await this.page.evaluate(() => (window as unknown as { __release: () => void }).__release());
+  }
+
+  async heldPasskeys(): Promise<{ allow: { transports: string[] }[] }[]> {
+    return this.page.evaluate(() => (window as unknown as { __held?: never[] }).__held ?? []);
+  }
+
   async signals(): Promise<{ rpId: string; userId: string; allAcceptedCredentialIds: string[] }[]> {
     return this.page.evaluate(() => (window as unknown as { __signals?: never[] }).__signals ?? []);
   }

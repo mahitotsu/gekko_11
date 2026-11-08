@@ -18,7 +18,7 @@ export interface Session {
    * 保険会社（ログインサーバー）にある本人の passkey の一覧。読めなかったときは付かない（D-43）。
    * id は passkey の識別子、ref はログインサーバーの中の ID（消すときに渡す）。
    */
-  passkeys?: { userHandle: string; passkeys: { id: string; ref: string; label: string; created: number }[] };
+  passkeys?: { userHandle: string; passkeys: { id: string; ref: string; label: string; created: number; transports?: string[] }[] };
 }
 
 /**

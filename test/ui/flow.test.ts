@@ -226,6 +226,27 @@ describe("カードで進む申込み（vulnerable の台本）", () => {
     expect(await page.getByTestId("new-confirm-box").isVisible()).toBe(false);
   });
 
+  it("passkey の確認画面を待つ間は、待っていることを示し、署名とページを離れる操作を止める。二度押しても、要求は 1 つである", async () => {
+    const page = await start();
+    await alice!.chat("老後に備えたい");
+    await alice!.choose("fixed-60");
+    await alice!.holdPasskey();
+    await page.getByTestId("sign-intent").click();
+    await page.getByTestId("signing-status").waitFor();
+    for (const id of ["sign-intent", "cancel-intent", "new-application", "signout"]) {
+      expect(await page.getByTestId(id).isDisabled(), id).toBe(true);
+    }
+    // 押せないボタンを押しても、要求は増えない
+    await page.getByTestId("sign-intent").click({ force: true });
+    expect(await alice!.heldPasskeys()).toHaveLength(1);
+    // 署名を頼む passkey には、登録のときの経路を添える（D-44）
+    expect((await alice!.heldPasskeys())[0]!.allow.every((a) => a.transports.length > 0)).toBe(true);
+    await alice!.releasePasskey();
+    await page.getByTestId("sign-application").waitFor();
+    expect(await page.getByTestId("signing-status").count()).toBe(0);
+    expect(await page.getByTestId("signout").isDisabled()).toBe(false);
+  });
+
   it("提出の途中の新しい申し込みは、契約になりうることを確かめてから始め直す", async () => {
     const page = await start();
     await alice!.chat("老後に備えたい");
@@ -363,6 +384,26 @@ describe("サインアウト", () => {
     const sent = await alice.loginWithPasskey();
     expect(await alice.whoami()).toBe("alice");
     expect(sent).toEqual({ passkey: true, password: false });
+  });
+
+  it("secure: ログインの画面で passkey の確認画面を待つ間は、待っていることを示し、ボタンを押せなくする", async () => {
+    alice = await new BrowserCustomer("secure", "alice").ready();
+    const page = alice.page;
+    await page.getByTestId("signout").click();
+    await page.getByTestId("login").click();
+    const button = page.locator("#authenticateWebAuthnButton");
+    await button.waitFor();
+    await alice.holdPasskey();
+    await button.click();
+    await page.locator("#webauthn-waiting[role=status]").waitFor();
+    expect(await button.getAttribute("aria-disabled")).toBe("true");
+    // パスワードのフォームも送れない（送るとページが替わり、passkey の要求が切れる）
+    expect(await page.locator("#kc-login").isDisabled()).toBe(true);
+    expect(await page.locator("#username").isDisabled()).toBe(true);
+    expect(await alice.heldPasskeys()).toHaveLength(1);
+    await alice.releasePasskey();
+    await page.waitForURL(`${alice.app}/**`);
+    expect(await alice.whoami()).toBe("alice");
   });
 
   it("secure: 顧客のまま監査の画面を開くと断られ、サインアウトして、同じブラウザで監査の担当に替われる", async () => {

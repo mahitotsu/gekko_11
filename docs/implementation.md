@@ -9,7 +9,7 @@
 - **動かし方:** `npm test` が 3 つの言語の単体テストを回す。`npm run cluster:deploy` がクラスタを組み立て、`npm run cluster:test` が全シナリオと画面のテストを確かめる。画面は、ブラウザで `http://app.secure.localhost:8081` を開いて使う。監査の画面は `http://audit.secure.localhost:8081` である。
 - **防御を外す受け口は、vulnerable のイメージだけにある:** 防御の ID ごとに、管理のポートで実行中に外す。教材のための意図的な実装で、本番の部品として使わない（D-24）。
 - **営業 AI エージェント:** 顧客と AG-UI 1.0 で会話する（D-29）。secure では本物の Claude（既定は Haiku）、vulnerable では台本で動く（D-23）。
-- **まだ確かめていないこと:** 本物の認証器は、Windows の VS Code に内蔵されたブラウザと Windows Hello でだけ確かめた（F-G98）。ほかのブラウザと認証器では、確かめていない。記録が 7 日で消えることも、確かめていない。
+- **まだ確かめていないこと:** 本物の認証器は、Windows Hello と、VS Code に内蔵されたブラウザと Chrome でだけ確かめた（F-G98、F-G99）。ほかのブラウザと認証器では、確かめていない。記録が 7 日で消えることも、確かめていない。
 
 ## 1. 技術スタックは、サービスごとに選んだ言語と、k3d の基盤である
 | 領域 | 使うもの | 使う場所 |
@@ -52,7 +52,7 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 |---|---|
 | `services/insurer-login/realm/insurer.json` | 利用者、役割、クライアント、スコープ `apply` と `passkeys`、passkey の設定（RP ID、重ねての登録の拒否、登録と削除の画面の文言）、SPIRE との信頼の設定 |
 | `services/insurer-login/src/main/java/jp/gekko11/insurerlogin/` | 取決めの範囲の処理と、A の発行の記録（D-39） |
-| `services/insurer-login/theme/insurer/` | ログインの画面。標準の画面を引き継ぎ、passkey の登録のスクリプトだけを替える。名前を尋ねず、作った環境と日時を名前にする（D-42、D-43） |
+| `services/insurer-login/theme/insurer/` | ログインの画面。標準の画面を引き継ぎ、passkey の登録とログインのスクリプトだけを替える。登録は名前を尋ねず、作った環境と日時を名前にする（D-42、D-43）。ログインは、確認画面を待つ間、待っていることを示して操作を止める（D-44） |
 | `services/insurer-auth/src/main/java/jp/gekko11/insurerauth/` | 認可サーバーの拡張点（SAN の照合、A の取り込み（D28）、交換の前の確かめ、トークンの形、有効性の問い合わせ） |
 | `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/ApplicationController.java` | 試算の受け口、提示の確定（D30）、申込みの内容の確かめ（D9、D11〜D18） |
 | `services/insurer-login/realm/insurer.json` | A の有効期間、更新のトークンの使い回しの拒否（D31）、ログインの上限 |
@@ -135,7 +135,8 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **商品の規則と料率は、教材用の仮の値である:** 確定年金と終身年金の 2 商品で、年齢、性別、受取開始年齢で金額を変えない。年金の年額は、`月額 × 12 × 払込年数 ÷ 換算年数` を 1 万円単位に切り捨てる。換算年数は、確定年金が受取期間、終身年金が 15 年である。実在の料率ではない（P-17）。受取期間と年額の下限の例は I-A7 に沿わせた。
 - **台本は、案を組み立てない:** vulnerable の名前空間と認証情報のない環境の台本は、既定の条件（確定年金は 10 年、払込は 25 年）の 4 案を提出する。案のカードで頼み直すと、そこで止まる。希望が案に届くのは、Claude が動く secure だけである。
 - **passkey の署名回数を見ない:** 同期される passkey は回数が 0 のままのため、重複は `nonce` で防ぐ。
-- **Keycloak の passkey の不具合を、設定で避ける:** resident key を「Required」にすると、名前のない passkey ができる。そのため、2 つの設定を組み合わせた（F-G92）。登録の画面のスクリプトも、写して直した（`services/insurer-login/theme/insurer/`）。版を上げるときは、どちらも確かめ直す。
+- **Keycloak の passkey の不具合を、設定で避ける:** resident key を「Required」にすると、名前のない passkey ができる。そのため、2 つの設定を組み合わせた（F-G92）。登録の画面のスクリプトも、写して直した（`services/insurer-login/theme/insurer/`）。版を上げるときは、どちらも確かめ直す。ログインの画面のスクリプトも、確認画面を待つ間の表示のために写した（D-44）。
+- **ログインサーバーの静的なファイルを、キャッシュさせない:** 写したスクリプトを替えても、URL が変わらず、ブラウザが古いものを使い続けるためである（F-G101）。起動の引数 `--spi-theme--static-max-age=-1` で止めた。
 - **確かめの役は、乗っ取られた複製として動く:** probe は、そのサービスの ServiceAccount で動き、同じ SPIFFE ID を持つ。別の SVID が要る役は、別のノードに置く（F-G53）。
 - **上流への接続は、要求ごとにつなぎ直す:** SVID が入れ替わった後に、前の証明書の接続を使い回すと、新しい証明書に結んだトークンと食い違う。要求ごとに新しくつなぎ、そのときの SVID で示す（F-G54）。
 - **`actor_token` は、替えるたびに取り直す:** SVID が入れ替わると、前の証明書に結んだ `actor_token` は使えないためである（F-G54）。
@@ -154,9 +155,10 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **probe の顧客の役も残る:** 多くのシナリオは、クラスタの中の probe が顧客を演じる。署名と DPoP の proof には、入口の公開名を使う。
 
 ## 6. まだ確かめていないこと
-- Signal API で一覧を伝えても、端末の古い passkey は消えなかった（F-G98、D-43）。確かめたのは、Windows の VS Code に内蔵されたブラウザと Windows Hello である。ほかのブラウザ（Chrome、Edge）では、確かめていない。
+- Signal API で一覧を伝えても、端末の古い passkey は消えなかった（F-G98、D-43）。確かめたのは、Windows の VS Code に内蔵されたブラウザと Windows Hello である。Chrome と Edge では、確かめていない。
 - 顧客のアプリの BFF と、ログインと署名で同じ passkey を使うことは、自動テストと手の操作で確かめた（D-41、D-42、F-G98）。手の操作は、Windows の VS Code に内蔵されたブラウザと Windows Hello で行った。
 - 画面は、Chromium と仮想の認証器で自動テストした。ログインから照合までを手でも確かめた。使ったのは、Windows の VS Code に内蔵されたブラウザと Windows Hello である（F-G63、F-G98）。ほかのブラウザ（Chrome、Edge、Safari、Firefox）と、ほかの認証器（スマートフォンの passkey など）では、確かめていない。
+- passkey の確認画面が出るまでの時間は、Windows Hello でだけ測った（F-G99、D-44）。Chrome で 1.8 秒ほど、VS Code に内蔵されたブラウザで 5 秒ほどだった。Chrome では、ログインと署名の両方で、待つ間の表示と操作の停止を手でも確かめた。Edge、ほかの OS、ほかの認証器では、測っていない。
 - 顧客のアプリは、保険会社が署名した登録情報から、営業 AI エージェントの名称、所属、扱える範囲を示す（P-12）。この表示は、未実装である。画面は、取決めの範囲だけを示す。
 - Loki の保存期間（7 日）を過ぎた記録が、ファイルの保存で実際に消えることは、確かめていない（F-G70）。
 - 種類の違うトークンで鍵と `iss` を分けること（D3c の一部）は、ログインサーバーの中では未実装である。ID トークンと A は、同じ鍵と `iss` で出す。

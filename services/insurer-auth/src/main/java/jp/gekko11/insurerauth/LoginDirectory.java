@@ -107,9 +107,31 @@ class LoginDirectory {
 			item.put("ref", String.valueOf(c.get("id")));
 			item.put("label", String.valueOf(c.getOrDefault("userLabel", "")));
 			item.put("created", c.getOrDefault("createdDate", 0));
+			// 登録のときに認証器が答えた経路。画面は、署名を頼むときに添え、ほかの経路を探させない（D-44）
+			item.put("transports", transportsOf(c.get("credentialData")));
 			return item;
 		}).toList();
 		return Map.of("userHandle", B64URL.encodeToString(found.userId().getBytes(java.nio.charset.StandardCharsets.UTF_8)), "passkeys", passkeys);
+	}
+
+	/**
+	 * ログインサーバーの資格情報の credentialData から、登録のときの経路（internal、hybrid など）を取り出す（D-44）。
+	 * 経路は署名の正しさに関わらないので、読めなければ空にする（ブラウザは、全ての経路を探す）。
+	 */
+	List<String> transportsOf(Object credentialData) {
+		try {
+			Object value = this.json.readValue(String.valueOf(credentialData), Map.class).get("transports");
+			if (value instanceof List<?> list) {
+				return list.stream().map(String::valueOf).filter((t) -> !t.isBlank()).toList();
+			}
+			if (value instanceof String text) {
+				return java.util.Arrays.stream(text.split(",")).map(String::trim).filter((t) -> !t.isBlank()).toList();
+			}
+		}
+		catch (Exception ex) {
+			// 読めない経路は、なしとして扱う
+		}
+		return List.of();
 	}
 
 	/** ログインサーバーの資格情報の credentialData（JSON の文字列）から、識別子と公開鍵を取り出す。 */
