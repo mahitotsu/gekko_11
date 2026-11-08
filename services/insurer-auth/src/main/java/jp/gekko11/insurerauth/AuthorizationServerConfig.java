@@ -101,7 +101,7 @@ public class AuthorizationServerConfig {
 	@Order(2)
 	SecurityFilterChain resourceChain(HttpSecurity http, LoginKeys keys, AuthProperties props) throws Exception {
 		// 運用と内部の受け口は、相手の SPIFFE ID を各受け口で確かめる（AdminController、PasskeyController）。
-		// 連絡先の受け口は、ログインサーバーが出した P を、DPoP の proof と一緒に確かめる（D-37）。proof のない Bearer は受けない
+		// 連絡先の受け口は、ログインサーバーが出した P を、DPoP の proof と一緒に確かめる（D-42）。proof のない Bearer は受けない
 		http.authorizeHttpRequests((a) -> a.requestMatchers("/admin/**", "/internal/**")
 			.permitAll()
 			.anyRequest()
@@ -148,7 +148,7 @@ public class AuthorizationServerConfig {
 
 	@Bean
 	RegisteredClientRepository registeredClients(AuthProperties props) {
-		// 保険会社のシステムは、有効性の問い合わせのために、クライアントとして認証する（D10）
+		// 保険会社のシステムは、有効性の問い合わせのために、クライアントとして認証する（G10）
 		RegisteredClient backend = RegisteredClient.withId(ExchangePolicy.INSURER_BACKEND)
 			.clientId(ExchangePolicy.INSURER_BACKEND)
 			.clientAuthenticationMethod(ClientAuthenticationMethod.TLS_CLIENT_AUTH)

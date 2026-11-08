@@ -104,7 +104,7 @@ const pathOf = (location: unknown) => {
 /**
  * 顧客のアプリの BFF の役（D-41）。顧客のアプリと同じ身元で動き、JWT-SVID でクライアント認証する。
  * 顧客の役: 固定ユーザーで、ログインサーバーにログインし、取決めの範囲に同意して、認可コードと PKCE と DPoP で A を受け取る。
- * 続けて、ログインしたまま P を受け取り、認可サーバーに passkey を登録する（D-37）。
+ * 続けて、ログインしたまま P を受け取り、認可サーバーに受信箱の番号を登録する（D-26、D-42）。passkey は、ログインサーバーに登録する。
  * 返す authenticator と dpopKey は、手元のテストが署名と proof に使う。
  */
 async function customerSetup(args: { user?: string; terms?: unknown }) {
@@ -180,7 +180,7 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
   const verifierP = randomUUID() + randomUUID();
   const silent = await call("insurer-login", authorize("openid passkeys", verifierP, { prompt: "none" }), { method: "GET", headers: { ...html, ...login, cookie }, clientCert: false });
   const p = (JSON.parse((await redeem(silent.headers.location, verifierP)).body) as { access_token: string }).access_token;
-  // 受信箱の番号を、本人が登録する連絡先として、P で登録する（D-26、D-37）
+  // 受信箱の番号を、本人が登録する連絡先として、P で登録する（D-26、D-42）
   const inbox = randomBytes(16).toString("base64url");
   const path = "/contacts/inbox";
   const contact = await call("insurer-auth", path, {

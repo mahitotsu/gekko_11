@@ -24,7 +24,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MvcResult;
 
-/** 取決めの範囲、確認済みの属性、失効、有効性の問い合わせ、内部の受け口と、外せる防御（D3a〜D3f）を確かめる。 */
+/** 取決めの範囲、確認済みの属性、失効、有効性の問い合わせ、内部の受け口と、外せる防御（G3a〜G3f）を確かめる。 */
 @Import(TestDefenses.class)
 @ExtendWith(OutputCaptureExtension.class)
 class AuthFeaturesTest extends AuthTestSupport {

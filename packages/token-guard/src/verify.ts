@@ -1,4 +1,4 @@
-// 受け口の確かめ（architecture の 2-2 の token-guard、scenarios の D26、D27）。
+// 受け口の確かめ（architecture の 2-2 の token-guard、scenarios の G26、G27）。
 import { createHash } from "node:crypto";
 import {
   calculateJwkThumbprint,
@@ -44,7 +44,7 @@ export interface IngressRequest {
 
 const jwks = createRemoteJWKSet(new URL(config.jwksUrl), { cooldownDuration: 0 });
 const otherJwks = config.otherJwksUrl ? createRemoteJWKSet(new URL(config.otherJwksUrl), { cooldownDuration: 0 }) : undefined;
-/** 悪い確かめ（D29 を外す）: どちらの発行者の鍵でも認める。 */
+/** 悪い確かめ（G29 を外す）: どちらの発行者の鍵でも認める。 */
 const anyIssuerKey: JWTVerifyGetKey = async (header, token) => {
   try {
     return await jwks(header, token);
@@ -139,7 +139,7 @@ async function verifyToken(token: string): Promise<Checked["claims"]> {
   return payload;
 }
 
-/** 取り次いだ窓口とトークンを受け取ったクライアントが、全て登録されていて外れていないか（D10、P-13）。 */
+/** 取り次いだ窓口とトークンを受け取ったクライアントが、全て登録されていて外れていないか（G10、P-13）。 */
 async function introspect(token: string): Promise<void> {
   const res = await fetch(`${config.authUrl}/oauth2/introspect`, {
     method: "POST",

@@ -5,7 +5,7 @@ import { reconcile } from "../src/reconcile.ts";
 const notice = { customer: "alice", contract: { contractId: "C-1", nonce: "n-1" } };
 const xfcc = (sa: string) => `Hash=ab;URI=spiffe://gekko11.internal/ns/secure/sa/${sa}`;
 
-describe("画面の CSP（D32）", () => {
+describe("画面の CSP（G32）", () => {
   it("スクリプトとスタイルは配信元だけで、つなぐ先は自分の配信元（BFF）だけである", () => {
     Object.assign(process.env, { AGENT_ORIGIN: "http://agent.test", AUTH_ORIGIN: "http://auth.test", ISSUER: "http://login.test/realms/insurer" });
     const policy = contentSecurityPolicy();

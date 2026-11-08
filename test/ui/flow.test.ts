@@ -42,7 +42,7 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
     // 「受信箱と契約」の画面にも、今回の契約が一致として出る
     expect((await alice.inbox()).status).toBe("match");
 
-    // 監査の担当が、監査の画面で、その契約を食い違いなしと見て、会話の記録を読める（D25、D-31）
+    // 監査の担当が、監査の画面で、その契約を食い違いなしと見て、会話の記録を読める（G25、D-31）
     auditor = new BrowserAuditor(ns);
     expect(await auditor.open()).toBe(200);
     const audited = await auditor.contract(nonce, (status, rows) => status === "食い違いなし" && rows > 0);
@@ -89,7 +89,7 @@ describe("顧客の希望から案を組み立てる（secure の本物の Claud
   });
 });
 
-describe("画面の CSP（D32）", () => {
+describe("画面の CSP（G32）", () => {
   it("secure: 仕込まれたインラインのスクリプトは動かず、許していない宛先へはつなげない", async () => {
     alice = await new BrowserCustomer("secure", "alice").ready();
     const page = alice.page;

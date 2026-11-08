@@ -173,7 +173,7 @@ export const checksOf = (report: Json): Record<string, boolean> =>
   Object.fromEntries((report.checks as Json[]).map((c) => [String(c.name).replace(/（.*/, ""), c.ok as boolean]));
 
 /**
- * 監査サービスの、契約ごとの突き合わせ（D25）。Loki に記録が届くまで数秒かかるので、until を満たすまで問い合わせ直す。
+ * 監査サービスの、契約ごとの突き合わせ（G25）。Loki に記録が届くまで数秒かかるので、until を満たすまで問い合わせ直す。
  * 満たさないまま時間が過ぎたら、最後の結果を返す（テストの期待で、何が足りないかを示す）。
  */
 export async function auditOf(ns: Ns, nonce: string, until: (report: Json) => boolean): Promise<Json> {
@@ -192,15 +192,15 @@ export async function auditOf(ns: Ns, nonce: string, until: (report: Json) => bo
 /** 防御の ID と、それを持つ部品（サービスと管理のポート）。 */
 const OWNER: Record<string, { service: string; port: number; path: string }> = {};
 const own = (ids: string[], service: string, port: number, path = "/defenses") => ids.forEach((id) => (OWNER[`${service}:${id}`] = { service, port, path }));
-own(["D3a", "D3b", "D3c"], "insurer-login", 9091);
-own(["D3a", "D3b", "D3d", "D3e", "D3f", "D28"], "insurer-auth", 9091);
-own(["D9", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D30"], "insurer-backend", 9091);
-own(["D5", "D6", "D7", "D8", "D10", "D26", "D27", "D29"], "insurer-backend", 9090);
-own(["D1", "D2", "D26", "D27", "D29"], "insurer-mcp", 9090);
-own(["D20", "D26", "D27"], "sales-agent", 9090);
-own(["D22", "D23"], "customer-app", 9091);
+own(["G3a", "G3b", "G3c"], "insurer-login", 9091);
+own(["G3a", "G3b", "G3d", "G3e", "G3f", "G28"], "insurer-auth", 9091);
+own(["G9", "G11", "G12", "G13", "G14", "G15", "G16", "G17", "G18", "G30"], "insurer-backend", 9091);
+own(["G5", "G6", "G7", "G8", "G10", "G26", "G27", "G29"], "insurer-backend", 9090);
+own(["G1", "G2", "G26", "G27", "G29"], "insurer-mcp", 9090);
+own(["G20", "G26", "G27"], "sales-agent", 9090);
+own(["G22", "G23"], "customer-app", 9091);
 
-/** 外す防御。値は外し方（多くは "off"）。D26 と D27 は、サービスを付けて "D26@insurer-backend" のようにも書ける。 */
+/** 外す防御。値は外し方（多くは "off"）。G26 と G27 は、サービスを付けて "G26@insurer-backend" のようにも書ける。 */
 export type Gaps = Record<string, string>;
 
 const PARTS = [

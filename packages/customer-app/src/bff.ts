@@ -45,7 +45,7 @@ interface Session {
   dpop: oidc.DPoPHandle;
   access: string;
   refresh?: string;
-  /** 受信箱の番号を、認可サーバーに登録できたか（D-26）。P は登録にだけ使い、持ち続けない（D-37）。 */
+  /** 受信箱の番号を、認可サーバーに登録できたか（D-26）。P は登録と passkey の一覧の読み取りにだけ使い、持ち続けない（D-42、D-43）。 */
   inboxRegistered: boolean;
   /** passkey の作成か削除を頼んだときの結果（ログインサーバーの kc_action_status。D-42、D-43）。 */
   passkeyAction?: PasskeyAction;
@@ -140,7 +140,7 @@ function client() {
   return config;
 }
 
-/** ID トークンを確かめる（D21）。openid-client は既定で署名を確かめないので、自分で確かめる（D-40）。 */
+/** ID トークンを確かめる（G21）。openid-client は既定で署名を確かめないので、自分で確かめる（D-40）。 */
 async function checkIdToken(idToken: string, nonce: string) {
   const c = cfg();
   // 公開鍵は、ログインサーバーへの出口から取る（Envoy が、相手の SPIFFE ID を確かめる）
@@ -185,7 +185,7 @@ function current(c: Context): Session | undefined {
 
 /**
  * A を更新する（P-18）。使い回すと、ログインサーバーがログインごと止めるので、セッションごとに 1 つしか走らせない。
- * 更新にもクライアント認証が要るので、更新のトークンを盗んでも、顧客のアプリの身元がなければ使えない（D31）。
+ * 更新にもクライアント認証が要るので、更新のトークンを盗んでも、顧客のアプリの身元がなければ使えない（G31）。
  */
 function renew(session: Session): Promise<void> {
   session.renewing ??= (async () => {
@@ -292,7 +292,7 @@ export function addBff(app: Hono) {
       const { sub } = await checkIdToken(tokens.id_token, login.nonce);
       if (login.kind === "passkeys") {
         if (!existing || existing.sub !== sub) return fail("ログイン中の利用者と違う");
-        // P で、端末の受信箱の番号を、本人の連絡先として登録する（D-26、D-37）。P は持ち続けない
+        // P で、端末の受信箱の番号を、本人の連絡先として登録する（D-26、D-42）。P は持ち続けない
         if (login.inbox) existing.inboxRegistered = await registerInbox(existing, tokens.access_token, login.inbox);
         // 本人の passkey の一覧も、同じ P で読む。画面は、端末に一覧を伝え、空なら作成を促す（D-43）
         existing.passkeys = await readPasskeys(existing, tokens.access_token);

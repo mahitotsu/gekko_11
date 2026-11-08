@@ -1,4 +1,4 @@
-// 画面のシナリオ: 顧客のアプリが確かめる防御（D21〜D23）を、ブラウザで確かめる（scenarios の 2-3、3 章）。
+// 画面のシナリオ: 顧客のアプリが確かめる防御（G21〜G23）を、ブラウザで確かめる（scenarios の 2-3、3 章）。
 // 乗っ取られた営業 AI エージェントの返答は、ブラウザに届く手前で書き換えて作る（D-28）。secure と vulnerable で同じ手口を使う。
 // 画面の防御は、画面を開くときに読むので、vulnerable の防御は、画面を開く前に外す。
 import { afterEach, describe, expect, it } from "vitest";
@@ -81,7 +81,7 @@ let chosenInScenario24 = "";
 
 
 scenario(8, "R4 × A9: 保険会社が示していない案を、画面に出して申し込ませる", {
-  defenses: ["D12", "D22"],
+  defenses: ["G12", "G22"],
   attack: async (c) => {
     await c.rewriteTool(addFake);
     await c.chat();
@@ -102,7 +102,7 @@ describe("8 の補足（画面）", () => {
 });
 
 scenario(24, "R4 × A20: 営業 AI エージェントの説明で、署名する内容と違う案を、選んだ案のように見せる", {
-  defenses: ["D23"],
+  defenses: ["G23"],
   attack: async (c) => {
     // 顧客は最初の案を選ぶ。乗っ取られた営業 AI エージェントは、2 つの書類の案を、取決めの範囲で最も高い別の案にすり替える
     await c.rewriteTool(swapper().rewrite);

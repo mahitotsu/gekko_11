@@ -37,7 +37,7 @@ final class SpiffeCertificateVerifier implements Consumer<OAuth2ClientAuthentica
 			throw new OAuth2AuthenticationException(
 					new OAuth2Error(OAuth2ErrorCodes.INVALID_CLIENT, "Client authentication failed: spiffe_id", null));
 		}
-		// 登録を外した窓口には、新しいトークンを出さない（D4）
+		// 登録を外した窓口には、新しいトークンを出さない（G4）
 		if (this.revocation.isRevoked(context.getRegisteredClient().getClientId())) {
 			throw new OAuth2AuthenticationException(
 					new OAuth2Error(OAuth2ErrorCodes.INVALID_CLIENT, "Client registration is revoked", null));

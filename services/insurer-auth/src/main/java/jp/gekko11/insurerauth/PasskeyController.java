@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 顧客の受信箱の番号（直送の宛先）を、本人が登録した連絡先として受け取る（P-14、D-26）。登録は、ログインサーバーが出した P を示した顧客だけが行う（D-42）。本人には、自分の passkey の一覧も返す（D-43）。
- * 保険会社のシステムには、連絡先と、利用者の passkey の公開鍵を渡す（D-1、D13）。passkey は、ログインサーバーが登録を持ち、そこから読む（D-42）。
+ * 保険会社のシステムには、連絡先と、利用者の passkey の公開鍵を渡す（D-1、G13）。passkey は、ログインサーバーが登録を持ち、そこから読む（D-42）。
  * 参照は、保険会社のシステムの SPIFFE ID だけが行える。
  */
 @RestController

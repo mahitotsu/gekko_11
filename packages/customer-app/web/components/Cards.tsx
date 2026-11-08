@@ -152,7 +152,7 @@ function Offers({ card, live, controller }: CardProps) {
         </p>
       )}
       <div className="issued">
-        {/* D22 を外すと、営業 AI エージェントが運んだ案を、そのまま示す（悪い実装） */}
+        {/* G22 を外すと、営業 AI エージェントが運んだ案を、そのまま示す（悪い実装） */}
         <p className="frame-label">{data.verified ? "保険会社が署名した内容" : "営業 AI エージェントが示した案"}</p>
         <ul>
           {data.offer.offerSet.plans.map((p) => (
@@ -201,13 +201,13 @@ const GUIDE = {
   application: ["申込書", "署名 2/2", "営業 AI エージェントから届いた申込書です。内容を確かめて、署名し、営業 AI エージェントに提出を任せます。"],
 } as const;
 
-/** 書類を示し、署名してもらう。画面は、署名する内容そのものから描く（D23）。署名すると、案内文を「署名済み」に置き換えて残す。 */
+/** 書類を示し、署名してもらう。画面は、署名する内容そのものから描く（G23）。署名すると、案内文を「署名済み」に置き換えて残す。 */
 function Document({ card, live, controller, state, enabled }: CardProps) {
   const data = card.data as Extract<CardData, { kind: "intent" | "application" }>;
   const step = data.kind;
   const [title, count, guide] = GUIDE[step];
   const [outcome, setOutcome] = useState<"signed" | "declined">();
-  // 悪い実装（D23 を外す）が出す文は、カードを出した時点の説明文に固定する
+  // 悪い実装（G23 を外す）が出す文は、カードを出した時点の説明文に固定する
   const [summary] = useState(state.lastText);
   const id = (name: string) => (live ? name : undefined);
   const rows = step === "intent" ? intentRowsOf(data.doc as Intent, state.offer?.offerSet.plans ?? []) : applicationRowsOf(data.doc as Application);
@@ -217,7 +217,7 @@ function Document({ card, live, controller, state, enabled }: CardProps) {
         {outcome === "signed" ? "✓ 署名済み" : outcome === "declined" ? "署名しませんでした" : guide}
       </p>
       <div className="issued" data-testid={id(`${step}-confirm`)}>
-        {enabled("D23") ? (
+        {enabled("G23") ? (
           <>
             <p className="frame-label">署名する内容</p>
             <RowsTable rows={rows} prefix={live ? step : `old-${card.id}-${step}`} />

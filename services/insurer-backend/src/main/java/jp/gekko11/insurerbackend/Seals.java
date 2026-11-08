@@ -29,12 +29,12 @@ import com.webauthn4j.verifier.exception.BadOriginException;
 import org.springframework.stereotype.Component;
 
 /**
- * 申込みと意向確認の署名を確かめる。署名は 2 つのことを同時に示す（D-1、D13）。
+ * 申込みと意向確認の署名を確かめる。署名は 2 つのことを同時に示す（D-1、G13）。
  * <ul>
  * <li>誰が承認したか: 本人が登録した passkey で署名されている</li>
  * <li>何を承認したか: 署名が、内容の正規化のハッシュ（challenge）に結び付いている</li>
  * </ul>
- * 同期される passkey は署名回数が 0 のままなので、回数では重複を見ない。重複は nonce で防ぐ（D16）。
+ * 同期される passkey は署名回数が 0 のままなので、回数では重複を見ない。重複は nonce で防ぐ（G16）。
  * 教材のための意図的に悪い確かめ方（mtls-only、agent-signed）を含む。本番の部品として使わないこと。
  */
 @Component

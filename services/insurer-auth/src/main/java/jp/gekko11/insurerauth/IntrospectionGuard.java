@@ -12,7 +12,7 @@ import org.springframework.security.oauth2.server.authorization.authentication.O
 
 /**
  * 有効性の問い合わせで、取り次いだ窓口（act の連鎖）と、トークンを受け取ったクライアントが、
- * 全て登録されていて外れていないことを確かめる（D10、P-13）。外れていれば、有効でないと答える。
+ * 全て登録されていて外れていないことを確かめる（G10、P-13）。外れていれば、有効でないと答える。
  */
 final class IntrospectionGuard implements AuthenticationProvider {
 

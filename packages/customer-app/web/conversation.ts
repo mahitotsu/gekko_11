@@ -32,7 +32,7 @@ export interface State {
   cards: Card[];
   nextId: number;
   pendingText: string[];
-  /** 営業 AI エージェントの直前の文（D23 を外したときに、確認画面に出す）。 */
+  /** 営業 AI エージェントの直前の文（G23 を外したときに、確認画面に出す）。 */
   lastText: string;
   /** 直前に署名を確かめた提示（意向確認書面の案の名前を引く）。 */
   offer?: Offer;

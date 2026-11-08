@@ -9,13 +9,13 @@
 - **動かし方:** `npm test` が 3 つの言語の単体テストを回す。`npm run cluster:deploy` がクラスタを組み立て、`npm run cluster:test` が全シナリオと画面のテストを確かめる。画面は、ブラウザで `http://app.secure.localhost:8081` を開いて使う。監査の画面は `http://audit.secure.localhost:8081` である。
 - **防御を外す受け口は、vulnerable のイメージだけにある:** 防御の ID ごとに、管理のポートで実行中に外す。教材のための意図的な実装で、本番の部品として使わない（D-24）。
 - **営業 AI エージェント:** 顧客と AG-UI 1.0 で会話する（D-29）。secure では本物の Claude（既定は Haiku）、vulnerable では台本で動く（D-23）。
-- **まだ確かめていないこと:** 本物の認証器は、Windows Hello と、VS Code に内蔵されたブラウザと Chrome でだけ確かめた（F-G98、F-G99）。ほかのブラウザと認証器では、確かめていない。記録が 7 日で消えることも、確かめていない。
+- **まだ確かめていないこと:** 本物の認証器は、Windows Hello でだけ確かめた。ブラウザは、VS Code に内蔵されたブラウザと Chrome である（F-G98、F-G99）。ほかのブラウザと認証器では、確かめていない。記録が 7 日で消えることも、確かめていない。
 
 ## 1. 技術スタックは、サービスごとに選んだ言語と、k3d の基盤である
 | 領域 | 使うもの | 使う場所 |
 |---|---|---|
 | ログインサーバー | Keycloak 26.8.1、Java 21 の拡張（取決めの範囲の処理、発行の記録） | `services/insurer-login` |
-| 認可サーバー | Java 21、Spring Boot 3.5、Spring Authorization Server 1.5、Spring Security の Resource Server 6.5、webauthn4j | `services/insurer-auth` |
+| 認可サーバー | Java 21、Spring Boot 3.5、Spring Authorization Server 1.5、Spring Security の Resource Server 6.5 | `services/insurer-auth` |
 | 保険会社のシステム | Java 21、Spring Boot 3.5、nimbus-jose-jwt、java-json-canonicalization（JCS）、webauthn4j | `services/insurer-backend` |
 | 事務サービス | Python 3.12、FastMCP 4.1、httpx2 | `services/insurer-mcp` |
 | 監査サービス | Java 21、Spring Boot 3.5、Spring Security の OAuth2 Client 6.5、Thymeleaf、java-json-canonicalization（JCS） | `services/insurer-audit` |
@@ -50,23 +50,22 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 
 | ファイル | 役割 |
 |---|---|
-| `services/insurer-login/realm/insurer.json` | 利用者、役割、クライアント、スコープ `apply` と `passkeys`、passkey の設定（RP ID、重ねての登録の拒否、登録と削除の画面の文言）、SPIRE との信頼の設定 |
+| `services/insurer-login/realm/insurer.json` | 利用者、役割、クライアント、スコープ `apply` と `passkeys`、passkey の設定（RP ID、重ねての登録の拒否、登録と削除の画面の文言）、SPIRE との信頼の設定、A の有効期間、更新のトークンの使い回しの拒否（G31）、ログインの上限 |
 | `services/insurer-login/src/main/java/jp/gekko11/insurerlogin/` | 取決めの範囲の処理と、A の発行の記録（D-39） |
 | `services/insurer-login/theme/insurer/` | ログインの画面。標準の画面を引き継ぎ、passkey の登録とログインのスクリプトだけを替える。登録は名前を尋ねず、作った環境と日時を名前にする（D-42、D-43）。ログインは、確認画面を待つ間、待っていることを示して操作を止める（D-44） |
-| `services/insurer-auth/src/main/java/jp/gekko11/insurerauth/` | 認可サーバーの拡張点（SAN の照合、A の取り込み（D28）、交換の前の確かめ、トークンの形、有効性の問い合わせ） |
-| `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/ApplicationController.java` | 試算の受け口、提示の確定（D30）、申込みの内容の確かめ（D9、D11〜D18） |
-| `services/insurer-login/realm/insurer.json` | A の有効期間、更新のトークンの使い回しの拒否（D31）、ログインの上限 |
-| `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/Products.java` | 商品の規則と計算（D30。P-17） |
+| `services/insurer-auth/src/main/java/jp/gekko11/insurerauth/` | 認可サーバーの拡張点（SAN の照合、A の取り込み（G28）、交換の前の確かめ、トークンの形、有効性の問い合わせ） |
+| `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/ApplicationController.java` | 試算の受け口、提示の確定（G30）、申込みの内容の確かめ（G9、G11〜G18） |
+| `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/Products.java` | 商品の規則と計算（G30。P-17） |
 | `services/*/src/vulnerable/` | vulnerable のビルドだけに入る、防御を外す受け口 |
-| `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/Reconciler.java` | 契約ごとの突き合わせ（D25）。書いた者を Pod の印で決める（D-32）。比べた値と書いた者を、根拠の強さごとにまとめて、画面と JSON に渡す |
+| `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/Reconciler.java` | 契約ごとの突き合わせ（G25）。書いた者を Pod の印で決める（D-32）。比べた値と書いた者を、根拠の強さごとにまとめて、画面と JSON に渡す |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/ClusterRecords.java` | Loki の問い合わせと、保険会社のシステムの自己申告（`/audit/records`）の読み手 |
 | `services/insurer-audit/src/main/java/jp/gekko11/insureraudit/SecurityConfig.java` | 監査の担当のログイン（D-31） |
 | `deploy/k8s/logging/alloy.yaml` | Alloy の設定。名前空間ごとに、監査の記録だけをその名前空間の Loki へ送る |
-| `packages/token-guard/src/verify.ts` | 受け口の確かめ（D1、D5〜D8、D10、D20、D26、D27） |
-| `packages/token-guard/src/exchange.ts` | 出口の交換（D2） |
-| `packages/customer-app/web/checks.ts` | 画面の確かめ（D21〜D23） |
+| `packages/token-guard/src/verify.ts` | 受け口の確かめ（G1、G5〜G8、G10、G20、G26、G27） |
+| `packages/token-guard/src/exchange.ts` | 出口の交換（G2） |
+| `packages/customer-app/web/checks.ts` | 画面の確かめ（G21〜G23） |
 | `packages/customer-app/web/components/` | 画面（ログイン、登録、カードで進む申込み、確認、署名、照合。D-34） |
-| `packages/customer-app/src/bff.ts` | BFF（D-41）。ログイン（頼まれたら passkey の登録も。D-42）、本人の passkey の一覧の読み取り（D-43）、セッション、更新（P-18）、ID トークンの確かめ（D21）、受信箱の番号の登録（D-26）、営業 AI エージェントへの中継、CSRF の対策 |
+| `packages/customer-app/src/bff.ts` | BFF（D-41）。ログイン（頼まれたら passkey の登録も。D-42）、本人の passkey の一覧の読み取り（D-43）、セッション、更新（P-18）、ID トークンの確かめ（G21）、受信箱の番号の登録（D-26）、営業 AI エージェントへの中継、CSRF の対策 |
 | `packages/customer-app/web/auth.ts` | 画面の側のログイン。BFF の受け口を呼ぶだけで、トークンを持たない。端末の受信箱の番号を覚える |
 | `packages/customer-app/web/passkey.ts` | passkey での署名（保険会社にある passkey に限る）と、一覧を端末に伝える Signal API（D-43） |
 | `packages/customer-app/web/components/App.tsx` | 画面。「パスキー」の欄（一覧、この端末で使った印、作成、ログインサーバーに頼む削除。D-43）と、作成の促し |
@@ -79,7 +78,7 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `packages/*/src/*.secure.ts`、`packages/customer-app/web/defenses.secure.ts` | secure のビルドで、防御を外す受け口と置き換えるファイル |
 | `deploy/render.ts` | 名前空間ごとのマニフェスト（Envoy の設定、NetworkPolicy を含む） |
 | `test/cluster/scenarios.test.ts`、`test/cluster/expiry.test.ts` | probe で確かめるシナリオと補足のテスト |
-| `test/ui/scenarios.test.ts`、`test/ui/flow.test.ts` | 画面のシナリオ（8、24）、D21 の補足、画面の基本の流れ |
+| `test/ui/scenarios.test.ts`、`test/ui/flow.test.ts` | 画面のシナリオ（8、24）、G21 の補足、画面の基本の流れ |
 | `test/cluster/probe/probe.ts` | クラスタの中で、顧客、乗っ取られた複製、攻撃者、運用の担当、監査の役、監査の担当を演じる |
 
 ## 3. ポートと環境変数は、マニフェストの生成で決まる
@@ -103,7 +102,6 @@ npm run cluster:down     # クラスタを消す
 | `app.<名前空間>.localhost` | 顧客のアプリの配信元（画面、BFF、設定、提示の公開鍵、受信箱） |
 | `login.<名前空間>.localhost` | ログインサーバー（ブラウザに出す経路だけ）。A の issuer は `http://login.<名前空間>.localhost:<ポート>/realms/insurer` である |
 | `auth.<名前空間>.localhost` | 認可サーバー。B と C の issuer の名前で、ブラウザに出す経路はない（すべて 404） |
-| `agent.<名前空間>.localhost` | 営業 AI エージェント（AG-UI の受け口 `POST /agui`） |
 | `audit.<名前空間>.localhost` | 監査サービス（監査の画面と、同じ中身の JSON の受け口 `/api/contracts`） |
 
 | 動くもの | ポート | 主な環境変数 |
@@ -125,7 +123,7 @@ npm run cluster:down     # クラスタを消す
 `cluster:deploy` は、変わったものだけを更新する。何も変えずに回しても、Pod は作り直されない。イメージの中身、設定、Claude の認証情報、bundle の受け口の証明書が変わると、それを使う Pod だけが作り直される。
 
 ## 4. 防御は、vulnerable の管理のポートで、防御の ID ごとに外す
-vulnerable のイメージでは、次の部品が、管理のポートで防御を切り替える。token-guard、ログインサーバー、認可サーバー、保険会社のシステム、顧客のアプリの配信元である。これらは、管理のポートで `GET /defenses` と `PUT /defenses`（例: `{"off": {"D7": "off"}}`）を受ける。顧客のアプリの画面は、開くときに配信元の `/defenses` を読み、外された D21〜D23 を飛ばす。営業 AI エージェントは、`PUT /tamper` で、乗っ取られた AI の書き換えを入れる。`PUT /forge-audit` は、本文をそのまま監査の記録として書き、ほかのサービスを名乗る記録の偽装を再現する。切り替えはメモリ上で行い、Pod は入れ替えない。どの防御をどの部品が受けるかは、[シナリオ](scenarios.md)の 2-3 の表にある。
+vulnerable のイメージでは、次の部品が、管理のポートで防御を切り替える。token-guard、ログインサーバー、認可サーバー、保険会社のシステム、顧客のアプリの配信元である。これらは、管理のポートで `GET /defenses` と `PUT /defenses`（例: `{"off": {"G7": "off"}}`）を受ける。顧客のアプリの画面は、開くときに配信元の `/defenses` を読み、外された G21〜G23 を飛ばす。営業 AI エージェントは、`PUT /tamper` で、乗っ取られた AI の書き換えを入れる。`PUT /forge-audit` は、本文をそのまま監査の記録として書き、ほかのサービスを名乗る記録の偽装を再現する。切り替えはメモリ上で行い、Pod は入れ替えない。どの防御をどの部品が受けるかは、[シナリオ](scenarios.md)の 2-3 の表にある。
 
 secure のイメージは、ビルドの時点で、この受け口を含まない。Java とログインサーバーの拡張は Maven の profile、TypeScript はファイルの置き換えで分ける。画面は、置き換えた後にまとめるので、secure の画面は外す道を持たない。事務サービスは、外す防御を token-guard に移したので、イメージは 1 つである。
 
@@ -156,10 +154,8 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 
 ## 6. まだ確かめていないこと
 - Signal API で一覧を伝えても、端末の古い passkey は消えなかった（F-G98、D-43）。確かめたのは、Windows の VS Code に内蔵されたブラウザと Windows Hello である。Chrome と Edge では、確かめていない。
-- 顧客のアプリの BFF と、ログインと署名で同じ passkey を使うことは、自動テストと手の操作で確かめた（D-41、D-42、F-G98）。手の操作は、Windows の VS Code に内蔵されたブラウザと Windows Hello で行った。
-- 画面は、Chromium と仮想の認証器で自動テストした。ログインから照合までを手でも確かめた。使ったのは、Windows の VS Code に内蔵されたブラウザと Windows Hello である（F-G63、F-G98）。ほかのブラウザ（Chrome、Edge、Safari、Firefox）と、ほかの認証器（スマートフォンの passkey など）では、確かめていない。
+- 本物の認証器での手の確かめは、Windows Hello だけである（F-G98、F-G99）。ログインから照合までを手で通したのは、Windows の VS Code に内蔵されたブラウザだけである。Chrome では、passkey でのログインと署名だけを手で確かめた。Edge、Safari、Firefox と、ほかの認証器（スマートフォンの passkey など）では、確かめていない。自動テストは、Chromium と仮想の認証器で行う（F-G63）。
 - passkey の確認画面が出るまでの時間は、Windows Hello でだけ測った（F-G99、D-44）。Chrome で 1.8 秒ほど、VS Code に内蔵されたブラウザで 5 秒ほどだった。Chrome では、ログインと署名の両方で、待つ間の表示と操作の停止を手でも確かめた。Edge、ほかの OS、ほかの認証器では、測っていない。
-- 顧客のアプリは、保険会社が署名した登録情報から、営業 AI エージェントの名称、所属、扱える範囲を示す（P-12）。この表示は、未実装である。画面は、取決めの範囲だけを示す。
 - Loki の保存期間（7 日）を過ぎた記録が、ファイルの保存で実際に消えることは、確かめていない（F-G70）。
-- 種類の違うトークンで鍵と `iss` を分けること（D3c の一部）は、ログインサーバーの中では未実装である。ID トークンと A は、同じ鍵と `iss` で出す。
+- 種類の違うトークンで鍵と `iss` を分けること（G3c の一部）は、ログインサーバーの中では未実装である。ID トークンと A は、同じ鍵と `iss` で出す。
 - secure の営業 AI エージェント（Claude）が、質問から提出まで道具を呼んで進めることは、画面の基本の流れで確かめた。Claude の答え方そのものの良し悪しと、道具の順を外れる頻度は、確かめていない。

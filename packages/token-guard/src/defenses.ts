@@ -1,10 +1,10 @@
 // 教材のための意図的に悪い実装を含む（vulnerable の名前空間だけで使う）。本番の部品として使わないこと。
 // 防御を、実行中に 1 つずつ外せる。外した状態は、管理のポートで読み返せる。
-// secure の版は、このファイルを defenses.secure.ts で置き換えてビルドし、切り替えの受け口を持たない（D-20）。
+// secure の版は、このファイルを defenses.secure.ts で置き換えてビルドし、切り替えの受け口を持たない（D-24）。
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 
-/** 外した防御と、その外し方（多くは "off"。D2 は "passthrough" か "client-credentials"）。 */
+/** 外した防御と、その外し方（多くは "off"。G2 は "passthrough" か "client-credentials"）。 */
 const off = new Map<string, string>();
 
 export const enabled = (id: string): boolean => !off.has(id);

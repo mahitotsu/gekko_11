@@ -59,7 +59,7 @@ final class ExchangeGuard implements AuthenticationProvider {
 		}
 
 		Set<String> audiences = exchange.getAudiences();
-		// 悪い発行（D3f を外す）: 求められた宛先にそのまま替える。段を飛ばした宛先も取れる
+		// 悪い発行（G3f を外す）: 求められた宛先にそのまま替える。段を飛ばした宛先も取れる
 		boolean anyTarget = !this.defenses.enabled(Defenses.FIXED_TARGET);
 		if (audiences.size() != 1 || !(ExchangePolicy.mayExchangeTo(requester, audiences.iterator().next())
 				|| anyTarget && ExchangePolicy.SERVICES.contains(audiences.iterator().next()))) {

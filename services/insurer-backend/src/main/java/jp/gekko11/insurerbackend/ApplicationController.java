@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 商品の規則と試算、提示の確定、契約の照会、申込みの受付（architecture の 3 章の 2〜6 段）。
  * トークンは token-guard が確かめ、ここは内容だけを確かめる（2-2）。経路の途中のデータは、書き換えられうるものとして扱う。
- * 教材のための意図的に悪い実装を含む。vulnerable の名前空間では、D9、D11〜D18、D30 を外せる。本番の部品として使わないこと。
+ * 教材のための意図的に悪い実装を含む。vulnerable の名前空間では、G9、G11〜G18、G30 を外せる。本番の部品として使わないこと。
  */
 @RestController
 class ApplicationController {
@@ -52,7 +52,7 @@ class ApplicationController {
 		this.defenses = defenses;
 	}
 
-	/** 誰の契約かは、トークンの sub から決める。悪い実装（D9 を外す）は、窓口の言う for_user を信じる。 */
+	/** 誰の契約かは、トークンの sub から決める。悪い実装（G9 を外す）は、窓口の言う for_user を信じる。 */
 	private String customerOf(Claims claims, String forUser) {
 		return (!this.defenses.enabled(Defenses.CUSTOMER_FROM_SUB) && forUser != null) ? forUser : claims.sub();
 	}
@@ -91,13 +91,13 @@ class ApplicationController {
 		}).toList()));
 	}
 
-	/** 取決めの範囲か。試算で知らせるだけで、止めるのは申込みのとき（D15）。 */
+	/** 取決めの範囲か。試算で知らせるだけで、止めるのは申込みのとき（G15）。 */
 	private static boolean withinTerms(Map<String, Object> plan, Map<String, Object> terms) {
 		return terms != null && ((List<?>) terms.getOrDefault("kinds", List.of())).contains(plan.get("kind"))
 				&& ((Number) plan.get("benefit")).longValue() <= ((Number) terms.get("maxBenefit")).longValue();
 	}
 
-	/** 提出された案を、規則と計算で確かめて署名する（D30、P-17）。1 件でも合わなければ、理由を返し、署名しない。 */
+	/** 提出された案を、規則と計算で確かめて署名する（G30、P-17）。1 件でも合わなければ、理由を返し、署名しない。 */
 	@SuppressWarnings("unchecked")
 	@PostMapping("/offers")
 	ResponseEntity<?> offer(@RequestHeader(CLAIMS) String header, @RequestBody Map<String, Object> body)
@@ -159,7 +159,7 @@ class ApplicationController {
 		}
 		Map<String, Object> plan = (Map<String, Object>) application.get("plan");
 
-		// 窓口自身のトークン（sub が顧客でない）を、内部の信頼できる呼び出しとみなす悪い実装がある（D9）
+		// 窓口自身のトークン（sub が顧客でない）を、内部の信頼できる呼び出しとみなす悪い実装がある（G9）
 		boolean serviceToken = !this.defenses.enabled(Defenses.CUSTOMER_FROM_SUB)
 				&& !Store.CUSTOMERS.contains(claims.sub());
 		String customer = serviceToken ? (String) application.get("customer") : claims.sub();
@@ -170,14 +170,14 @@ class ApplicationController {
 			return reject("申込みの契約者がトークンの本人", application.get("customer") + " は " + customer + " ではない", 403);
 		}
 
-		// 本人確認が済んでいるか。確認済みの属性は、トークンから取る（D11）
+		// 本人確認が済んでいるか。確認済みの属性は、トークンから取る（G11）
 		Map<String, Object> verified = this.defenses.enabled(Defenses.VERIFIED_FROM_TOKEN) ? claims.verifiedClaims()
 				: (Map<String, Object>) body.getOrDefault("verified_claims", claims.verifiedClaims());
 		if (verified == null || !(verified.get("verification") instanceof Map<?, ?> v) || v.get("method") == null) {
 			return reject("本人確認が済んでいる", "確認済みの属性がない", 403);
 		}
 
-		// 案が、保険会社の署名つきの提示に含まれるか（D12）
+		// 案が、保険会社の署名つきの提示に含まれるか（G12）
 		if (this.defenses.enabled(Defenses.OFFER_SIGNATURE)) {
 			try {
 				Map<String, Object> offer = this.offers.verify(String.valueOf(body.get("offerJws")));
@@ -198,7 +198,7 @@ class ApplicationController {
 			}
 		}
 
-		// 申込みの内容が、署名したときのままか（D13）
+		// 申込みの内容が、署名したときのままか（G13）
 		Seals.Result seal = this.defenses.variant(Defenses.PASSKEY_SEAL)
 			.map((how) -> switch (how) {
 				case "mtls-only" -> this.seals.mtlsOnly(claims.peer());
@@ -210,7 +210,7 @@ class ApplicationController {
 			return reject("申込みの署名の照合", seal.detail(), 403);
 		}
 
-		// 意向確認と申込みの署名の連鎖（D14）
+		// 意向確認と申込みの署名の連鎖（G14）
 		if (this.defenses.enabled(Defenses.SEAL_CHAIN)) {
 			Seals.Result intentSeal = this.seals.passkey(intent, body.get("intentAssertion"), customer);
 			if (!intentSeal.ok()) {
@@ -228,7 +228,7 @@ class ApplicationController {
 			}
 		}
 
-		// 取決め（扱える保険の種類、年金の年額の上限）との照合（D15）
+		// 取決め（扱える保険の種類、年金の年額の上限）との照合（G15）
 		if (!serviceToken && this.defenses.enabled(Defenses.TERMS_RANGE)) {
 			if (!claims.hasScope("apply")) {
 				return reject("取決め（scope）", "apply が許されていない", 403);
@@ -245,7 +245,7 @@ class ApplicationController {
 			}
 		}
 
-		// 一度しか受け付けない（D16）
+		// 一度しか受け付けない（G16）
 		String nonceValue = String.valueOf(application.get("nonce"));
 		Store.Nonce nonce = this.store.nonces.get(nonceValue);
 		long now = Instant.now().getEpochSecond();
@@ -258,7 +258,7 @@ class ApplicationController {
 			this.store.nonces.put(nonceValue, new Store.Nonce(nonce.customer(), nonce.expiresAt(), true));
 		}
 
-		// 契約の記録は、署名済みの申込みから導出する。悪い実装（D17 を外す）は、入力された内容を信じる
+		// 契約の記録は、署名済みの申込みから導出する。悪い実装（G17 を外す）は、入力された内容を信じる
 		Map<String, Object> contract = derive(application);
 		if (!this.defenses.enabled(Defenses.DERIVE_RECORD) && body.get("contractEntry") instanceof Map<?, ?> entry) {
 			contract.putAll((Map<String, Object>) entry);
@@ -267,7 +267,7 @@ class ApplicationController {
 			.add(new Store.ContractRecord(contract, claims.actChain(), now, application, intent, claims.jti()));
 		AuditLog.contract(contract, claims.actChain(), claims.jti(), Canonical.challengeOf(application), now);
 
-		// 顧客へ直接送る。宛先は、登録済みの連絡先（D18）
+		// 顧客へ直接送る。宛先は、登録済みの連絡先（G18）
 		List<String> to = (!this.defenses.enabled(Defenses.REGISTERED_CONTACT) && body.get("contact") instanceof String c)
 				? List.of(c) : this.contacts.inboxesOf(customer).stream().map((inbox) -> "/notices/" + inbox).toList();
 		this.notifier.send(to, Map.of("customer", customer, "contract", contract));

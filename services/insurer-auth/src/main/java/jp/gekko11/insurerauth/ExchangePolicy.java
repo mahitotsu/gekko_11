@@ -13,7 +13,7 @@ final class ExchangePolicy {
 
 	static final String INSURER_BACKEND = "insurer-backend";
 
-	/** 認可サーバー自身。passkey の登録に使う P の宛先（D-37）。 */
+	/** 認可サーバー自身。受信箱の番号の登録と passkey の一覧の読み取りに使う P の宛先（D-42、D-43）。 */
 	static final String INSURER_AUTH = "insurer-auth";
 
 	/** 替えを頼む窓口ごとに、替えてよい宛先。 */

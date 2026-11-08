@@ -91,7 +91,7 @@ final class Products {
 		return null;
 	}
 
-	/** 提出された値のまま案にする。D30 を外した悪い実装だけが使う。本番の部品として使わないこと。 */
+	/** 提出された値のまま案にする。G30 を外した悪い実装だけが使う。本番の部品として使わないこと。 */
 	static Map<String, Object> unchecked(Map<String, Object> submitted) {
 		String kind = String.valueOf(submitted.get("kind"));
 		Long term = number(submitted.getOrDefault("termYears", DEFAULT_TERM));

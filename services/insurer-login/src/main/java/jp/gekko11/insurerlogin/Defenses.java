@@ -4,16 +4,16 @@ import java.util.function.Predicate;
 
 /**
  * 防御が有効か。secure の版は、常に有効のままである。
- * vulnerable の版だけ、実行中に外す部品（src/vulnerable）が判定を差し替える（D-20）。
+ * vulnerable の版だけ、実行中に外す部品（src/vulnerable）が判定を差し替える（D-24）。
  */
 public final class Defenses {
 
 	/** ログインサーバーで外せる防御（scenarios の 2-3）。 */
-	public static final String AUD_ONE = "D3a";
+	public static final String AUD_ONE = "G3a";
 
-	public static final String SHORT_TTL = "D3b";
+	public static final String SHORT_TTL = "G3b";
 
-	public static final String ID_TOKEN_AUD = "D3c";
+	public static final String ID_TOKEN_AUD = "G3c";
 
 	private static volatile Predicate<String> enabled = (id) -> true;
 

@@ -11,7 +11,7 @@ async function keys(alg: "RS256" | "ES256") {
   return { privateKey, jwks: createLocalJWKSet({ keys: [jwk] }) };
 }
 
-describe("ID トークンを確かめる（D21）", async () => {
+describe("ID トークンを確かめる（G21）", async () => {
   const { privateKey, jwks } = await keys("RS256");
   const idToken = (claims: Record<string, unknown>, aud = "customer-app", exp = "5m") =>
     new SignJWT(claims).setProtectedHeader({ alg: "RS256", kid: "k1" }).setIssuer(ISSUER).setSubject("alice").setAudience(aud).setIssuedAt().setExpirationTime(exp).sign(privateKey);
@@ -30,7 +30,7 @@ describe("ID トークンを確かめる（D21）", async () => {
   });
 });
 
-describe("案の署名を確かめてから示す（D22）", async () => {
+describe("案の署名を確かめてから示す（G22）", async () => {
   const { privateKey, jwks } = await keys("ES256");
   const plans = [
     { id: "fixed-60", name: "確定年金 10年・年額60万円", kind: "fixed", benefit: 600_000, monthly: 20_000 },
@@ -63,7 +63,7 @@ describe("案の署名を確かめてから示す（D22）", async () => {
   });
 });
 
-describe("確認画面を、署名する内容から作る（D23）", () => {
+describe("確認画面を、署名する内容から作る（G23）", () => {
   const fixed = { id: "fixed-60", name: "確定年金 10年・年額60万円", kind: "fixed", benefit: 600_000, monthly: 20_000 };
   const life = { id: "life-120", name: "終身年金・年額120万円", kind: "lifetime", benefit: 1_200_000, monthly: 60_000 };
   // 選んだのは確定年金だが、書類の案は終身年金にすり替えられている（営業 AI エージェントの説明文は、確定年金のまま）

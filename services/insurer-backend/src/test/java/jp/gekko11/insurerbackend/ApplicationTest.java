@@ -24,7 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * 保険会社のシステムの内容の確かめ（D9、D11〜D18）。トークンは token-guard が確かめた後の形（x-auth-claims）で渡す。
+ * 保険会社のシステムの内容の確かめ（G9、G11〜G18）。トークンは token-guard が確かめた後の形（x-auth-claims）で渡す。
  * 署名は、テスト用の認証器で作り、本物の検証に通す。
  */
 @SpringBootTest(properties = { "gekko.rp-id=customer-app.test", "gekko.origins=https://customer-app.test" })

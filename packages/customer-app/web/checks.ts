@@ -1,5 +1,5 @@
 // 顧客のアプリが、ブラウザの中で確かめること（scenarios の 2-3 の顧客のアプリの表）。
-// D21: ID トークン、D22: 案の署名、D23: 確認画面を署名する内容から作る。画面の部品から切り離し、単体テストで確かめる。
+// G21: ID トークン、G22: 案の署名、G23: 確認画面を署名する内容から作る。画面の部品から切り離し、単体テストで確かめる。
 import { decodeJwt, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { challengeOf } from "./codec.ts";
 
@@ -20,7 +20,7 @@ export interface Offer {
   expiresAt: number;
 }
 
-/** D21: ID トークンの署名、iss、宛先（顧客のアプリ）、期限、nonce を確かめ、本人を返す。 */
+/** G21: ID トークンの署名、iss、宛先（顧客のアプリ）、期限、nonce を確かめ、本人を返す。 */
 export async function verifyIdToken(
   idToken: string,
   keys: JWTVerifyGetKey,
@@ -32,7 +32,7 @@ export async function verifyIdToken(
 }
 
 /**
- * D22: 提示の、保険会社の署名を確かめ、署名された中身だけを返す。営業 AI エージェントが運んだ案の一覧は使わない。
+ * G22: 提示の、保険会社の署名を確かめ、署名された中身だけを返す。営業 AI エージェントが運んだ案の一覧は使わない。
  * 運ばれた一覧が署名された中身と違えば、tampered を立てる（画面に、すり替えを知らせる）。
  */
 export async function verifyOffer(offer: Offer, keys: JWTVerifyGetKey, sub: string): Promise<{ offer: Offer; tampered: boolean }> {
@@ -88,8 +88,8 @@ export interface Row {
 const yen = (n: number) => `${n.toLocaleString("ja-JP")} 円`;
 
 /**
- * D23: 意向確認書面の画面（署名の 1/2）は、意向確認の内容そのものから作る。営業 AI エージェントの説明文は使わない。
- * 案の名前は、意向確認の案の番号で、署名を確かめた提示（D22）から引く。
+ * G23: 意向確認書面の画面（署名の 1/2）は、意向確認の内容そのものから作る。営業 AI エージェントの説明文は使わない。
+ * 案の名前は、意向確認の案の番号で、署名を確かめた提示（G22）から引く。
  */
 export function intentRowsOf(intent: Intent, plans: Plan[]): Row[] {
   return [
@@ -103,7 +103,7 @@ export function intentRowsOf(intent: Intent, plans: Plan[]): Row[] {
   ];
 }
 
-/** D23: 申込書の画面（署名の 2/2）は、申込みの内容そのものから作る。 */
+/** G23: 申込書の画面（署名の 2/2）は、申込みの内容そのものから作る。 */
 export function applicationRowsOf(application: Application): Row[] {
   return [
     { key: "customer", label: "契約者", value: application.customer },

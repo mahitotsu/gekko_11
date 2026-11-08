@@ -1,4 +1,4 @@
-// 顧客のアプリの配信元（D-18）。画面（ブラウザで動く公開クライアント）と、その設定と、提示の公開鍵を渡す。
+// 顧客のアプリの配信元（D-41）。画面と、その設定と、提示の公開鍵を渡す。トークンは BFF が持ち、画面には渡さない。
 // 保険会社のシステムが、登録済みの連絡先へ直接送る契約内容を、受信箱の番号ごとに受ける（P-8、P-14、D-26）。AI を通らない。
 // 送り手は、Envoy が渡す相手の証明書の情報（XFCC）で、保険会社のシステムの SPIFFE ID に限る。
 import { readFileSync } from "node:fs";
@@ -49,7 +49,7 @@ const OFFER_KEYS_URL = process.env.OFFER_KEYS_URL ?? "http://127.0.0.1:15104/off
 let offerKeys: { at: number; body: unknown } | undefined;
 
 /**
- * 画面の CSP（D32。P-18）。画面でコードを動かされたときの第 2 の守りで、XSS をなくすものではない。
+ * 画面の CSP（G32。P-18）。画面でコードを動かされたときの第 2 の守りで、XSS をなくすものではない。
  * 読み込むものを配信元のスクリプトとスタイルに限る。つなぐ先を、自分の配信元（BFF）に限る。
  */
 export function contentSecurityPolicy(): string {

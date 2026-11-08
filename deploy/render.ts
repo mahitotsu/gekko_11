@@ -72,7 +72,7 @@ interface Service {
   clientCert?: boolean;
   /** トークンを見ない受け口で、サービスから mTLS で受けるポート（顧客のアプリの直送の受け口）。 */
   mtlsPort?: number;
-  /** 呼んでよい相手（D27、NetworkPolicy）。probe は、確かめのために全てを呼べる。 */
+  /** 呼んでよい相手（G27、NetworkPolicy）。probe は、確かめのために全てを呼べる。 */
   callers: string[];
   /** トークンを確かめず、相手の証明書の情報（XFCC）をアプリに渡す経路。 */
   openPaths?: string[];
@@ -90,7 +90,7 @@ interface Service {
   };
 }
 
-/** vulnerable だけ: D29 を外すと、もう一方の発行者の公開鍵も使う。 */
+/** vulnerable だけ: G29 を外すと、もう一方の発行者の公開鍵も使う。 */
 const anyIssuerEgress: Egress[] = vulnerable ? [{ port: LOGIN_EGRESS, target: "insurer-login" }] : [];
 
 /** 2 章の経路（architecture の 2-1）。 */
@@ -335,7 +335,7 @@ const ROUTER = {
   typed_config: { "@type": "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router" },
 };
 
-/** アクセスログ。パスにトークンが入っていないことを確かめるのに使う（D24）。 */
+/** アクセスログ。パスにトークンが入っていないことを確かめるのに使う（G24）。 */
 const ACCESS_LOG = [
   {
     name: "envoy.access_loggers.stdout",

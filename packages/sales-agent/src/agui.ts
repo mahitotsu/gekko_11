@@ -1,6 +1,6 @@
 // AG-UI の受け口（D-29）。AG-UI 1.0 の HTTP と SSE: POST で RunAgentInput を受け、SSE で 1 回分のイベントを返す。
 // 回は、営業 AI エージェントが画面側の道具を呼んだところ（顧客の答えを待つ）か、番が終わったところで閉じる。
-// 顧客の答えは、次の回の tool message で届く。トークンは token-guard が確かめ（D20）、会話は本人（sub）に結び付ける。
+// 顧客の答えは、次の回の tool message で届く。トークンは token-guard が確かめ（G20）、会話は本人（sub）に結び付ける。
 import { contentToText, EventType, type BaseEvent } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
 import type { Context } from "hono";

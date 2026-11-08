@@ -1,5 +1,5 @@
 // 営業 AI エージェント。顧客と AG-UI でやりとりし（D-29）、意向を聞いて案を示し、書類に署名してもらい、顧客の代理として提出する。
-// 契約を決める権限はない。トークンは、受け口の token-guard が確かめ（D20）、出口の token-guard が替える（D2）。
+// 契約を決める権限はない。トークンは、受け口の token-guard が確かめ（G20）、出口の token-guard が替える（G2）。
 // アプリは、トークンも鍵も持たない。
 import { Hono } from "hono";
 import { handleRun } from "./agui.ts";

@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 運用の受け口。営業 AI エージェントなどの登録を外し、また戻す（D4、P-13）。
+ * 運用の受け口。営業 AI エージェントなどの登録を外し、また戻す（G4、P-13）。
  * 呼べるのは、運用の担当の SPIFFE ID（operator）だけである。secure にもある運用の機能である。
  */
 @RestController

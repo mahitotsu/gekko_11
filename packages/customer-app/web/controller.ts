@@ -85,7 +85,7 @@ export function createController(deps: {
       const carried = args.offer as Offer;
       let offer = carried;
       let tampered = false;
-      if (enabled("D22")) {
+      if (enabled("G22")) {
         // 案は、保険会社の署名を確かめた中身から描く
         const keys = createLocalJWKSet((await (await fetch("/offers-jwks.json")).json()) as JSONWebKeySet);
         const v = await verifyOffer(carried, keys, session.sub).catch(async (e: Error) => {
@@ -95,7 +95,7 @@ export function createController(deps: {
         offer = v.offer;
         tampered = v.tampered;
       }
-      return dispatch({ type: "card", data: { kind: "offers", toolCallId: id, message: args.message, reasons: args.reasons, offer, verified: enabled("D22"), tampered } });
+      return dispatch({ type: "card", data: { kind: "offers", toolCallId: id, message: args.message, reasons: args.reasons, offer, verified: enabled("G22"), tampered } });
     }
     answerTool(id, { error: `この画面にない道具: ${name}` });
   }

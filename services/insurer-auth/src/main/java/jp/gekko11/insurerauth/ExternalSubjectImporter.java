@@ -38,7 +38,7 @@ import org.springframework.security.oauth2.server.authorization.settings.OAuth2T
 /**
  * ログインサーバーが出した A を確かめて、保存先に取り込む（D-36）。標準の交換の部品は、保存先にあるトークンしか替えない（F-G77）。
  * 取り込めば、後の確かめ（ExchangeGuard、標準の部品）と記録は、自分が出したトークンと同じように動く。
- * 教材のための意図的に悪い確かめを含む。vulnerable の名前空間では、D28 を外せる。本番の部品として使わないこと。
+ * 教材のための意図的に悪い確かめを含む。vulnerable の名前空間では、G28 を外せる。本番の部品として使わないこと。
  */
 final class ExternalSubjectImporter implements AuthenticationProvider {
 
@@ -87,7 +87,7 @@ final class ExternalSubjectImporter implements AuthenticationProvider {
 			if (this.defenses.enabled(Defenses.VERIFY_SUBJECT)) {
 				return this.decoder.decode(token).getClaims();
 			}
-			// 悪い確かめ（D28 を外す）: 署名も発行者も見ず、中身を読むだけ
+			// 悪い確かめ（G28 を外す）: 署名も発行者も見ず、中身を読むだけ
 			return CLAIMS.convert(JWTParser.parse(token).getJWTClaimsSet().getClaims());
 		}
 		catch (JwtException | ParseException ex) {

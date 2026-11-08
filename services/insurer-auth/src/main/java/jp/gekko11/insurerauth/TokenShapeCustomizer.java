@@ -31,7 +31,7 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
  * <li>取決めの範囲（authorization_details）と、確認済みの属性（verified_claims）を、出されたトークンから引き継ぐ</li>
  * </ul>
  * A と ID トークンは、ログインサーバーが出す（D-35）。
- * 教材のための意図的に悪い発行を含む。vulnerable の名前空間では、D3a、D3b、D3d、D3e を外せる。本番の部品として使わないこと。
+ * 教材のための意図的に悪い発行を含む。vulnerable の名前空間では、G3a、G3b、G3d、G3e を外せる。本番の部品として使わないこと。
  */
 final class TokenShapeCustomizer implements OAuth2TokenCustomizer<JwtEncodingContext> {
 
@@ -68,24 +68,24 @@ final class TokenShapeCustomizer implements OAuth2TokenCustomizer<JwtEncodingCon
 		}
 
 		if (audience != null) {
-			// 悪い発行（D3a を外す）: どの窓口でも通る、全ての宛先のトークン
+			// 悪い発行（G3a を外す）: どの窓口でも通る、全ての宛先のトークン
 			context.getClaims()
 				.audience(this.defenses.enabled(Defenses.AUD_ONE) ? List.of(audience) : ExchangePolicy.SERVICES);
 			if (ExchangePolicy.exchanges(audience)) {
 				context.getClaims().claim("may_act", Map.of("iss", issuer(context), "sub", audience));
 			}
 		}
-		// 悪い発行（D3b を外す）: 長い有効期間
+		// 悪い発行（G3b を外す）: 長い有効期間
 		if (!this.defenses.enabled(Defenses.SHORT_TTL)) {
 			context.getClaims().expiresAt(java.time.Instant.now().plus(Duration.ofHours(24)));
 		}
-		// 悪い発行（D3d を外す）: 替えるときに、経由（act）を落とす
+		// 悪い発行（G3d を外す）: 替えるときに、経由（act）を落とす
 		if (!this.defenses.enabled(Defenses.KEEP_ACT)) {
 			context.getClaims().claims((claims) -> claims.remove("act"));
 		}
 	}
 
-	/** 交換では、出されたトークンの取決めと確認済みの属性を引き継ぐ。取決めは、狭めるだけにする（D3e）。 */
+	/** 交換では、出されたトークンの取決めと確認済みの属性を引き継ぐ。取決めは、狭めるだけにする（G3e）。 */
 	private void inheritedClaims(JwtEncodingContext context, OAuth2TokenExchangeAuthenticationToken exchange) {
 		OAuth2Authorization subject = context.getAuthorization();
 		OAuth2Authorization.Token<?> token = (subject != null) ? subject.getToken(exchange.getSubjectToken()) : null;
@@ -98,7 +98,7 @@ final class TokenShapeCustomizer implements OAuth2TokenCustomizer<JwtEncodingCon
 		List<Map<String, Object>> terms = original;
 		if (requested instanceof String raw) {
 			List<Map<String, Object>> wanted = parseTerms(raw);
-			// 悪い発行（D3e を外す）: 求められたとおりに広げる
+			// 悪い発行（G3e を外す）: 求められたとおりに広げる
 			terms = this.defenses.enabled(Defenses.NARROW_TERMS) ? narrow(original, wanted) : wanted;
 		}
 		if (terms != null) {

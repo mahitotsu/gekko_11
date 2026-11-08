@@ -78,13 +78,13 @@ describe("受け口の確かめ（保険会社のシステム）", () => {
   });
 
   it("外した防御の確かめだけが飛ぶ", async () => {
-    await off({ D7: "off", D26: "off", D27: "off" });
-    expect(await (await fetch(admin)).json()).toEqual({ off: { D7: "off", D26: "off", D27: "off" } });
+    await off({ G7: "off", G26: "off", G27: "off" });
+    expect(await (await fetch(admin)).json()).toEqual({ off: { G7: "off", G26: "off", G27: "off" } });
     const stray = { sub: "alice", aud: "insurer-mcp" };
     expect(await refusal(await sign(stray), "intruder")).toBe("通る");
     expect(await refusal(await sign(stray, "JWT"), "intruder")).toMatch(/確かめられない/);
-    expect((await off({ D99: "off" })).status).toBe(400);
-    await off({ D10: "off" });
+    expect((await off({ G99: "off" })).status).toBe(400);
+    await off({ G10: "off" });
     expect(await refusal(await sign({ sub: "revoked", aud: "insurer-backend", cnf: { "x5t#S256": x5t } }))).toBe("通る");
     await off({});
   });

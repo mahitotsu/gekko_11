@@ -20,7 +20,7 @@ import org.keycloak.util.JsonSerialization;
 /**
  * A を出すたびに、監査のための記録を 1 行の JSON で書く（D-17、D-30）。Alloy が集め、名前空間の Loki に入れる。
  * スコープ apply にだけ付けるので、A のほかのトークン（passkey の登録に使う P）では動かない。トークンそのものは書かない。
- * 教材のための意図的に悪い発行を含む。vulnerable の名前空間では、D3a〜D3c を外せる。本番の部品として使わないこと。
+ * 教材のための意図的に悪い発行を含む。vulnerable の名前空間では、G3a〜G3c を外せる。本番の部品として使わないこと。
  */
 public final class IssuanceMapper extends AbstractOIDCProtocolMapper implements OIDCAccessTokenMapper, OIDCIDTokenMapper {
 
@@ -61,11 +61,11 @@ public final class IssuanceMapper extends AbstractOIDCProtocolMapper implements 
 	@Override
 	public AccessToken transformAccessToken(AccessToken token, ProtocolMapperModel mapping, KeycloakSession session,
 			UserSessionModel user, ClientSessionContext client) {
-		// 悪い発行（D3a を外す）: どの窓口でも通る、全ての宛先のトークン
+		// 悪い発行（G3a を外す）: どの窓口でも通る、全ての宛先のトークン
 		if (!Defenses.enabled(Defenses.AUD_ONE)) {
 			token.audience(SERVICES);
 		}
-		// 悪い発行（D3b を外す）: 長い有効期間
+		// 悪い発行（G3b を外す）: 長い有効期間
 		if (!Defenses.enabled(Defenses.SHORT_TTL)) {
 			token.exp(Instant.now().plusSeconds(24 * 60 * 60).getEpochSecond());
 		}
@@ -84,7 +84,7 @@ public final class IssuanceMapper extends AbstractOIDCProtocolMapper implements 
 	@Override
 	public IDToken transformIDToken(IDToken token, ProtocolMapperModel mapping, KeycloakSession session,
 			UserSessionModel user, ClientSessionContext client) {
-		// 悪い発行（D3c を外す）: ID トークンの宛先に、API の識別子まで入れる
+		// 悪い発行（G3c を外す）: ID トークンの宛先に、API の識別子まで入れる
 		if (!Defenses.enabled(Defenses.ID_TOKEN_AUD)) {
 			String[] audience = new String[SERVICES.length + 1];
 			audience[0] = client.getClientSession().getClient().getClientId();

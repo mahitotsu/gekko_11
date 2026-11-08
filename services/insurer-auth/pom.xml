@@ -15,16 +15,6 @@
   <properties>
     <java.version>21</java.version>
   </properties>
-  <dependencyManagement>
-    <dependencies>
-      <!-- webauthn4j が使う Jackson 3 は、jackson-annotations 2.22 を求める。annotations は後方互換を保つので、ここだけ上げる -->
-      <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-annotations</artifactId>
-        <version>2.22</version>
-      </dependency>
-    </dependencies>
-  </dependencyManagement>
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>

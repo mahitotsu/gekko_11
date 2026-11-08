@@ -1,4 +1,4 @@
-// 画面のビルド。インラインのスクリプトとスタイルを作らないので、画面の CSP（D32）を 'self' だけで組める。
+// 画面のビルド。インラインのスクリプトとスタイルを作らないので、画面の CSP（G32）を 'self' だけで組める。
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 

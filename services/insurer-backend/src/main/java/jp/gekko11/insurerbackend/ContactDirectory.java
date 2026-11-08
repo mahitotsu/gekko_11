@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 /**
- * 顧客が登録した連絡先（受信箱の番号）を、認可サーバーから引く（P-14、D-26）。直送の宛先は、申込みに書かれた連絡先ではなく、これにする（D18）。
+ * 顧客が登録した連絡先（受信箱の番号）を、認可サーバーから引く（P-14、D-26）。直送の宛先は、申込みに書かれた連絡先ではなく、これにする（G18）。
  * 認可サーバーは、相手の SPIFFE ID で呼び出しを限る。
  */
 interface ContactDirectory {

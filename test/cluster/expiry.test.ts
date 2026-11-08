@@ -12,17 +12,17 @@ interface Prepared {
 
 const RUNS: { name: string; ns: Ns; gaps: Gaps; harmed: boolean }[] = [
   { name: "secure: 防御が全てあれば、被害は出ない", ns: "secure", gaps: {}, harmed: false },
-  { name: "vulnerable（D6、D10、D13、D14 が全てある）: 被害は出ない", ns: "vulnerable", gaps: {}, harmed: false },
-  { name: "vulnerable（D6 だけを外す）: ほかの防御が止める", ns: "vulnerable", gaps: { D6: "off" }, harmed: false },
-  { name: "vulnerable（D10 だけを外す）: ほかの防御が止める", ns: "vulnerable", gaps: { D10: "off" }, harmed: false },
-  { name: "vulnerable（D13 だけを外す）: ほかの防御が止める", ns: "vulnerable", gaps: { D13: "off" }, harmed: false },
-  { name: "vulnerable（D14 だけを外す）: ほかの防御が止める", ns: "vulnerable", gaps: { D14: "off" }, harmed: false },
-  // 期限が切れるまで待つ間に、トークンを結んだ SVID が入れ替わることがある（F-G54）。入れ替わると D26 でも止まるので、
-  // 被害を確実に再現するため、最小の組に D26 も含める。D26 が止めるかは時刻に依るので、「どれか 1 つで止める防御」には入れない
+  { name: "vulnerable（G6、G10、G13、G14 が全てある）: 被害は出ない", ns: "vulnerable", gaps: {}, harmed: false },
+  { name: "vulnerable（G6 だけを外す）: ほかの防御が止める", ns: "vulnerable", gaps: { G6: "off" }, harmed: false },
+  { name: "vulnerable（G10 だけを外す）: ほかの防御が止める", ns: "vulnerable", gaps: { G10: "off" }, harmed: false },
+  { name: "vulnerable（G13 だけを外す）: ほかの防御が止める", ns: "vulnerable", gaps: { G13: "off" }, harmed: false },
+  { name: "vulnerable（G14 だけを外す）: ほかの防御が止める", ns: "vulnerable", gaps: { G14: "off" }, harmed: false },
+  // 期限が切れるまで待つ間に、トークンを結んだ SVID が入れ替わることがある（F-G54）。入れ替わると G26 でも止まるので、
+  // 被害を確実に再現するため、最小の組に G26 も含める。G26 が止めるかは時刻に依るので、「どれか 1 つで止める防御」には入れない
   {
-    name: "vulnerable（D6、D10、D13、D14、D26 を外す）: 被害が出る",
+    name: "vulnerable（G6、G10、G13、G14、G26 を外す）: 被害が出る",
     ns: "vulnerable",
-    gaps: { D6: "off", D10: "off", D13: "off", D14: "off", "D26@insurer-backend": "off" },
+    gaps: { G6: "off", G10: "off", G13: "off", G14: "off", "G26@insurer-backend": "off" },
     harmed: true,
   },
 ];

@@ -5,7 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Component;
 
-/** 登録を外したクライアント。新しいトークンを出さず、出したトークンも有効性の問い合わせで無効にする（D4、D10）。 */
+/** 登録を外したクライアント。新しいトークンを出さず、出したトークンも有効性の問い合わせで無効にする（G4、G10）。 */
 @Component
 class ClientRevocation {
 
