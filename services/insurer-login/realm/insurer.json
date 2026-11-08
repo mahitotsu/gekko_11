@@ -1,5 +1,6 @@
 {
   "realm": "insurer",
+  "loginTheme": "insurer",
   "enabled": true,
   "sslRequired": "none",
   "accessTokenLifespan": 300,
@@ -7,6 +8,28 @@
   "ssoSessionMaxLifespan": 3600,
   "revokeRefreshToken": true,
   "refreshTokenMaxReuse": 0,
+  "webAuthnPolicyPasswordlessRpId": "${NAMESPACE}.localhost",
+  "webAuthnPolicyPasswordlessRpEntityName": "教材保険会社",
+  "webAuthnPolicyPasswordlessPasskeysEnabled": true,
+  "webAuthnPolicyPasswordlessMediation": "none",
+  "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
+  "webAuthnPolicyPasswordlessResidentKey": "not specified",
+  "webAuthnPolicyPasswordlessRequireResidentKey": "Yes",
+  "webAuthnPolicyPasswordlessAuthenticatorAttachment": "platform",
+  "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": true,
+  "localizationTexts": {
+    "en": {
+      "webauthn-registration-title": "パスキーを登録します。このパスキーで、次からのログインと、申込みの署名をします",
+      "webauthn-registration-init-label": "パスキー",
+      "deleteCredentialTitle": "{0} を消します",
+      "deleteCredentialMessage": "{0} を保険会社から消しますか。消すと、このパスキーでは、ログインも申込みの署名もできなくなります。",
+      "doConfirmDelete": "消す",
+      "doDecline": "やめる",
+      "doRegisterSecurityKey": "パスキーを登録する",
+      "webauthn-doAuthenticate": "パスキーでログイン",
+      "passkey-doAuthenticate": "パスキーでログイン"
+    }
+  },
   "roles": {
     "realm": [
       {
@@ -14,6 +37,16 @@
       },
       {
         "name": "AUDITOR"
+      }
+    ]
+  },
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "insurer-auth",
+        "roles": [
+          "view-users"
+        ]
       }
     ]
   },
@@ -106,6 +139,29 @@
       }
     },
     {
+      "id": "carol",
+      "username": "carol",
+      "enabled": true,
+      "email": "carol@example.invalid",
+      "emailVerified": true,
+      "firstName": "Carol",
+      "lastName": "Carol",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo"
+        }
+      ],
+      "realmRoles": [
+        "CUSTOMER"
+      ],
+      "attributes": {
+        "verified_claims": [
+          "{\"verification\":{\"trust_framework\":\"jp_aml\",\"method\":\"対面で本人確認書類を確認\",\"time\":\"2026-01-15\"},\"claims\":{\"name\":\"Carol\"}}"
+        ]
+      }
+    },
+    {
       "id": "kansa",
       "username": "kansa",
       "enabled": true,
@@ -122,6 +178,16 @@
       "realmRoles": [
         "AUDITOR"
       ]
+    },
+    {
+      "username": "service-account-insurer-auth",
+      "enabled": true,
+      "serviceAccountClientId": "insurer-auth",
+      "clientRoles": {
+        "realm-management": [
+          "view-users"
+        ]
+      }
     }
   ],
   "identityProviders": [
@@ -289,6 +355,42 @@
         "jwt.credential.issuer": "spire",
         "jwt.credential.sub": "spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/insurer-audit"
       }
+    },
+    {
+      "clientId": "insurer-auth",
+      "publicClient": false,
+      "clientAuthenticatorType": "federated-jwt",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": [],
+      "attributes": {
+        "use.refresh.tokens": "false",
+        "jwt.credential.issuer": "spire",
+        "jwt.credential.sub": "spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/insurer-auth"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm-management roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "realm-management",
+            "claim.name": "resource_access.realm-management.roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     }
   ]
 }

@@ -106,6 +106,15 @@ class ApplicationTest {
 			.isEqualTo(200);
 	}
 
+	@Test
+	void signatureMadeOnAnotherScreenIsRefusedEvenWithTheSamePasskey() throws Exception {
+		// 同じ passkey で、ログインの画面（別の origin）で作った署名。鍵も内容も正しいが、申込みの署名にはならない（D-42）
+		this.alice = this.alice.on("https://login.customer-app.test");
+		MvcResult result = submit(claims("alice", true), prepare("alice", "fixed-60", Map.of()));
+		assertThat(result.getResponse().getStatus()).isEqualTo(403);
+		assertThat(body(result)).contains("顧客のアプリの画面で作った署名ではない");
+	}
+
 	@SuppressWarnings("unchecked")
 	@Test
 	void applicationChangedAfterSigningIsRefused() throws Exception {

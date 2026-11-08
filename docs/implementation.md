@@ -9,7 +9,7 @@
 - **動かし方:** `npm test` が 3 つの言語の単体テストを回す。`npm run cluster:deploy` がクラスタを組み立て、`npm run cluster:test` が全シナリオと画面のテストを確かめる。画面は、ブラウザで `http://app.secure.localhost:8081` を開いて使う。監査の画面は `http://audit.secure.localhost:8081` である。
 - **防御を外す受け口は、vulnerable のイメージだけにある:** 防御の ID ごとに、管理のポートで実行中に外す。教材のための意図的な実装で、本番の部品として使わない（D-24）。
 - **営業 AI エージェント:** 顧客と AG-UI 1.0 で会話する（D-29）。secure では本物の Claude（既定は Haiku）、vulnerable では台本で動く（D-23）。
-- **まだ確かめていないこと:** passkey は、Windows Hello と VS Code に内蔵されたブラウザの組み合わせでだけ確かめた。記録が 7 日で消えることは、確かめていない。
+- **まだ確かめていないこと:** ログインと署名で同じ passkey を使うことは、Chromium の仮想の認証器だけで確かめた。本物の認証器（Windows Hello など）では、確かめていない。記録が 7 日で消えることも、確かめていない。
 
 ## 1. 技術スタックは、サービスごとに選んだ言語と、k3d の基盤である
 | 領域 | 使うもの | 使う場所 |
@@ -31,8 +31,8 @@ TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。J
 ## 2. フォルダ構成は、言語ごとのサービスと、クラスタの組み立てと、テストである
 ```text
 services/
-  insurer-login/     ログインサーバー（Keycloak の realm の設定と拡張。ログイン、利用者の名簿、本人確認の属性、A と ID トークンと P の発行）
-  insurer-auth/      認可サーバー（A の取り込み、B と C への交換、passkey の登録、失効、有効性の問い合わせ）
+  insurer-login/     ログインサーバー（Keycloak の realm の設定、拡張、画面。ログイン、利用者の名簿、本人確認の属性、passkey、A と ID トークンと P の発行）
+  insurer-auth/      認可サーバー（A の取り込み、B と C への交換、連絡先の登録、passkey の公開鍵の取り次ぎ、失効、有効性の問い合わせ）
   insurer-backend/   保険会社のシステム（商品の規則と試算、案の確かめと署名、申込みの検証、契約の記録、直送、監査の役への記録）
   insurer-mcp/       事務サービス（MCP の道具と、ツールの呼び出しの記録）
   insurer-audit/     監査サービス（監査の担当のログイン、記録の読み手、突き合わせ、監査の画面）
@@ -50,8 +50,9 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 
 | ファイル | 役割 |
 |---|---|
-| `services/insurer-login/realm/insurer.json` | 利用者、役割、クライアント、スコープ `apply` と `passkeys`、SPIRE との信頼の設定 |
+| `services/insurer-login/realm/insurer.json` | 利用者、役割、クライアント、スコープ `apply` と `passkeys`、passkey の設定（RP ID、重ねての登録の拒否、登録と削除の画面の文言）、SPIRE との信頼の設定 |
 | `services/insurer-login/src/main/java/jp/gekko11/insurerlogin/` | 取決めの範囲の処理と、A の発行の記録（D-39） |
+| `services/insurer-login/theme/insurer/` | ログインの画面。標準の画面を引き継ぎ、passkey の登録のスクリプトだけを替える。名前を尋ねず、作った環境と日時を名前にする（D-42、D-43） |
 | `services/insurer-auth/src/main/java/jp/gekko11/insurerauth/` | 認可サーバーの拡張点（SAN の照合、A の取り込み（D28）、交換の前の確かめ、トークンの形、有効性の問い合わせ） |
 | `services/insurer-backend/src/main/java/jp/gekko11/insurerbackend/ApplicationController.java` | 試算の受け口、提示の確定（D30）、申込みの内容の確かめ（D9、D11〜D18） |
 | `services/insurer-login/realm/insurer.json` | A の有効期間、更新のトークンの使い回しの拒否（D31）、ログインの上限 |
@@ -65,8 +66,10 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `packages/token-guard/src/exchange.ts` | 出口の交換（D2） |
 | `packages/customer-app/web/checks.ts` | 画面の確かめ（D21〜D23） |
 | `packages/customer-app/web/components/` | 画面（ログイン、登録、カードで進む申込み、確認、署名、照合。D-34） |
-| `packages/customer-app/src/bff.ts` | BFF（D-41）。ログイン、セッション、更新（P-18）、ID トークンの確かめ（D21）、営業 AI エージェントと認可サーバーへの中継、CSRF の対策 |
-| `packages/customer-app/web/auth.ts` | 画面の側のログイン。BFF の受け口を呼ぶだけで、トークンを持たない |
+| `packages/customer-app/src/bff.ts` | BFF（D-41）。ログイン（頼まれたら passkey の登録も。D-42）、本人の passkey の一覧の読み取り（D-43）、セッション、更新（P-18）、ID トークンの確かめ（D21）、受信箱の番号の登録（D-26）、営業 AI エージェントへの中継、CSRF の対策 |
+| `packages/customer-app/web/auth.ts` | 画面の側のログイン。BFF の受け口を呼ぶだけで、トークンを持たない。端末の受信箱の番号を覚える |
+| `packages/customer-app/web/passkey.ts` | passkey での署名（保険会社にある passkey に限る）と、一覧を端末に伝える Signal API（D-43） |
+| `packages/customer-app/web/components/App.tsx` | 画面。「パスキー」の欄（一覧、この端末で使った印、作成、ログインサーバーに頼む削除。D-43）と、作成の促し |
 | `packages/customer-app/web/controller.ts`、`conversation.ts` | 申込みの進め方と、会話の状態 |
 | `packages/sales-agent/src/agui.ts` | AG-UI の受け口（`POST /agui`。RunAgentInput を確かめ、SSE でイベントを返す） |
 | `packages/sales-agent/src/thread.ts` | 会話ごとの状態と、画面側の道具の呼び出しと待ち合わせ（D-29）。会話の記録を、秘密を伏せて書き出す（D-32） |
@@ -99,7 +102,7 @@ npm run cluster:down     # クラスタを消す
 |---|---|
 | `app.<名前空間>.localhost` | 顧客のアプリの配信元（画面、BFF、設定、提示の公開鍵、受信箱） |
 | `login.<名前空間>.localhost` | ログインサーバー（ブラウザに出す経路だけ）。A の issuer は `http://login.<名前空間>.localhost:<ポート>/realms/insurer` である |
-| `auth.<名前空間>.localhost` | 認可サーバー（passkey の登録と確かめだけ）。B と C の issuer も、この名前である |
+| `auth.<名前空間>.localhost` | 認可サーバー。B と C の issuer の名前で、ブラウザに出す経路はない（すべて 404） |
 | `agent.<名前空間>.localhost` | 営業 AI エージェント（AG-UI の受け口 `POST /agui`） |
 | `audit.<名前空間>.localhost` | 監査サービス（監査の画面と、同じ中身の JSON の受け口 `/api/contracts`） |
 
@@ -127,11 +130,12 @@ vulnerable のイメージでは、次の部品が、管理のポートで防御
 secure のイメージは、ビルドの時点で、この受け口を含まない。Java とログインサーバーの拡張は Maven の profile、TypeScript はファイルの置き換えで分ける。画面は、置き換えた後にまとめるので、secure の画面は外す道を持たない。事務サービスは、外す防御を token-guard に移したので、イメージは 1 つである。
 
 ## 5. 簡略化した点
-- **業務の記憶と鍵は、メモリ上か Pod の中にある:** 認可サーバーと保険会社のシステムの記憶（passkey の登録、契約の記録、`nonce`）と、発行と提示の鍵は、起動ごとに作る。ログインサーバーは、Pod の中のファイルに記憶を置き、起動ごとに realm の設定を読み込む。どちらも再起動で消える。認可サーバーが登録を忘れた後は、顧客のアプリが、ログインの直後に本人の passkey の一覧（`/passkeys/mine`）と照らして気付き、登録し直しに案内する。
-- **ログインは固定ユーザーである:** 顧客の alice、bob、mallory、hanako と、監査の担当の kansa が、パスワード `demo` で入れる。本人確認の記録は、ログインサーバーの realm の設定に固定で持つ。`sub` は、利用者の ID を固定して、この名前にする。alice、bob、mallory はテストが使う。手で画面を試すときは hanako を使う。テストの申込みが、受信箱に混ざらないためである。監査の画面は、kansa で見る。同じブラウザで替えるときは、画面のサインアウトを使う。
+- **業務の記憶と鍵は、メモリ上か Pod の中にある:** 認可サーバーと保険会社のシステムの記憶（受信箱の番号、契約の記録、`nonce`）と、発行と提示の鍵は、起動ごとに作る。ログインサーバーは、Pod の中のファイルに記憶（登録した passkey を含む）を置き、起動ごとに realm の設定を読み込む。どちらも再起動で消える。受信箱の番号は、ログインのたびに BFF が登録し直す。ログインサーバーが passkey を忘れた後は、パスワードでログインする。保険会社に passkey がないので、画面が作成を促す。作り直すと、端末の古い passkey は置き換わる。
+- **ログインは固定ユーザーである:** 顧客の alice、bob、mallory、hanako、carol と、監査の担当の kansa が、パスワード `demo` で入れる。顧客は、パスワードでログインした後に passkey を作り、次からは passkey で入る。本人確認の記録は、ログインサーバーの realm の設定に固定で持つ。`sub` は、利用者の ID を固定して、この名前にする。alice、bob、mallory はテストが使う。carol は、passkey を持たない利用者として、作成の促しのテストだけが使う。手で画面を試すときは hanako を使う。テストの申込みが、受信箱に混ざらないためである。監査の画面は、kansa で見る。同じブラウザで替えるときは、画面のサインアウトを使う。passkey でログインするときは、ログインの画面の「パスキーでログイン」を押す。
 - **商品の規則と料率は、教材用の仮の値である:** 確定年金と終身年金の 2 商品で、年齢、性別、受取開始年齢で金額を変えない。年金の年額は、`月額 × 12 × 払込年数 ÷ 換算年数` を 1 万円単位に切り捨てる。換算年数は、確定年金が受取期間、終身年金が 15 年である。実在の料率ではない（P-17）。受取期間と年額の下限の例は I-A7 に沿わせた。
 - **台本は、案を組み立てない:** vulnerable の名前空間と認証情報のない環境の台本は、既定の条件（確定年金は 10 年、払込は 25 年）の 4 案を提出する。案のカードで頼み直すと、そこで止まる。希望が案に届くのは、Claude が動く secure だけである。
 - **passkey の署名回数を見ない:** 同期される passkey は回数が 0 のままのため、重複は `nonce` で防ぐ。
+- **Keycloak の passkey の不具合を、設定で避ける:** resident key を「Required」にすると、名前のない passkey ができる。そのため、2 つの設定を組み合わせた（F-G92）。登録の画面のスクリプトも、写して直した（`services/insurer-login/theme/insurer/`）。版を上げるときは、どちらも確かめ直す。
 - **確かめの役は、乗っ取られた複製として動く:** probe は、そのサービスの ServiceAccount で動き、同じ SPIFFE ID を持つ。別の SVID が要る役は、別のノードに置く（F-G53）。
 - **上流への接続は、要求ごとにつなぎ直す:** SVID が入れ替わった後に、前の証明書の接続を使い回すと、新しい証明書に結んだトークンと食い違う。要求ごとに新しくつなぎ、そのときの SVID で示す（F-G54）。
 - **`actor_token` は、替えるたびに取り直す:** SVID が入れ替わると、前の証明書に結んだ `actor_token` は使えないためである（F-G54）。
@@ -150,8 +154,9 @@ secure のイメージは、ビルドの時点で、この受け口を含まな�
 - **probe の顧客の役も残る:** 多くのシナリオは、クラスタの中の probe が顧客を演じる。署名と DPoP の proof には、入口の公開名を使う。
 
 ## 6. まだ確かめていないこと
-- 顧客のアプリの BFF は、自動テストだけで確かめた。Windows Hello などの本物の認証器と、手での操作では、まだ確かめていない（D-41）。
-- 画面は、Chromium と仮想の認証器で自動テストした。さらに、Windows の VS Code に内蔵されたブラウザと Windows Hello で、ログインから照合まで手で確かめた（F-G63）。ほかのブラウザ（Chrome、Edge、Safari、Firefox）と、ほかの認証器（スマートフォンの passkey など）では、確かめていない。
+- Windows Hello が、Signal API で伝えた一覧を反映して、古い passkey を消すかは、確かめていない（F-G95、D-43）。
+- 顧客のアプリの BFF と、ログインと署名で同じ passkey を使うことは、自動テストだけで確かめた。Windows Hello などの本物の認証器と、手での操作では、まだ確かめていない（D-41、D-42）。
+- 画面は、Chromium と仮想の認証器で自動テストした。passkey を署名だけに使っていた構成では、ログインから照合までを手でも確かめた。使ったのは、Windows の VS Code に内蔵されたブラウザと Windows Hello である（F-G63）。ほかのブラウザ（Chrome、Edge、Safari、Firefox）と、ほかの認証器（スマートフォンの passkey など）では、確かめていない。
 - 顧客のアプリは、保険会社が署名した登録情報から、営業 AI エージェントの名称、所属、扱える範囲を示す（P-12）。この表示は、未実装である。画面は、取決めの範囲だけを示す。
 - Loki の保存期間（7 日）を過ぎた記録が、ファイルの保存で実際に消えることは、確かめていない（F-G70）。
 - 種類の違うトークンで鍵と `iss` を分けること（D3c の一部）は、ログインサーバーの中では未実装である。ID トークンと A は、同じ鍵と `iss` で出す。

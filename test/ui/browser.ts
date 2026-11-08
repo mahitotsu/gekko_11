@@ -1,6 +1,6 @@
 // 画面のテストの部品。ブラウザの顧客を演じる。passkey は、CDP の仮想の認証器が持つ（D-28）。
 // ブラウザは、入口（http://app.<ns>.localhost）から、ほかの利用者と同じ経路で画面を使う。
-import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright-core";
+import { chromium, type Browser, type BrowserContext, type Dialog, type Page, type Request, type Route } from "playwright-core";
 import { parseSse } from "../cluster/sse.ts";
 import { publicOrigin, type Json, type Ns } from "../cluster/world.ts";
 
@@ -47,8 +47,9 @@ export class BrowserCustomer {
     return publicOrigin(this.ns, "app");
   }
 
-  async open(): Promise<this> {
+  async open(beforeGoto?: () => Promise<void>): Promise<this> {
     this.context = await (await connect()).newContext();
+    await beforeGoto?.();
     this.page = await this.context.newPage();
     const cdp = await this.context.newCDPSession(this.page);
     await cdp.send("WebAuthn.enable");
@@ -63,7 +64,7 @@ export class BrowserCustomer {
     await this.context?.close();
   }
 
-  /** 取決めに同意して、ログインサーバーのログイン画面で、固定ユーザーのパスワードを入れる。 */
+  /** ログインサーバーの画面で、固定ユーザーのパスワードを入れてログインする。 */
   async login() {
     await this.page.getByTestId("login").click();
     await this.page.locator("#username").fill(this.user);
@@ -72,27 +73,84 @@ export class BrowserCustomer {
     await this.page.waitForURL(`${this.app}/**`);
   }
 
+  /** 「パスキー」の欄の追加のボタンから、ログインサーバーの登録の画面へ進む（ログインは続いているので、パスワードは尋ねない）。 */
+  async openRegisterPage() {
+    await this.page.getByTestId("tab-passkeys").click();
+    await this.page.getByTestId("add-passkey").click();
+    await this.page.locator("#registerWebAuthn").waitFor();
+  }
+
+  /**
+   * 登録の画面で passkey を作り、顧客のアプリへ戻る。ログインサーバーは名前を尋ねない（prompt() を使えないブラウザがあるため。D-42）。
+   * Playwright はダイアログを自分で閉じるので、出たこと自体を失敗にする。
+   */
+  async registerPasskey() {
+    const dialogs: string[] = [];
+    const record = (dialog: Dialog) => dialogs.push(dialog.type());
+    this.page.on("dialog", record);
+    await this.page.locator("#registerWebAuthn").click();
+    await this.page.waitForURL(`${this.app}/**`);
+    this.page.off("dialog", record);
+    if (dialogs.length) throw new Error(`passkey の登録で、ダイアログが出た: ${dialogs.join(", ")}`);
+  }
+
+  /**
+   * 登録を済ませた端末でのログイン。ログインの画面で「パスキーでログイン」を押す。画面は、押すまで passkey を使い始めない（D-42）。
+   * 返すのは、ログインサーバーへ送った本人の示し方（passkey の署名か、パスワードか）。
+   */
+  async loginWithPasskey(): Promise<{ passkey: boolean; password: boolean }> {
+    const sent = { passkey: false, password: false };
+    const watch = (request: Request) => {
+      if (request.method() !== "POST" || !request.url().includes("/login-actions/authenticate")) return;
+      const body = new URLSearchParams(request.postData() ?? "");
+      if (body.get("credentialId") && body.get("signature")) sent.passkey = true;
+      if (body.get("password")) sent.password = true;
+    };
+    this.page.on("request", watch);
+    await this.page.getByTestId("login").click();
+    await this.page.locator("#authenticateWebAuthnButton").click();
+    await this.page.waitForURL(`${this.app}/**`);
+    await this.whoami();
+    this.page.off("request", watch);
+    return sent;
+  }
+
   async whoami(): Promise<string | null> {
     await anyVisible(this.page, "whoami", "error").waitFor();
     return (await this.page.getByTestId("whoami").isVisible()) ? this.page.getByTestId("whoami").textContent() : null;
+  }
+
+  async info(): Promise<string | null> {
+    return (await this.page.getByTestId("info").isVisible()) ? this.page.getByTestId("info").textContent() : null;
   }
 
   async error(): Promise<string | null> {
     return (await this.page.getByTestId("error").isVisible()) ? this.page.getByTestId("error").textContent() : null;
   }
 
-  async registerPasskey() {
-    await this.page.getByTestId("register-passkey").click();
-    await this.page.getByTestId("free-send").waitFor();
-  }
-
-  /** ログインと登録までを済ませる。 */
+  /** ログインし、この端末の passkey を作り（ログインと申込みの署名で同じ passkey。D-42）、相談を始められるところまで進む。 */
   async ready(): Promise<this> {
     await this.open();
     await this.login();
     if ((await this.whoami()) !== this.user) throw new Error(`ログインできない: ${await this.error()}`);
+    await this.openRegisterPage();
     await this.registerPasskey();
+    await this.page.getByTestId("tab-apply").click();
+    await this.page.getByTestId("free-send").waitFor();
     return this;
+  }
+
+  /** 画面が Signal API で端末に伝えた内容を、後から読めるように記録する（D-43）。open の前に呼ぶ。 */
+  async recordSignals() {
+    await this.context.addInitScript(() => {
+      const calls: unknown[] = [];
+      (window as unknown as { __signals: unknown[] }).__signals = calls;
+      Object.defineProperty(PublicKeyCredential, "signalAllAcceptedCredentials", { configurable: true, value: async (o: unknown) => void calls.push(o) });
+    });
+  }
+
+  async signals(): Promise<{ rpId: string; userId: string; allAcceptedCredentialIds: string[] }[]> {
+    return this.page.evaluate(() => (window as unknown as { __signals?: never[] }).__signals ?? []);
   }
 
   /** 営業 AI エージェントの番が終わるまで待つ。 */

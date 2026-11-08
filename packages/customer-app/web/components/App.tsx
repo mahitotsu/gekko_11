@@ -1,14 +1,13 @@
-// 顧客のアプリの画面（D-18）。ブラウザで動く公開クライアントで、トークンと鍵は端末の中に置く。
-// ログインと passkey と受信箱の登録の後は、営業 AI エージェントと AG-UI でやりとりし、カードを積んで進む（D-29、D-34）。営業 AI エージェントが、
+// 顧客のアプリの画面（D-40）。トークンと鍵は BFF が持ち、画面は持たない（D-41）。
+// ログインの後は、営業 AI エージェントと AG-UI でやりとりし、カードを積んで進む（D-29、D-34）。営業 AI エージェントが、
 // 質問、案の提示、意向確認書面、申込書を、画面側の道具として呼び、この画面が顧客の答え（選択と署名）を返す。
 // 契約内容は、営業 AI エージェントを通らずに受信箱へ届き、端末に残した写しと照合する（architecture の 3 章）。
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { bff, type Auth, type Config, type Session } from "../auth.ts";
+import { device as thisDevice, usedPasskey, type Auth, type Config, type Device, type Session } from "../auth.ts";
 import { termsRowsOf } from "../checks.ts";
-import { randomB64u } from "../codec.ts";
 import { initialState, reducer, type ReconcileRow, type Step } from "../conversation.ts";
-import { createController, reconciled, type Device } from "../controller.ts";
-import { createPasskey } from "../passkey.ts";
+import { createController, reconciled } from "../controller.ts";
+import { signalAccepted } from "../passkey.ts";
 import { Cards, RowsTable } from "./Cards.tsx";
 
 const STEPS: { step: Step; label: string }[] = [
@@ -29,30 +28,6 @@ const failText = (e: unknown) => {
   const err = e as Error;
   return err?.name === "NotAllowedError" ? "passkey の操作が取り消されたか、時間切れになりました。もう一度ボタンを押してください。" : (err?.message ?? String(e));
 };
-
-/** 認可サーバーの passkey の受け口を、BFF を通して呼ぶ。BFF が P と DPoP の proof を付ける（D-37、D-41）。 */
-const callPasskeys = (method: "GET" | "POST", path: string, body?: unknown) =>
-  bff(`/bff${path}`, {
-    method,
-    headers: { accept: "application/json", ...(method === "POST" ? { "content-type": "application/json" } : {}) },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-
-/**
- * この端末の passkey が、認可サーバーに登録されたまま残っているかを確かめる（認可サーバーの記憶はメモリにあり、再起動で消える）。
- * P で、本人の passkey の識別子の一覧を問い合わせる。確かめられなければ、unknown を返して、今までどおり進める。
- */
-async function deviceStatus(session: Session, device: Device): Promise<"ok" | "missing" | "unknown"> {
-  if (!session.passkeyReady) return "unknown";
-  try {
-    const res = await callPasskeys("GET", "/passkeys/mine");
-    if (!res.ok) return "unknown";
-    const { credentialIds } = (await res.json()) as { credentialIds: string[] };
-    return credentialIds.includes(device.credentialId) ? "ok" : "missing";
-  } catch {
-    return "unknown";
-  }
-}
 
 function Apply({ cfg, auth, enabled, session, device, hidden, onError }: Props & { session: Session; device: Device; hidden: boolean; onError: (message?: string) => void }) {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -114,14 +89,55 @@ function Inbox({ session, device, hidden, visible, onError }: { session: Session
   );
 }
 
+/**
+ * 「パスキー」の欄（D-43）。保険会社にある本人の passkey の一覧と、作成と削除。
+ * この端末に passkey があるかは、ブラウザが教えないので、一覧は保険会社にあるものだけを示す。
+ * 使えなくなった端末の passkey を見分けられるよう、作った環境と日時（名前）と、この端末で署名に使えたものの印を出す。
+ */
+function Passkeys({ session, auth, hidden }: { session: Session; auth: Auth; hidden: boolean }) {
+  const list = session.passkeys?.passkeys;
+  const used = usedPasskey.get(session.sub);
+  return (
+    <section id="passkeys" data-testid="passkeys" hidden={hidden}>
+      <p>パスキーは、ログインと、申込みの署名に使います。保険会社に登録されているパスキーは、次のとおりです。</p>
+      {!list && <p data-testid="passkeys-unknown">保険会社から、パスキーの一覧を読めませんでした。</p>}
+      {list && list.length === 0 && <p data-testid="passkeys-none">まだありません。</p>}
+      {list && list.length > 0 && (
+        <ul data-testid="passkeys-list">
+          {list.map((k) => (
+            <li key={k.id} data-testid="passkey-item" data-used={k.id === used ? "true" : undefined}>
+              {k.label || `名前のないパスキー（${new Date(k.created).toLocaleString("ja-JP")} に作成）`}
+              {k.id === used && <strong>（この端末で使ったパスキー）</strong>}{" "}
+              <button data-testid="delete-passkey" type="button" onClick={() => auth.deletePasskey(k.ref)}>消す</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="hint">
+        なくした端末や、使えなくなったパスキーは、「消す」で保険会社から消してください。消す前に、保険会社のログインの画面で確かめます。
+        「この端末で使ったパスキー」の印は、この端末で申込みに署名したときに付きます。
+      </p>
+      <p className="hint">
+        この端末でパスキーが使えないとき（ログインで「unknown user」と出る、署名できない）は、作ってください。この端末にまだ使えるパスキーがあるときは、作れません。
+        作ると、この端末の使えなくなったパスキーは置き換わります（端末によっては、置き換えずに追加されます）。
+      </p>
+      <button data-testid="add-passkey" type="button" onClick={() => auth.startLogin(true)}>パスキーを作る</button>
+    </section>
+  );
+}
+
 export function App({ cfg, auth, enabled }: Props) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session>();
   const [device, setDevice] = useState<Device>();
-  const [missing, setMissing] = useState(false);
-  const [tab, setTab] = useState<"apply" | "inbox">("apply");
+  const [tab, setTab] = useState<"apply" | "inbox" | "passkeys">("apply");
+  // 保険会社に本人の passkey がないときに、作成を促す（D-43）。「後で」で閉じる
+  const [prompt, setPrompt] = useState(false);
   const [error, setError] = useState<string>();
-  const fail = (e: unknown) => setError(failText(e));
+  // ログインのときの知らせ（ログインの失敗、受信箱と passkey の登録）。申込みのカードは、表示のたびに自分のエラーで error を上書きするので、分けて持つ
+  const [notice, setNotice] = useState<string>();
+  // 誤りではない知らせ（passkey を作った、消した）
+  const [info, setInfo] = useState<string>();
 
   useEffect(() => {
     void (async () => {
@@ -129,71 +145,63 @@ export function App({ cfg, auth, enabled }: Props) {
       const params = new URLSearchParams(location.search);
       const loginError = params.get("login_error");
       if (location.search) history.replaceState(null, "", "/");
-      if (loginError) setError(loginError);
+      if (loginError) setNotice(loginError);
       const current = await auth.session();
       setSession(current);
       setReady(true);
       if (!current) return;
-      const saved = localStorage.getItem(`device:${current.sub}`);
-      const known = saved ? (JSON.parse(saved) as Device) : undefined;
-      if (known && (await deviceStatus(current, known)) === "missing") {
-        // 認可サーバーに登録が残っていない: 端末の記録を消し、登録し直しに案内する
-        localStorage.removeItem(`device:${current.sub}`);
-        setMissing(true);
-        return;
+      if (!current.inboxRegistered) setNotice("この端末の受信箱を、保険会社に登録できませんでした。ログインし直してください。");
+      else if (current.passkeyAction) {
+        const { action, status } = current.passkeyAction;
+        if (action === "create" && status === "success") setInfo("パスキーを作りました。");
+        if (action === "create" && status !== "success") {
+          setNotice("パスキーを作れませんでした。取り消したときのほか、この端末にまだ使えるパスキーがあるときも、作れません。「パスキー」の欄から、もう一度作れます。");
+        }
+        if (action === "delete" && status === "success") setInfo("パスキーを消しました。");
+        if (action === "delete" && status === "error") setNotice("パスキーを消せませんでした。");
       }
-      setDevice(known);
+      if (current.passkeys) {
+        // 保険会社にある一覧を端末に伝え、保険会社が忘れた古い passkey を、端末に片付けてもらう（D-43）
+        signalAccepted(cfg.rpId, current.passkeys.userHandle, current.passkeys.passkeys.map((k) => k.id));
+        setPrompt(current.passkeys.passkeys.length === 0);
+      }
+      setDevice(thisDevice());
     })().catch((e) => {
       setReady(true);
-      fail(e);
+      setError(failText(e));
     });
     // 画面を開いたときに 1 度だけ行う
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function registerDevice() {
-    try {
-      // P は 5 分で切れる。切れていたら BFF が受け取り直し、戻ったところで、もう一度押してもらう
-      const post = (path: string, body?: unknown) => callPasskeys("POST", path, body);
-      const start = await post("/passkeys/register/options");
-      if (start.status === 401) return auth.startPasskeyToken();
-      const options = await start.json();
-      const credential = await createPasskey(options);
-      const inbox = randomB64u(16);
-      const res = await post("/passkeys/register/verify", { credential, inbox });
-      if (!res.ok) throw new Error(`passkey を登録できない: ${await res.text()}`);
-      const next = { credentialId: credential.rawId, inbox };
-      localStorage.setItem(`device:${session!.sub}`, JSON.stringify(next));
-      setMissing(false);
-      setDevice(next);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
   return (
     <>
       <h1>教材保険会社 顧客のアプリ</h1>
-      <p id="error" data-testid="error" hidden={!error}>{error}</p>
+      <p id="error" data-testid="error" hidden={!(error ?? notice)}>{error ?? notice}</p>
+      <p id="info" data-testid="info" hidden={!info}>{info}</p>
       {ready && !session && (
         <section id="login">
           <p>営業 AI エージェントに、次の範囲で申込みの取り次ぎを任せます（取決め）。</p>
           <div id="terms" data-testid="terms">
             <RowsTable rows={termsRowsOf(cfg.terms as { kinds: string[]; maxBenefit: number }[])} prefix="terms" />
           </div>
+          <p className="hint">ログインと、申込みの署名には、同じパスキーを使います。パスキーがまだないときは、パスワードでログインした後に作れます。</p>
           <button id="login-button" data-testid="login" type="button" onClick={() => auth.startLogin()}>同意して保険会社にログインする</button>
         </section>
       )}
       {session && (
         <section id="signed-in">
-          <p>ログイン中: <strong id="whoami" data-testid="whoami">{session.sub}</strong> <button id="signout-button" data-testid="signout" type="button" onClick={() => auth.signOut().catch(fail)}>サインアウト</button></p>
+          <p>
+            ログイン中: <strong id="whoami" data-testid="whoami">{session.sub}</strong>{" "}
+            <button id="signout-button" data-testid="signout" type="button" onClick={() => auth.signOut().catch((e) => setError(failText(e)))}>サインアウト</button>{" "}
+          </p>
         </section>
       )}
-      {session && !device && (
-        <section id="register">
-          <p id="register-note" className="warning" data-testid="register-note" hidden={!missing}>この端末の登録が、保険会社に見つかりませんでした（保険会社のシステムが入れ替わった可能性があります）。もう一度登録してください。</p>
-          <p>この端末に、署名に使う passkey と、契約内容が届く受信箱を登録します。</p>
-          <button id="register-button" data-testid="register-passkey" type="button" onClick={() => void registerDevice()}>passkey を登録する</button>
+      {session && prompt && (
+        <section id="passkey-prompt" data-testid="passkey-prompt">
+          <p>この端末でパスキーを作りますか。パスキーは、次からのログインと、申込みの署名に使います。保険会社には、あなたのパスキーがまだありません。</p>
+          <button data-testid="create-passkey" type="button" onClick={() => auth.startLogin(true)}>パスキーを作る</button>{" "}
+          <button data-testid="passkey-later" type="button" onClick={() => setPrompt(false)}>後で</button>
         </section>
       )}
       {session && device && (
@@ -201,9 +209,11 @@ export function App({ cfg, auth, enabled }: Props) {
           <nav id="tabs">
             <button id="tab-apply" data-testid="tab-apply" type="button" className={tab === "apply" ? "tab active" : "tab"} onClick={() => setTab("apply")}>申し込む</button>
             <button id="tab-inbox" data-testid="tab-inbox" type="button" className={tab === "inbox" ? "tab active" : "tab"} onClick={() => setTab("inbox")}>受信箱と契約</button>
+            <button id="tab-passkeys" data-testid="tab-passkeys" type="button" className={tab === "passkeys" ? "tab active" : "tab"} onClick={() => setTab("passkeys")}>パスキー</button>
           </nav>
           <Apply cfg={cfg} auth={auth} enabled={enabled} session={session} device={device} hidden={tab !== "apply"} onError={setError} />
           <Inbox session={session} device={device} hidden={tab !== "inbox"} visible={tab === "inbox"} onError={setError} />
+          <Passkeys session={session} auth={auth} hidden={tab !== "passkeys"} />
         </>
       )}
     </>

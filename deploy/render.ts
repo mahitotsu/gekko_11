@@ -45,7 +45,9 @@ const CUSTOMER_ORIGIN = publicOrigin("app");
 /** 営業 AI エージェントの内部の名前。BFF は、DPoP の htu に、この名前とパスを使う（D-41）。 */
 const AGENT_INTERNAL = `https://${host("sales-agent")}:8443`;
 /** passkey の RP ID と、署名した画面の origin（顧客のアプリ）。 */
-const WEBAUTHN = { RP_ID: publicHost("app"), WEBAUTHN_ORIGINS: CUSTOMER_ORIGIN };
+// passkey は、ログインと申込みの署名で同じものを使う。RP ID は、ログインサーバーと顧客のアプリの共通の親の名前にする（D-42）。
+// 申込みの署名は、顧客のアプリの origin だけで受け付け、ログインの署名を使い回させない
+const WEBAUTHN = { RP_ID: `${ns}.${ENTRANCE.domain}`, WEBAUTHN_ORIGINS: CUSTOMER_ORIGIN };
 
 /** 防御を外す管理のポート（vulnerable だけ）。token-guard と、アプリ。 */
 const ADMIN = { tokenGuard: 9090, app: 9091 };
@@ -623,6 +625,7 @@ function authWorkload() {
     { apiVersion: "v1", kind: "ConfigMap", metadata: meta("insurer-auth-envoy"), data: { "envoy.json": JSON.stringify(authEgressConfig()) } },
     service("insurer-auth", 8443),
     deployment("insurer-auth", "insurer-auth", { app: "insurer-auth" }, {
+      // 利用者の passkey の公開鍵を、ログインサーバーの管理の API から読むため、JWT-SVID も書き出す（D-42）
       initContainers: [helperSidecar],
       containers: [
         {
@@ -637,7 +640,8 @@ function authWorkload() {
             TRUST_DOMAIN,
             LOGIN_ISSUER,
             LOGIN_JWKS_URL,
-            ...WEBAUTHN,
+            LOGIN_URL: `http://127.0.0.1:${LOGIN_EGRESS}`,
+            JWT_SVID_FILE: "/svid/jwt_svid.token",
           }),
           ports: [{ containerPort: 8443 }],
           resources: { requests: { memory: "256Mi" }, limits: { memory: "512Mi" } },
@@ -651,7 +655,7 @@ function authWorkload() {
           volumeMounts: [SOCKET_MOUNT, { name: "envoy", mountPath: "/etc/envoy" }],
         },
       ],
-      volumes: [SOCKET_VOLUME, SVID_VOLUME, HELPER_CONFIG_VOLUME, { name: "envoy", configMap: { name: "insurer-auth-envoy" } }],
+      volumes: [SOCKET_VOLUME, SVID_VOLUME, { name: "helper-config", configMap: { name: "spiffe-helper-jwt" } }, { name: "envoy", configMap: { name: "insurer-auth-envoy" } }],
     }),
   ];
 }
@@ -660,8 +664,11 @@ function authWorkload() {
 // ブラウザからの要求を、名前（Host）で振り分ける。入口から先は、相手の SPIFFE ID を確かめる TLS で、証明書は示さない
 // （顧客と同じく、証明書を持たない者として呼ぶ。F-G59）。
 
-/** 認可サーバーのうち、ブラウザに出す経路。トークンの要求、運用（/admin）、内部（/internal）、有効性の問い合わせは出さない。 */
-const AUTH_PUBLIC_PATHS = ["/passkeys/register/", "/passkeys/mine"];
+/**
+ * 認可サーバーのうち、ブラウザに出す経路。passkey の登録はログインサーバーの画面で行い、受信箱は顧客のアプリの BFF が内部の経路で登録するので、
+ * 今は出す経路がない（D-42）。トークンの要求、運用（/admin）、内部（/internal）、有効性の問い合わせ、連絡先（/contacts）は出さない。
+ */
+const AUTH_PUBLIC_PATHS: string[] = [];
 
 /** ログインサーバーのうち、ブラウザに出す経路。管理の画面と API、利用者の画面（account）は出さない。 */
 const LOGIN_PUBLIC_PATHS = ["/realms/insurer/protocol/openid-connect/", "/realms/insurer/login-actions/", "/realms/insurer/.well-known/", "/resources/"];
@@ -696,6 +703,8 @@ function entranceConfig() {
       routes: [
         // 直送の受け口は、保険会社のシステムからの mTLS の受け口だけで受ける
         { match: { prefix: "/notices" }, ...NOT_FOUND },
+        // AG-UI の応答は、営業 AI エージェントの番が終わるまで続く。既定の 15 秒で切らない（BFF の出口と同じ 120 秒。D-41）
+        { match: { path: "/bff/agui" }, route: { cluster: "to_customer_app", timeout: "120s" } },
         { match: { prefix: "/" }, route: { cluster: "to_customer_app" } },
       ],
     },

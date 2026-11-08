@@ -2,16 +2,17 @@
 import { createLocalJWKSet, type JSONWebKeySet } from "jose";
 import { reconcile, type Copy } from "../src/reconcile.ts";
 import { createAgent, statusOf, type Agent } from "./agent.ts";
-import type { Config, Session } from "./auth.ts";
+import { usedPasskey, type Config, type Device, type Session } from "./auth.ts";
 import { verifyOffer, type Application, type Intent, type Offer } from "./checks.ts";
 import { challengeOf } from "./codec.ts";
 import type { Action, State } from "./conversation.ts";
 import { signWithPasskey } from "./passkey.ts";
 
-export interface Device {
-  credentialId: string;
-  inbox: string;
-}
+/**
+ * passkey での署名ができなかったときの知らせ。取り消しと時間切れのほか、この端末に passkey がない場合も同じ誤りになる
+ * （ブラウザは、利用者を守るため、区別を教えない。D-43）。
+ */
+export const PASSKEY_FAILED = "passkey で署名できませんでした。取り消したか時間切れなら、もう一度ボタンを押してください。この端末にパスキーがないときは、「パスキー」の欄の「この端末にパスキーを追加する」で作ってください。";
 
 type Notice = { contract: { contractId?: string; nonce: string; plan: { name: string } } };
 const LABEL = { match: "一致", mismatch: "食い違い", missing: "未着", unexpected: "覚えのない契約" };
@@ -61,10 +62,7 @@ export function createController(deps: {
 
   const fail = (e: unknown) => {
     const err = e as Error;
-    dispatch({
-      type: "error",
-      message: err?.name === "NotAllowedError" ? "passkey の操作が取り消されたか、時間切れになりました。もう一度ボタンを押してください。" : (err?.message ?? String(e)),
-    });
+    dispatch({ type: "error", message: err?.name === "NotAllowedError" ? PASSKEY_FAILED : (err?.message ?? String(e)) });
   };
 
   /** ログインの有効期間が切れたカード（BFF が A を更新できない）。送れなかった申込書の写しは、端末から消す（受信箱に未着として残さない）。 */
@@ -200,7 +198,9 @@ export function createController(deps: {
     /** 署名して答える。申込書は、顧客が承認した写しを端末に残す（事後の照合に使う）。 */
     async sign(id: string, step: "intent" | "application", doc: Intent | Application, onSigned: () => void) {
       dispatch({ type: "error" });
-      const assertion = await signWithPasskey(await challengeOf(doc), cfg.rpId, device.credentialId);
+      const assertion = await signWithPasskey(await challengeOf(doc), cfg.rpId, (session.passkeys?.passkeys ?? []).map((k) => k.id));
+      // どの passkey がこの端末で使えたかを覚え、「パスキー」の欄で印を付ける（D-43）
+      usedPasskey.set(session.sub, assertion.id);
       onSigned();
       if (step === "application") {
         const copies = load<Copy[]>(localStorage, `copies:${session.sub}`) ?? [];

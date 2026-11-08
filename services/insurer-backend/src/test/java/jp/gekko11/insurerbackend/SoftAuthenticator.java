@@ -40,6 +40,18 @@ final class SoftAuthenticator {
 		this.origin = origin;
 	}
 
+	private SoftAuthenticator(SoftAuthenticator same, String origin) {
+		this.keys = same.keys;
+		this.credentialId = same.credentialId;
+		this.rpId = same.rpId;
+		this.origin = origin;
+	}
+
+	/** 同じ passkey を、別の画面（origin）で使う。ログインの画面で作る署名に当たる。 */
+	SoftAuthenticator on(String origin) {
+		return new SoftAuthenticator(this, origin);
+	}
+
 	/** 認可サーバーが渡す形の、登録済みの公開鍵。 */
 	Map<String, String> registered() {
 		byte[] cose = new ObjectConverter().getCborConverter()

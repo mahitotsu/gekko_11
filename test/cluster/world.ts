@@ -109,8 +109,9 @@ export class Customer {
   }
 
   /** 内容に署名する（顧客のアプリの画面で passkey を使う操作に当たる）。 */
-  sign(content: unknown) {
-    return sign(this.authenticator, `app.${this.ns}.localhost`, challengeOf(content), this.origin);
+  sign(content: unknown, origin = this.origin) {
+    // passkey は、ログインと申込みの署名で同じもの。RP ID は、ログインサーバーと顧客のアプリの共通の親の名前（D-42）
+    return sign(this.authenticator, `${this.ns}.localhost`, challengeOf(content), origin);
   }
 
   /** 案を選んで、意向確認と申込みに署名する（3 章の 3 段）。 */

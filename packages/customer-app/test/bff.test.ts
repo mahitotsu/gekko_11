@@ -1,7 +1,7 @@
 import { generateKeyPair, SignJWT, createLocalJWKSet, exportJWK } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.ts";
-import { egressFetch, logoutUrl } from "../src/bff.ts";
+import { egressFetch, logoutUrl, passkeyResult } from "../src/bff.ts";
 
 beforeAll(() => {
   Object.assign(process.env, { ISSUER: "http://login.test/realms/insurer", APP_ORIGIN: "http://app.test" });
@@ -25,12 +25,31 @@ describe("BFF（D-41）", () => {
     expect(cookie).toMatch(/SameSite=Strict/);
   });
 
+  it("この端末で初めてのログインでは、ログインサーバーに passkey の登録を頼み、端末の受信箱の番号を途中の状態に持つ（D-42、D-26）", async () => {
+    const inbox = "A".repeat(22);
+    const first = new URL((await createApp().request(`/bff/login?inbox=${inbox}&register=1`)).headers.get("location")!);
+    expect(first.searchParams.get("kc_action")).toBe("webauthn-register-passwordless");
+    const again = new URL((await createApp().request(`/bff/login?inbox=${inbox}`)).headers.get("location")!);
+    expect(again.searchParams.has("kc_action")).toBe(false);
+  });
+
+  it("passkey の削除は、ログインサーバーの中の ID（UUID）のときだけ頼み、ほかの値はログインサーバーに渡さない（D-43）", async () => {
+    const ref = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    const ok = new URL((await createApp().request(`/bff/login?delete=${ref}`)).headers.get("location")!);
+    expect(ok.searchParams.get("kc_action")).toBe(`delete_credential:${ref}`);
+    const bad = new URL((await createApp().request("/bff/login?delete=x%3Bkc_action%3Dother")).headers.get("location")!);
+    expect(bad.searchParams.has("kc_action")).toBe(false);
+  });
+
+  it("passkey の登録の結果は、ログインサーバーが付けた値だけを信じ、値がないか分からなければ失敗とみなす（D-42）", () => {
+    expect([passkeyResult("success"), passkeyResult("cancelled"), passkeyResult("error"), passkeyResult(null), passkeyResult("x")]).toEqual(["success", "cancelled", "error", "error", "error"]);
+  });
+
   it("CSRF の対策: 事前確認の要るヘッダーがないか、ほかの origin からの要求は断る", async () => {
     const app = createApp();
     expect((await app.request("/bff/agui", { method: "POST", body: "{}" })).status).toBe(403);
     expect((await app.request("/bff/agui", { method: "POST", body: "{}", headers: { "x-bff": "1", origin: "http://evil.test" } })).status).toBe(403);
     expect((await app.request("/bff/agui", { method: "POST", body: "{}", headers: { "x-bff": "1", origin: "http://app.test" } })).status).toBe(401);
-    expect((await app.request("/bff/passkeys/register/options", { method: "POST" })).status).toBe(403);
   });
 
   it("ログインしていなければ、画面には利用者もトークンも返さない", async () => {
@@ -41,7 +60,7 @@ describe("BFF（D-41）", () => {
 
   it("決まった経路だけを転送する（RFC 10017 の 6.1.3.6 節）", async () => {
     const app = createApp();
-    expect((await app.request("/bff/passkeys/other", { method: "POST", headers: { "x-bff": "1" } })).status).toBe(404);
+    expect((await app.request("/bff/passkeys/register/options", { method: "POST", headers: { "x-bff": "1" } })).status).toBe(404);
     expect((await app.request("/bff/agui", { method: "GET" })).status).toBe(404);
   });
 

@@ -4,5 +4,5 @@ gekko:
   namespace: ${NAMESPACE:secure}
   login-issuer: ${LOGIN_ISSUER:http://localhost/realms/insurer}
   login-jwks-url: ${LOGIN_JWKS_URL:http://127.0.0.1:15105/realms/insurer/protocol/openid-connect/certs}
-  rp-id: ${RP_ID:localhost}
-  origins: ${WEBAUTHN_ORIGINS:http://localhost:4000}
+  login-url: ${LOGIN_URL:http://127.0.0.1:15105}
+  jwt-svid-file: ${JWT_SVID_FILE:/svid/jwt_svid.token}

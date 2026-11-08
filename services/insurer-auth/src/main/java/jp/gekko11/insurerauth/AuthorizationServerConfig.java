@@ -101,12 +101,12 @@ public class AuthorizationServerConfig {
 	@Order(2)
 	SecurityFilterChain resourceChain(HttpSecurity http, LoginKeys keys, AuthProperties props) throws Exception {
 		// 運用と内部の受け口は、相手の SPIFFE ID を各受け口で確かめる（AdminController、PasskeyController）。
-		// passkey の受け口は、ログインサーバーが出した P を、DPoP の proof と一緒に確かめる（D-37）。proof のない Bearer は受けない
+		// 連絡先の受け口は、ログインサーバーが出した P を、DPoP の proof と一緒に確かめる（D-37）。proof のない Bearer は受けない
 		http.authorizeHttpRequests((a) -> a.requestMatchers("/admin/**", "/internal/**")
 			.permitAll()
 			.anyRequest()
 			.authenticated())
-			.csrf((c) -> c.ignoringRequestMatchers("/admin/**", "/internal/**", "/passkeys/**"))
+			.csrf((c) -> c.ignoringRequestMatchers("/admin/**", "/internal/**", "/contacts/**"))
 			.sessionManagement((m) -> m.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.oauth2ResourceServer((o) -> o.bearerTokenResolver((request) -> null)
 				.jwt((j) -> j.decoder(passkeyDecoder(keys, props))));
@@ -118,7 +118,7 @@ public class AuthorizationServerConfig {
 		return loginDecoder(keys, props);
 	}
 
-	/** passkey の受け口に示された P を確かめる。宛先は、認可サーバー自身である。 */
+	/** 連絡先の受け口に示された P を確かめる。宛先は、認可サーバー自身である。 */
 	private static JwtDecoder passkeyDecoder(LoginKeys keys, AuthProperties props) {
 		return loginDecoder(keys, props, new JwtClaimValidator<List<String>>("aud",
 				(aud) -> aud != null && aud.contains(ExchangePolicy.INSURER_AUTH)));

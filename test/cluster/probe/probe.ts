@@ -20,7 +20,8 @@ const origin = (service: string) => `https://${service}.${ns}.svc:${PORTS[servic
 /** ブラウザが入口を通って呼ぶ公開名（D-25）。顧客の役は、署名と proof に、この名前を使う。 */
 const publicOrigin = (name: "app" | "login") => `http://${name}.${ns}.localhost:${ns === "vulnerable" ? 8082 : 8081}`;
 const CUSTOMER_ORIGIN = publicOrigin("app");
-const RP_ID = `app.${ns}.localhost`;
+/** passkey の RP ID。ログインサーバーと顧客のアプリの共通の親の名前で、ログインと申込みの署名で同じ passkey を使う（D-42）。 */
+const RP_ID = `${ns}.localhost`;
 const REDIRECT = `${CUSTOMER_ORIGIN}/callback`;
 const ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const FORM = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
@@ -143,7 +144,8 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
 
   // A を受け取る
   const verifier = randomUUID() + randomUUID();
-  const first = await call("insurer-login", authorize("openid apply", verifier, { authorization_details: args.terms ? JSON.stringify(args.terms) : undefined }), { method: "GET", headers: { ...html, ...login }, clientCert: false });
+  // 新しい端末として、ログインサーバーの画面で passkey を登録してもらう（Keycloak の AIA。D-42）
+  const first = await call("insurer-login", authorize("openid apply", verifier, { authorization_details: args.terms ? JSON.stringify(args.terms) : undefined, kc_action: "webauthn-register-passwordless" }), { method: "GET", headers: { ...html, ...login }, clientCert: false });
   cookie = cookiesOf(first);
   const action = first.body.match(/action="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&");
   if (!action) throw new Error(`ログインの画面を受け取れない: ${first.status} ${String(first.headers.location)}`);
@@ -154,30 +156,40 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
     clientCert: false,
   });
   cookie = cookiesOf(posted, cookie);
-  const res = await redeem(posted.headers.location, verifier);
+  // パスワードの後に、ログインサーバーが passkey の登録の画面を出す。ブラウザの代わりに、ソフトウェアの認証器で登録してフォームを送る
+  const authenticator = newAuthenticator();
+  const page = posted.status === 200 ? posted : await call("insurer-login", pathOf(posted.headers.location), { method: "GET", headers: { ...html, ...login, cookie }, clientCert: false });
+  cookie = cookiesOf(page, cookie);
+  const challenge = page.body.match(/challenge\s*:\s*['"]([^'"]+)['"]/)?.[1];
+  const registerAction = page.body.match(/<form[^>]*id="register"[^>]*action="([^"]+)"|<form[^>]*action="([^"]+)"[^>]*id="register"/);
+  if (!challenge || !registerAction) throw new Error(`passkey の登録の画面を受け取れない: ${page.status} ${String(page.headers.location)}`);
+  const credential = register(authenticator, RP_ID, challenge, publicOrigin("login"));
+  const registered = await call("insurer-login", pathOf((registerAction[1] ?? registerAction[2])!.replaceAll("&amp;", "&")), {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", ...login, cookie },
+    body: form({ clientDataJSON: credential.response.clientDataJSON, attestationObject: credential.response.attestationObject, publicKeyCredentialId: credential.id, authenticatorLabel: `probe-${randomUUID().slice(0, 8)}`, transports: "internal", authenticatorAttachment: "platform" }),
+    clientCert: false,
+  });
+  cookie = cookiesOf(registered, cookie);
+  // ログインサーバーは、同じ利用者の中で、同じ名前の passkey を断り、登録の画面を出し直す（302 で戻らない）
+  if (registered.status !== 302) throw new Error(`passkey を登録できない: ${registered.status}`);
+  const res = await redeem(registered.headers.location, verifier);
   const body = JSON.parse(res.body) as { access_token?: string; id_token?: string; refresh_token?: string };
 
-  // P を受け取る（ログインしたまま）
+  // 受信箱の登録に使う P を受け取る（ログインしたまま）
   const verifierP = randomUUID() + randomUUID();
   const silent = await call("insurer-login", authorize("openid passkeys", verifierP, { prompt: "none" }), { method: "GET", headers: { ...html, ...login, cookie }, clientCert: false });
   const p = (JSON.parse((await redeem(silent.headers.location, verifierP)).body) as { access_token: string }).access_token;
-  const passkeys = async (path: string, init: { body?: string }) =>
-    call("insurer-auth", path, {
-      method: "POST",
-      headers: { ...JSON_HEADERS, authorization: `DPoP ${p}`, dpop: await dpopProof(privateKey, jwk, "POST", `${origin("insurer-auth")}${path}`, p) },
-      body: init.body,
-      clientCert: false,
-    });
-
-  // passkey の登録（認可サーバーが公開鍵を持ち、保険会社のシステムが引く）
-  const authenticator = newAuthenticator();
-  const options = JSON.parse((await passkeys("/passkeys/register/options", {})).body) as { challenge: string };
-  // 受信箱の番号を、本人が登録する連絡先として、passkey と一緒に登録する（D-26）
+  // 受信箱の番号を、本人が登録する連絡先として、P で登録する（D-26、D-37）
   const inbox = randomBytes(16).toString("base64url");
-  const registered = await passkeys("/passkeys/register/verify", {
-    body: JSON.stringify({ credential: register(authenticator, RP_ID, options.challenge, CUSTOMER_ORIGIN), inbox }),
+  const path = "/contacts/inbox";
+  const contact = await call("insurer-auth", path, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, authorization: `DPoP ${p}`, dpop: await dpopProof(privateKey, jwk, "POST", `${origin("insurer-auth")}${path}`, p) },
+    body: JSON.stringify({ inbox }),
+    clientCert: false,
   });
-  if (registered.status !== 200) throw new Error(`passkey の登録に失敗: ${registered.status} ${registered.body}`);
+  if (contact.status !== 200) throw new Error(`受信箱の登録に失敗: ${contact.status} ${contact.body}`);
 
   return {
     status: res.status,

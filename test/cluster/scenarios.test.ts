@@ -6,7 +6,7 @@ import { generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
 import { reconcile } from "../../packages/customer-app/src/reconcile.ts";
 import {
-  applyArgs, atMcp, auditOf, auditorGet, backendPost, checksOf, contractsOf, Customer, exchangeAs, ISSUER, LOGIN_ISSUER, mcpCall, offerFor, probe, records,
+  applyArgs, atMcp, auditOf, auditorGet, backendPost, checksOf, contractsOf, Customer, exchangeAs, ISSUER, LOGIN_ISSUER, mcpCall, offerFor, probe, publicOrigin, records,
   setDefenses, setTamper, TERMS, type Gaps, type Json, type Ns, type Offer, type Submission,
 } from "./world.ts";
 
@@ -573,6 +573,25 @@ describe("監査サービス（D25）", () => {
     // 連鎖は、認可サーバーが書いた記録だけでたどる
     expect(checksOf(after)).toMatchObject({ トークンの連鎖: true, 経由: true, 書いた者: false });
     expect(after.chain[0].from_jti).toBe(before.chain[0].from_jti);
+  });
+});
+
+describe("補足: passkey（D13。D-42）", () => {
+  it("secure: ログインと同じ passkey で申込みに署名でき、保険会社のシステムは、ログインサーバーにある公開鍵で確かめる", async () => {
+    const alice = await new Customer("secure", "alice").setup();
+    const offer = await offerFor(alice);
+    const r = await mcpCall("secure", await atMcp(alice), "submit_application", applyArgs(alice.prepare(offer, "fixed-60")));
+    expect(r.body?.ok, JSON.stringify(r)).toBe(true);
+  });
+
+  it("secure: ログインの画面の名前で作った署名は、申込みの署名として受け付けない（ログインの署名の使い回しを防ぐ）", async () => {
+    const alice = await new Customer("secure", "alice").setup();
+    const offer = await offerFor(alice);
+    const sub = alice.prepare(offer, "fixed-60");
+    const fromLogin = { ...sub, assertion: alice.sign(sub.application, publicOrigin("secure", "login")) };
+    const r = await mcpCall("secure", await atMcp(alice), "submit_application", applyArgs(fromLogin));
+    // 鍵と内容は正しいので、断る理由は、署名した画面（origin）だけである
+    expect(r.body?.error ?? "", JSON.stringify(r)).toContain("申込みの署名の照合: 顧客のアプリの画面で作った署名ではない");
   });
 });
 

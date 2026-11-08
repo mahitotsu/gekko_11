@@ -12,6 +12,8 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM quay.io/keycloak/keycloak:26.8.1
 COPY --from=build /src/target/insurer-login-extension.jar /opt/keycloak/providers/insurer-login-extension.jar
 COPY realm/insurer.json /opt/keycloak/data/import/insurer.json
+# 画面は標準のものを引き継ぎ、passkey の登録で名前を尋ねないようにする（D-42）
+COPY theme/insurer /opt/keycloak/themes/insurer
 # SPIFFE の JWT-SVID でのクライアント認証は preview で、既定で無効である（D-38）。
 # 記憶は、教材の規模として、Pod の中のファイルに置く（implementation の 5 章）
 RUN /opt/keycloak/bin/kc.sh build --db=dev-file --cache=local --features=spiffe,client-auth-federated

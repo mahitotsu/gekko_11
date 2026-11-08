@@ -24,6 +24,7 @@ import com.webauthn4j.data.attestation.statement.NoneAttestationStatement;
 import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.server.ServerProperty;
+import com.webauthn4j.verifier.exception.BadOriginException;
 
 import org.springframework.stereotype.Component;
 
@@ -61,7 +62,10 @@ class Seals {
 		this.passkeys = passkeys;
 	}
 
-	/** passkey の署名。公開鍵は、認可サーバーが登録時に受け取ったものを引く（4-5）。 */
+	/**
+	 * passkey の署名。公開鍵は、ログインサーバーに登録された passkey のものを、認可サーバーを通して引く（4-5、D-42）。
+	 * 同じ passkey はログインにも使うので、署名した画面（origin）が顧客のアプリであることも確かめる。
+	 */
 	Result passkey(Object content, Object assertion, String user) {
 		if (!(assertion instanceof Map<?, ?> a) || a.get("id") == null) {
 			return new Result(false, "署名（assertion）がない");
@@ -86,6 +90,9 @@ class Seals {
 			this.webAuthn.verifyAuthenticationResponseJSON(assertionJson,
 					new AuthenticationParameters(server, credential, null, true));
 			return new Result(true, "内容は署名時のまま");
+		}
+		catch (BadOriginException ex) {
+			return new Result(false, "顧客のアプリの画面で作った署名ではない（ログインの画面などで作った署名は、申込みの署名にならない）");
 		}
 		catch (Exception ex) {
 			String m = String.valueOf(ex.getMessage());

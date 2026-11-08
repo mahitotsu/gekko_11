@@ -1,5 +1,5 @@
-// 画面の基本の流れ: ログイン → passkey と受信箱の登録 → 相談 → 署名を確かめた案 → 確認 → 署名 → 提出 → 直送の照合（architecture の 3 章）。
-// ブラウザは入口を通り、トークンと DPoP の鍵と passkey は、ブラウザの中にある（D-18）。secure では、本物の Claude が案を示す。
+// 画面の基本の流れ: ログイン（初めての端末では、ログインサーバーの画面で passkey を登録）→ 相談 → 署名を確かめた案 → 確認 → 署名 → 提出 → 直送の照合（architecture の 3 章）。
+// ブラウザは入口を通る。トークンと DPoP の鍵は BFF に、passkey はブラウザの仮想の認証器にある（D-41、D-42）。secure では、本物の Claude が案を示す。
 import type { Page } from "playwright-core";
 import { afterEach, describe, expect, it } from "vitest";
 import { publicOrigin, records, setDefenses, type Ns } from "../cluster/world.ts";
@@ -29,6 +29,10 @@ describe.each<Ns>(["secure", "vulnerable"])("画面の基本の流れ（%s）", 
     expect(await alice.error()).toBeNull();
 
     const nonce = await alice.nonce;
+    // 署名に使えた passkey に、「この端末で使った」の印が付く（D-43）
+    await alice.page.getByTestId("tab-passkeys").click();
+    expect(await alice.page.locator("[data-testid=passkey-item][data-used=true]").count()).toBe(1);
+    await alice.page.getByTestId("tab-apply").click();
     const record = (await records(ns)).contracts.find((c) => c.contract.nonce === nonce);
     expect(record?.by).toEqual(["insurer-mcp", "sales-agent"]);
     expect(record?.contract.plan.id).toBe(chosen.id);
@@ -275,14 +279,90 @@ describe("カードで進む申込み（vulnerable の台本）", () => {
   });
 });
 
+describe("passkey（D-42、D-43）", () => {
+  it("secure: 作ったあとは一覧に出て、保険会社にある一覧を Signal API で端末に伝える。署名は一覧の passkey だけに頼む", async () => {
+    alice = new BrowserCustomer("secure", "alice");
+    await alice.open(() => alice!.recordSignals());
+    await alice.login();
+    await alice.openRegisterPage();
+    await alice.registerPasskey();
+    const page = alice.page;
+    await page.getByTestId("tab-passkeys").click();
+    expect(await page.getByTestId("passkey-item").count()).toBeGreaterThan(0);
+    expect(await page.getByTestId("passkey-prompt").isVisible()).toBe(false);
+    const [signal] = (await alice.signals()).slice(-1);
+    expect(signal?.rpId).toBe("secure.localhost");
+    expect(Buffer.from(signal!.userId, "base64url").toString()).toBe("alice");
+    expect(signal!.allAcceptedCredentialIds.length).toBe(await page.getByTestId("passkey-item").count());
+    // 名前は、作った環境と日時にする（端末を見分けるため）。ログインサーバーは名前を尋ねない
+    expect(await page.getByTestId("passkey-item").last().textContent()).toMatch(/で作成（/);
+    expect(await alice.info()).toBe("パスキーを作りました。");
+  });
+
+  it("secure: 同じ端末で、使える passkey があるうちは、もう 1 つは作れない（保険会社の一覧に、使えない登録を増やさない）", async () => {
+    alice = await new BrowserCustomer("secure", "alice").ready();
+    const page = alice.page;
+    await page.getByTestId("tab-passkeys").click();
+    const before = await page.getByTestId("passkey-item").count();
+    await alice.openRegisterPage();
+    await page.locator("#registerWebAuthn").click();
+    // ブラウザが、端末にある passkey と同じものの作成を断る。ログインサーバーの画面に残ったときは、取り消して戻る
+    await Promise.race([page.waitForURL(`${alice.app}/**`), page.locator("#cancelWebAuthnAIA").click()]);
+    await page.waitForURL(`${alice.app}/**`);
+    expect(await alice.error()).toContain("パスキーを作れませんでした");
+    await page.getByTestId("tab-passkeys").click();
+    expect(await page.getByTestId("passkey-item").count()).toBe(before);
+  });
+
+  it("secure: 一覧の「消す」は、ログインサーバーの確認の画面を通して、保険会社の登録を消す", async () => {
+    alice = await new BrowserCustomer("secure", "alice").ready();
+    const page = alice.page;
+    await page.getByTestId("tab-passkeys").click();
+    const before = await page.getByTestId("passkey-item").count();
+    await page.getByTestId("delete-passkey").last().click();
+    // 確認の画面には、消す passkey の名前が出る。「やめる」もある
+    await page.locator("#kc-decline").waitFor();
+    expect(await page.locator("body").textContent()).toMatch(/で作成（/);
+    await page.locator("#kc-accept").click();
+    await page.waitForURL(`${alice.app}/**`);
+    expect(await alice.info()).toBe("パスキーを消しました。");
+    await page.getByTestId("tab-passkeys").click();
+    expect(await page.getByTestId("passkey-item").count()).toBe(before - 1);
+  });
+
+  it("secure: 保険会社に passkey がない利用者には、ログインの後に作成を促し、「後で」で閉じられる。端末には、空の一覧を伝える", async () => {
+    // carol は、この確かめのためだけの利用者で、passkey を作らない（作成の画面では取り消す）
+    const carol = new BrowserCustomer("secure", "carol");
+    try {
+      await carol.open(() => carol.recordSignals());
+      await carol.login();
+      const page = carol.page;
+      await page.getByTestId("passkey-prompt").waitFor();
+      expect((await carol.signals()).at(-1)?.allAcceptedCredentialIds).toEqual([]);
+      // 「作る」は、ログインサーバーの登録の画面へ進む。取り消すと、作れなかったと示し、また促す
+      await page.getByTestId("create-passkey").click();
+      await page.locator("#cancelWebAuthnAIA").click();
+      await page.waitForURL(`${carol.app}/**`);
+      expect(await carol.error()).toContain("パスキーを作れませんでした");
+      await page.getByTestId("passkey-later").click();
+      expect(await page.getByTestId("passkey-prompt").isVisible()).toBe(false);
+      await page.getByTestId("tab-passkeys").click();
+      expect(await page.getByTestId("passkeys-none").isVisible()).toBe(true);
+    } finally {
+      await carol.close();
+    }
+  });
+});
+
 describe("サインアウト", () => {
-  it("secure: 顧客がサインアウトすると、次のログインで、ログインサーバーがまた本人を確かめる", async () => {
+  it("secure: 顧客がサインアウトすると、次のログインで、ログインサーバーがまた本人を確かめる。確かめ方は、パスワードではなく、登録した passkey である", async () => {
     alice = await new BrowserCustomer("secure", "alice").ready();
     await alice.page.getByTestId("signout").click();
     await alice.page.getByTestId("login").waitFor();
     expect(await alice.page.getByTestId("whoami").isVisible()).toBe(false);
-    await alice.page.getByTestId("login").click();
-    await alice.page.locator("#username").waitFor();
+    const sent = await alice.loginWithPasskey();
+    expect(await alice.whoami()).toBe("alice");
+    expect(sent).toEqual({ passkey: true, password: false });
   });
 
   it("secure: 顧客のまま監査の画面を開くと断られ、サインアウトして、同じブラウザで監査の担当に替われる", async () => {
@@ -309,20 +389,3 @@ describe("監査の画面", () => {
   });
 });
 
-describe("認可サーバーに登録が残っていないとき", () => {
-  it("secure: ログインの後に、端末の登録が見つからないことに気付き、登録し直しに案内する", async () => {
-    alice = await new BrowserCustomer("secure", "alice").ready();
-    // 認可サーバーが再起動して登録を忘れた状態を、端末に存在しない passkey の識別子を置いて作る
-    await alice.page.evaluate(() => {
-      const key = "device:alice";
-      const device = JSON.parse(localStorage.getItem(key)!);
-      localStorage.setItem(key, JSON.stringify({ ...device, credentialId: "AAAAAAAAAAAAAAAAAAAAAA" }));
-    });
-    await alice.page.reload();
-    await alice.page.getByTestId("register-note").waitFor();
-    expect(await alice.page.getByTestId("register-passkey").isVisible()).toBe(true);
-    // 登録し直すと、相談に戻れる
-    await alice.registerPasskey();
-    expect(await alice.page.getByTestId("register-note").isVisible()).toBe(false);
-  });
-});

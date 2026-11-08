@@ -1,6 +1,7 @@
 package jp.gekko11.insurerauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MvcResult;
 
 /** 取決めの範囲、確認済みの属性、失効、有効性の問い合わせ、内部の受け口と、外せる防御（D3a〜D3f）を確かめる。 */
@@ -34,6 +36,10 @@ class AuthFeaturesTest extends AuthTestSupport {
 	private static final X509Certificate BACKEND = svid("insurer-backend");
 
 	private static final X509Certificate OPERATOR = svid("operator");
+
+	/** passkey の公開鍵は、ログインサーバーの管理の API から読む。単体テストでは、ログインサーバーの代わりを置く。 */
+	@MockitoBean
+	private LoginDirectory directory;
 
 	@AfterEach
 	void restore() throws Exception {
@@ -75,12 +81,19 @@ class AuthFeaturesTest extends AuthTestSupport {
 
 	@Test
 	void onlyTheBackendReadsPasskeys() throws Exception {
+		given(this.directory.keysOf("alice")).willReturn(List.of(Map.of("id", "cred", "coseKey", "key")));
 		assertThat(this.mvc.perform(get("/internal/passkeys/alice").with(x509(MCP))).andReturn().getResponse().getStatus())
 			.isEqualTo(403);
 		assertThat(this.mvc.perform(get("/internal/passkeys/alice").with(x509(BACKEND)))
 			.andReturn()
 			.getResponse()
 			.getStatus()).isEqualTo(200);
+		// ログインサーバーから読めなければ、空の一覧ではなく、失敗として返す（署名を確かめないまま通さない）
+		given(this.directory.keysOf("bob")).willThrow(new IllegalStateException("login server is down"));
+		assertThat(this.mvc.perform(get("/internal/passkeys/bob").with(x509(BACKEND)))
+			.andReturn()
+			.getResponse()
+			.getStatus()).isEqualTo(502);
 	}
 
 	@Test
@@ -97,15 +110,15 @@ class AuthFeaturesTest extends AuthTestSupport {
 	}
 
 	@Test
-	void passkeysNeedTheTokenPWithItsDpopProof() throws Exception {
+	void contactsNeedTheTokenPWithItsDpopProof() throws Exception {
 		ECKey key = new ECKeyGenerator(Curve.P_256).generate();
-		String uri = "http://localhost/passkeys/mine";
+		String uri = "http://localhost/contacts/mine";
 		String p = loginToken(LOGIN_KEY, "at+jwt", aClaims(key, "alice").audience("insurer-auth").build());
 		String a = customerToken(key);
 		// トークンがなければ、一覧は出ない
 		assertThat(mine(null, null)).isEqualTo(401);
 		// proof のない Bearer は受けない。盗んだ P は使えない
-		assertThat(this.mvc.perform(get("/passkeys/mine").header("Authorization", "Bearer " + p))
+		assertThat(this.mvc.perform(get("/contacts/mine").header("Authorization", "Bearer " + p))
 			.andReturn()
 			.getResponse()
 			.getStatus()).isEqualTo(401);
@@ -115,14 +128,47 @@ class AuthFeaturesTest extends AuthTestSupport {
 		assertThat(mine(a, dpopProof(key, "GET", uri, a))).isEqualTo(401);
 		// 本人には、本人の一覧（まだ登録がなければ空）だけを返す
 		assertThat(this.mvc
+			.perform(get("/contacts/mine").header("Authorization", "DPoP " + p).header("DPoP", dpopProof(key, "GET", uri, p)))
+			.andReturn()
+			.getResponse()
+			.getContentAsString()).isEqualTo("{\"inboxes\":[]}");
+		// 本人は、P で受信箱を登録でき、一覧に載る（顧客のアプリの BFF が、ログインの直後に送る。D-26）
+		// ほかのテストが alice の一覧を空と見るので、別の利用者で確かめる
+		String inbox = "AAAAAAAAAAAAAAAAAAAAAA";
+		String carol = loginToken(LOGIN_KEY, "at+jwt", aClaims(key, "carol").audience("insurer-auth").build());
+		assertThat(this.mvc
+			.perform(post("/contacts/inbox").header("Authorization", "DPoP " + carol)
+				.header("DPoP", dpopProof(key, "POST", "http://localhost/contacts/inbox", carol))
+				.contentType("application/json")
+				.content("{\"inbox\":\"" + inbox + "\"}"))
+			.andReturn()
+			.getResponse()
+			.getStatus()).isEqualTo(200);
+		assertThat(this.mvc
+			.perform(get("/contacts/mine").header("Authorization", "DPoP " + carol).header("DPoP", dpopProof(key, "GET", uri, carol)))
+			.andReturn()
+			.getResponse()
+			.getContentAsString()).contains(inbox);
+	}
+
+	@Test
+	void ownPasskeyListNeedsTheTokenPWithItsDpopProof() throws Exception {
+		ECKey key = new ECKeyGenerator(Curve.P_256).generate();
+		String uri = "http://localhost/passkeys/mine";
+		String p = loginToken(LOGIN_KEY, "at+jwt", aClaims(key, "alice").audience("insurer-auth").build());
+		given(this.directory.listOf("alice")).willReturn(Map.of("userHandle", "YWxpY2U", "passkeys", List.of(Map.of("id", "cred", "label", "x", "created", 1))));
+		// トークンがなければ、一覧は出ない。本人には、本人の一覧だけを返す（公開鍵は含まない。D-43）
+		assertThat(this.mvc.perform(get("/passkeys/mine")).andReturn().getResponse().getStatus()).isEqualTo(401);
+		String body = this.mvc
 			.perform(get("/passkeys/mine").header("Authorization", "DPoP " + p).header("DPoP", dpopProof(key, "GET", uri, p)))
 			.andReturn()
 			.getResponse()
-			.getContentAsString()).isEqualTo("{\"credentialIds\":[]}");
+			.getContentAsString();
+		assertThat(body).contains("\"userHandle\":\"YWxpY2U\"").contains("\"id\":\"cred\"").doesNotContain("coseKey");
 	}
 
 	private int mine(String token, String proof) throws Exception {
-		var request = get("/passkeys/mine");
+		var request = get("/contacts/mine");
 		if (token != null) {
 			request.header("Authorization", "DPoP " + token).header("DPoP", proof);
 		}

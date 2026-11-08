@@ -45,8 +45,12 @@ interface Session {
   dpop: oidc.DPoPHandle;
   access: string;
   refresh?: string;
-  /** passkey の登録だけに使うトークン P（D-37）。 */
-  passkey?: string;
+  /** 受信箱の番号を、認可サーバーに登録できたか（D-26）。P は登録にだけ使い、持ち続けない（D-37）。 */
+  inboxRegistered: boolean;
+  /** passkey の作成か削除を頼んだときの結果（ログインサーバーの kc_action_status。D-42、D-43）。 */
+  passkeyAction?: PasskeyAction;
+  /** ログインサーバーにある、本人の passkey の一覧（D-43）。読めなかったときは undefined。 */
+  passkeys?: Passkeys;
   created: number;
   used: number;
   renewing?: Promise<void>;
@@ -59,8 +63,33 @@ interface LoginState {
   nonce: string;
   /** P を受け取るときは、ログイン中のセッションに足す。 */
   sid?: string;
+  /** 端末の受信箱の番号。P を受け取ったら、認可サーバーに登録する（D-26）。 */
+  inbox?: string;
+  /** この端末で、ログインと申込みの署名に使う passkey を登録してもらう（D-42）。 */
+  register?: boolean;
+  /** 本人の passkey を消してもらう。値は、ログインサーバーの中の資格情報の ID（D-43）。 */
+  remove?: string;
   at: number;
 }
+
+/** 受信箱の番号は、端末が作る推測できない値（D-26）。 */
+const INBOX = /^[A-Za-z0-9_-]{22,64}$/;
+
+type PasskeyResult = "success" | "cancelled" | "error";
+/** 本人の passkey の一覧。userHandle は passkey の利用者の ID（base64url）。公開鍵は含まない（D-43）。 */
+export interface Passkeys {
+  userHandle: string;
+  passkeys: { id: string; ref: string; label: string; created: number }[];
+}
+/** ログインサーバーが戻り先に付ける、登録の結果。値がないか分からなければ、失敗とみなす。 */
+export const passkeyResult = (status: string | null): PasskeyResult => (status === "success" || status === "cancelled" ? status : "error");
+/** 頼んだ操作（作成か削除）と、その結果。 */
+export interface PasskeyAction {
+  action: "create" | "delete";
+  status: PasskeyResult;
+}
+/** ログインサーバーの中の資格情報の ID（UUID）。ほかの形は、ログインサーバーに渡さない。 */
+const CREDENTIAL_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const sessions = new Map<string, Session>();
 const logins = new Map<string, LoginState>();
@@ -177,9 +206,9 @@ function sameOrigin(c: Context): boolean {
   return origin === undefined || origin === cfg().appOrigin;
 }
 
-async function startLogin(c: Context, kind: LoginState["kind"], sid?: string) {
+async function startLogin(c: Context, kind: LoginState["kind"], extra: Pick<LoginState, "sid" | "inbox" | "register" | "remove"> = {}) {
   const config = client();
-  const login: LoginState = { kind, verifier: oidc.randomPKCECodeVerifier(), state: random(), nonce: random(), sid, at: Date.now() };
+  const login: LoginState = { kind, verifier: oidc.randomPKCECodeVerifier(), state: random(), nonce: random(), ...extra, at: Date.now() };
   const id = random();
   logins.set(id, login);
   setCookie(c, LOGIN, id, { ...COOKIE, maxAge: 600 });
@@ -191,24 +220,54 @@ async function startLogin(c: Context, kind: LoginState["kind"], sid?: string) {
     state: login.state,
     nonce: login.nonce,
     ...(kind === "apply" ? { authorization_details: JSON.stringify(cfg().terms) } : { prompt: "none" }),
+    // passkey の作成を頼まれたときは、ログインサーバーの画面で登録してもらう（Keycloak の AIA。D-42、D-43）
+    ...(login.register ? { kc_action: "webauthn-register-passwordless" } : {}),
+    // 削除を頼まれたときは、ログインサーバーが確認の画面を出し、本人に確かめてから消す（Keycloak の delete_credential。D-43）
+    ...(login.remove ? { kc_action: `delete_credential:${login.remove}` } : {}),
   });
   return c.redirect(url.href, 302);
 }
 
-/** 認可サーバーの passkey の受け口へ、P と DPoP の proof を付けて送る（D-37）。経路とメソッドは決まったものだけ。 */
-const PASSKEY_ROUTES: Record<string, "GET" | "POST"> = {
-  "/passkeys/mine": "GET",
-  "/passkeys/register/options": "POST",
-  "/passkeys/register/verify": "POST",
-};
+/** 認可サーバーを、P と DPoP の proof で呼ぶ。宛先と経路は決まったものだけ（D-42）。 */
+async function callAuth(session: Session, p: string, method: "GET" | "POST", path: "/contacts/inbox" | "/passkeys/mine", body?: unknown) {
+  const { authUrl, authOrigin } = cfg();
+  const url = `${authOrigin}${path}`;
+  return egressFetch(authUrl)(url, {
+    method,
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      accept: "application/json",
+      // 認可サーバー（Spring）は、転送のヘッダーで自分の URL を組み立て、DPoP の htu と照らす。出口の Envoy までは平文なので、
+      // 相手まで TLS で届くことを明示する。Spring は X-Forwarded-Proto があるとポートを空にするので、ポートも明示する（F-G90）
+      "x-forwarded-proto": "https",
+      "x-forwarded-port": new URL(authOrigin).port,
+      authorization: `DPoP ${p}`,
+      dpop: await proof(session, method, url, p),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  }).catch(() => undefined);
+}
+
+/** 受信箱の番号を、本人の連絡先として、認可サーバーに登録する（D-26）。 */
+async function registerInbox(session: Session, p: string, inbox: string): Promise<boolean> {
+  return Boolean((await callAuth(session, p, "POST", "/contacts/inbox", { inbox }))?.ok);
+}
+
+/** 本人の passkey の一覧を、認可サーバーから読む（D-43）。読めなければ undefined。 */
+async function readPasskeys(session: Session, p: string): Promise<Passkeys | undefined> {
+  const res = await callAuth(session, p, "GET", "/passkeys/mine");
+  return res?.ok ? ((await res.json()) as Passkeys) : undefined;
+}
 
 export function addBff(app: Hono) {
-  // ログインへ送る（A を受け取る）
-  app.get("/bff/login", (c) => startLogin(c, "apply"));
-  // ログインしたまま、利用者の操作なしで、passkey の登録に使う P を受け取る（D-37）
-  app.get("/bff/login/passkeys", (c) => {
-    const session = current(c);
-    return session ? startLogin(c, "passkeys", getCookie(c, SESSION)) : c.redirect("/", 302);
+  // ログインへ送る（A を受け取る）。端末の受信箱の番号と、passkey を作るかを受け取る
+  app.get("/bff/login", (c) => {
+    const inbox = c.req.query("inbox");
+    const remove = c.req.query("delete");
+    return startLogin(c, "apply", {
+      inbox: inbox && INBOX.test(inbox) ? inbox : undefined,
+      ...(remove && CREDENTIAL_REF.test(remove) ? { remove } : { register: c.req.query("register") === "1" }),
+    });
   });
 
   /** 戻り先。認可コードを、JWT-SVID のクライアント認証と DPoP で替える。奪われた認可コードは、顧客のアプリの身元がなければ替えられない。 */
@@ -233,25 +292,34 @@ export function addBff(app: Hono) {
       const { sub } = await checkIdToken(tokens.id_token, login.nonce);
       if (login.kind === "passkeys") {
         if (!existing || existing.sub !== sub) return fail("ログイン中の利用者と違う");
-        existing.passkey = tokens.access_token;
+        // P で、端末の受信箱の番号を、本人の連絡先として登録する（D-26、D-37）。P は持ち続けない
+        if (login.inbox) existing.inboxRegistered = await registerInbox(existing, tokens.access_token, login.inbox);
+        // 本人の passkey の一覧も、同じ P で読む。画面は、端末に一覧を伝え、空なら作成を促す（D-43）
+        existing.passkeys = await readPasskeys(existing, tokens.access_token);
         return c.redirect("/", 302);
       }
       const sid = random();
       const now = Date.now();
-      sessions.set(sid, { sub, idToken: tokens.id_token, keys, dpop, access: tokens.access_token, refresh: tokens.refresh_token, created: now, used: now });
+      // passkey の作成か削除を頼んだときは、ログインサーバーが結果（success、cancelled、error）を戻り先に付ける。取り消しや失敗でも、ログインは済んでいる
+      const status = passkeyResult(url.searchParams.get("kc_action_status"));
+      const passkeyAction: PasskeyAction | undefined = login.register ? { action: "create", status } : login.remove ? { action: "delete", status } : undefined;
+      sessions.set(sid, { sub, idToken: tokens.id_token, keys, dpop, access: tokens.access_token, refresh: tokens.refresh_token, inboxRegistered: false, passkeyAction, created: now, used: now });
       setCookie(c, SESSION, sid, COOKIE);
-      // 続けて、P を受け取る
-      return startLogin(c, "passkeys", sid);
+      // 続けて、受信箱の登録に使う P を受け取る
+      return startLogin(c, "passkeys", { sid, inbox: login.inbox });
     } catch (e) {
       return fail(`ログインできない: ${(e as Error).message}`);
     }
   });
 
-  /** 画面に渡すのは、利用者の名前と、passkey の登録の準備ができているかだけ。トークンは渡さない。 */
+  /** 画面に渡すのは、利用者の名前と、受信箱を登録できたかと、passkey の登録の結果と一覧だけ。トークンは渡さない。 */
   app.get("/bff/session", (c) => {
     const session = current(c);
     if (!session) return c.json({ error: "ログインしていない" }, 401);
-    return c.json({ sub: session.sub, passkeyReady: Boolean(session.passkey && !needsRefresh(session.passkey, Date.now(), 5000)) });
+    // passkey の作成か削除の結果は、ログインの後に 1 度だけ渡す
+    const passkeyAction = session.passkeyAction;
+    session.passkeyAction = undefined;
+    return c.json({ sub: session.sub, inboxRegistered: session.inboxRegistered, ...(passkeyAction ? { passkeyAction } : {}), ...(session.passkeys ? { passkeys: session.passkeys } : {}) });
   });
 
   /**
@@ -305,30 +373,4 @@ export function addBff(app: Hono) {
     }
   });
 
-  for (const [path, method] of Object.entries(PASSKEY_ROUTES)) {
-    const handle = async (c: Context) => {
-      if (method === "POST" && !sameOrigin(c)) return c.json({ error: "要求の出どころを確かめられない" }, 403);
-      const session = current(c);
-      if (!session) return c.json({ error: "ログインしていない" }, 401);
-      if (!session.passkey || needsRefresh(session.passkey, Date.now(), 5000)) return c.json({ error: "passkey の登録のトークンが切れた" }, 401);
-      const { authUrl, authOrigin } = cfg();
-      const res = await egressFetch(authUrl)(`${authOrigin}${path}`, {
-        method,
-        headers: {
-          accept: "application/json",
-          // 認可サーバー（Spring）は、転送のヘッダーで自分の URL を組み立て、DPoP の htu と照らす。出口の Envoy までは平文なので、
-          // 相手まで TLS で届くことを明示する。Spring は X-Forwarded-Proto があるとポートを空にするので、ポートも明示する
-          "x-forwarded-proto": "https",
-          "x-forwarded-port": new URL(authOrigin).port,
-          authorization: `DPoP ${session.passkey}`,
-          dpop: await proof(session, method, `${authOrigin}${path}`, session.passkey),
-          ...(method === "POST" ? { "content-type": "application/json" } : {}),
-        },
-        body: method === "POST" ? await c.req.text() : undefined,
-      });
-      return new Response(await res.text(), { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json" } });
-    };
-    if (method === "GET") app.get(`/bff${path}`, handle);
-    else app.post(`/bff${path}`, handle);
-  }
 }
