@@ -61,7 +61,7 @@ function toolsFor(t: Thread) {
         async (a) => {
           const r = await callMcp(t.ctx, "issue_offer", a);
           if (r.isError || r.body.error) return text(`案が断られた: ${JSON.stringify(r.body)}`);
-          const offer = r.body as Offer;
+          const offer = r.body as unknown as Offer;
           t.setOffer(offer);
           return text(JSON.stringify({ issued: offer.offerSet.plans }));
         },

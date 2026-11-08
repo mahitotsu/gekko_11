@@ -6,14 +6,14 @@ cd "$(dirname "$0")/.."
 mkdir -p ~/.m2 ~/.cache/pip
 USER_ARGS=(-u "$(id -u):$(id -g)" -e HOME=/tmp)
 
-for service in insurer-auth insurer-backend insurer-audit; do
+for service in insurer-login insurer-auth insurer-backend insurer-audit; do
   echo "== $service（JUnit）"
   docker run --rm "${USER_ARGS[@]}" -v ~/.m2:/var/maven/.m2 -e MAVEN_CONFIG=/var/maven/.m2 \
     -v "$PWD/services/$service":/src -w /src maven:3.9-eclipse-temurin-21 \
     mvn -q -B -Duser.home=/var/maven test
 done
 
-echo "== insurer-mcp（pytest）"
+echo "== insurer-mcp（ruff、pytest）"
 docker run --rm "${USER_ARGS[@]}" -e PYTHONDONTWRITEBYTECODE=1 -e PIP_CACHE_DIR=/pip-cache -v ~/.cache/pip:/pip-cache \
   -v "$PWD/services/insurer-mcp":/src -w /src python:3.12-slim \
-  sh -c 'pip install -q --user -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider'
+  sh -c 'pip install -q --user -r requirements-dev.txt && python -m ruff check --no-cache . && python -m pytest -q -p no:cacheprovider'

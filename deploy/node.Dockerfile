@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # token-guard、営業 AI エージェント、顧客のアプリ、probe を入れる Node のイメージ。Node 24 は TypeScript をそのまま動かす。
-# VARIANT=secure では、防御を外す受け口と、乗っ取りの再現を、ビルドの時点で除く（D-20）。
+# VARIANT=secure では、防御を外す受け口と、乗っ取りの再現を、ビルドの時点で除く（D-24）。
 
 # 顧客のアプリの画面を、ブラウザ向けにまとめる（Vite）。secure は、外す道を持たない版に置き換えてからまとめる（D-24）
 FROM node:24-slim AS web

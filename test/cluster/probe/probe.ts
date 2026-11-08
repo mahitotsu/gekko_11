@@ -112,7 +112,7 @@ async function customerSetup(args: { user?: string; terms?: unknown }) {
   const oidc = "/realms/insurer/protocol/openid-connect";
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const jwk = await exportJWK(publicKey);
-  let cookie = "";
+  let cookie: string;
 
   // ログインサーバーは、DPoP の htu を、要求の Host の名前と照らす。ブラウザと同じ公開名で呼ぶ
   const login = { host: new URL(publicOrigin("login")).host };

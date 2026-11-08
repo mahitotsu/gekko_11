@@ -24,6 +24,7 @@ import com.webauthn4j.data.attestation.statement.NoneAttestationStatement;
 import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.server.ServerProperty;
+import com.webauthn4j.verifier.exception.BadChallengeException;
 import com.webauthn4j.verifier.exception.BadOriginException;
 
 import org.springframework.stereotype.Component;
@@ -94,10 +95,11 @@ class Seals {
 		catch (BadOriginException ex) {
 			return new Result(false, "顧客のアプリの画面で作った署名ではない（ログインの画面などで作った署名は、申込みの署名にならない）");
 		}
+		catch (BadChallengeException ex) {
+			return new Result(false, "署名が内容と一致しない（内容が署名時と違う）");
+		}
 		catch (Exception ex) {
-			String m = String.valueOf(ex.getMessage());
-			return new Result(false, m.toLowerCase().contains("challenge") ? "署名が内容と一致しない（内容が署名時と違う）"
-					: "署名の検証に失敗: " + m);
+			return new Result(false, "署名の検証に失敗: " + ex.getMessage());
 		}
 	}
 

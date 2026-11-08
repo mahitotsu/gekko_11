@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # ログインサーバー（Keycloak）。製品に、取決めの範囲の処理と発行の記録の拡張を足す（D-35、D-39）。
-# VARIANT=vulnerable のときだけ、防御を外す受け口（src/vulnerable）を足す（D-20）。
+# VARIANT=vulnerable のときだけ、防御を外す受け口（src/vulnerable）を足す（D-24）。
 FROM maven:3.9-eclipse-temurin-21 AS build
 ARG VARIANT=secure
 WORKDIR /src

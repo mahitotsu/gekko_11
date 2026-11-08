@@ -122,7 +122,8 @@ class ApplicationTest {
 		Map<String, Object> application = new LinkedHashMap<>((Map<String, Object>) body.get("application"));
 		application.put("plan", CATALOG.get(3));
 		body.put("application", application);
-		assertThat(body(submit(claims("alice", true), body))).contains("申込みの署名の照合");
+		assertThat(body(submit(claims("alice", true), body))).contains("申込みの署名の照合")
+			.contains("署名が内容と一致しない");
 
 		TestBackendConfig.OFF.put(Defenses.PASSKEY_SEAL, "mtls-only");
 		assertThat(submit(claims("alice", true, "spiffe://gekko11.internal/ns/secure/sa/insurer-mcp"),

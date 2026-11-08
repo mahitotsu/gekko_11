@@ -25,7 +25,7 @@ export interface Plan {
 export async function scriptedTurn(t: Thread, message: string, call: typeof callMcp = callMcp): Promise<void> {
   if (/契約の?(一覧|状況)|照会/.test(message)) {
     const r = await call(t.ctx, "list_contracts");
-    t.say(r.isError ? `契約を調べられませんでした: ${JSON.stringify(r.body)}` : `契約は ${r.body.contracts.length} 件です。`);
+    t.say(r.isError ? `契約を調べられませんでした: ${JSON.stringify(r.body)}` : `契約は ${r.body.contracts?.length ?? 0} 件です。`);
     return;
   }
   const kind = await t.frontend("ask_customer", {
@@ -37,7 +37,7 @@ export async function scriptedTurn(t: Thread, message: string, call: typeof call
     t.say(`案を取得できませんでした: ${JSON.stringify(r.body)}`);
     return;
   }
-  const offer = r.body as Offer;
+  const offer = r.body as unknown as Offer;
   t.setOffer(offer);
   const chosen = await t.frontend("present_offers", { message: "保険会社が用意した案です。比べて、1 つ選んでください。" });
   const planId = /選んだ案: (\S+)/.exec(chosen)?.[1];

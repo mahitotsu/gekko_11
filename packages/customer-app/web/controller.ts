@@ -77,8 +77,8 @@ export function createController(deps: {
     dispatch({ type: "busy", busy: false });
   }
 
-  async function showTool(id: string, name: string, args: Record<string, any>) {
-    if (name === "ask_customer") return dispatch({ type: "card", data: { kind: "ask", toolCallId: id, question: args.question, options: args.options } });
+  async function showTool(id: string, name: string, args: Record<string, unknown>) {
+    if (name === "ask_customer") return dispatch({ type: "card", data: { kind: "ask", toolCallId: id, question: args.question as string, options: args.options as string[] } });
     if (name === "present_intent") return dispatch({ type: "card", data: { kind: "intent", toolCallId: id, doc: args.intent as Intent } });
     if (name === "present_application") return dispatch({ type: "card", data: { kind: "application", toolCallId: id, doc: args.application as Application } });
     if (name === "present_offers") {
@@ -95,7 +95,7 @@ export function createController(deps: {
         offer = v.offer;
         tampered = v.tampered;
       }
-      return dispatch({ type: "card", data: { kind: "offers", toolCallId: id, message: args.message, reasons: args.reasons, offer, verified: enabled("G22"), tampered } });
+      return dispatch({ type: "card", data: { kind: "offers", toolCallId: id, message: args.message as string | undefined, reasons: args.reasons as Record<string, string> | undefined, offer, verified: enabled("G22"), tampered } });
     }
     answerTool(id, { error: `この画面にない道具: ${name}` });
   }

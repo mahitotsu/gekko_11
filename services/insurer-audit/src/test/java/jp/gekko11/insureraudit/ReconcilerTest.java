@@ -92,7 +92,7 @@ class ReconcilerTest {
 					"present_application", "document_hash", hash))
 			.add("insurer-mcp", "app",
 					rec("kind", "tool_call", "tool", "submit_application", "sub", "alice", "jti", "jB", "nonce", NONCE,
-							"customer", "alice", "plan", FIXED_60, "application_hash", hash, "contractId", "C-1",
+							"customer", "alice", "plan", FIXED_60, "application_hash", hash, "contract_id", "C-1",
 							"status", 200))
 			.add("insurer-backend", "app", rec("kind", "contract", "contract", contract, "by", by, "token_jti", "jC",
 					"application_hash", hash));

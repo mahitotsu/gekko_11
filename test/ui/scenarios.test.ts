@@ -2,7 +2,7 @@
 // 乗っ取られた営業 AI エージェントの返答は、ブラウザに届く手前で書き換えて作る（D-28）。secure と vulnerable で同じ手口を使う。
 // 画面の防御は、画面を開くときに読むので、vulnerable の防御は、画面を開く前に外す。
 import { afterEach, describe, expect, it } from "vitest";
-import { contractsOf, Customer, setDefenses, type Gaps, type Json, type Ns } from "../cluster/world.ts";
+import { contractsOf, setDefenses, type Gaps, type Json, type Ns } from "../cluster/world.ts";
 import { BrowserCustomer } from "./browser.ts";
 
 /** 保険会社が示していない案。提示の nonce と識別子は本物のまま、案の一覧にだけ足す。 */

@@ -151,6 +151,7 @@ async function introspect(token: string): Promise<void> {
 }
 
 const seenJti = new Map<string, number>();
+const DPOP_ALG = "ES256";
 
 /** DPoP の proof を確かめる（RFC 9449 の 4.3）。 */
 async function checkDpop(req: IngressRequest, token: string, jkt: string | undefined): Promise<void> {
@@ -159,8 +160,11 @@ async function checkDpop(req: IngressRequest, token: string, jkt: string | undef
   try {
     const header = decodeProtectedHeader(req.dpop);
     const jwk = header.jwk as JWK | undefined;
-    if (!jwk || !header.alg) throw new Error("jwk がない");
-    const { payload } = await jwtVerify(req.dpop, await importJWK(jwk, header.alg), {
+    if (!jwk) throw new Error("jwk がない");
+    // proof は、送信者の秘密鍵の署名でなければならない（RFC 9449 の 4.3）。顧客のアプリの BFF は ES256 で作る
+    if (header.alg !== DPOP_ALG) throw new Error(`alg が ${DPOP_ALG} でない: ${String(header.alg)}`);
+    const { payload } = await jwtVerify(req.dpop, await importJWK(jwk, DPOP_ALG), {
+      algorithms: [DPOP_ALG],
       typ: "dpop+jwt",
       maxTokenAge: "60s",
     });

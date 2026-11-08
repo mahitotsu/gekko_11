@@ -35,9 +35,15 @@
       <version>${keycloak.version}</version>
       <scope>provided</scope>
     </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.12.2</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
   <profiles>
-    <!-- vulnerable の名前空間のビルドだけ、防御を外す受け口（src/vulnerable）を足す（D-20） -->
+    <!-- vulnerable の名前空間のビルドだけ、防御を外す受け口（src/vulnerable）を足す（D-24） -->
     <profile>
       <id>vulnerable</id>
       <build>
@@ -67,5 +73,12 @@
   </profiles>
   <build>
     <finalName>insurer-login-extension</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+      </plugin>
+    </plugins>
   </build>
 </project>

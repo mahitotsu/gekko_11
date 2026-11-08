@@ -24,7 +24,7 @@ export async function submitSigned(t: Thread, call: typeof callMcp = callMcp): P
     offer_jws: t.offer?.offerJws,
   });
   t.signed = {};
-  const refused = r.isError || r.body?.status >= 400 || Boolean(r.body?.error);
-  t.record("agent_tool", { name: "submit_application", nonce: sent.nonce, status: refused ? "refused" : "ok", contractId: r.body?.contract?.contractId, error: r.body?.error });
+  const refused = r.isError || (r.body?.status ?? 0) >= 400 || Boolean(r.body?.error);
+  t.record("agent_tool", { name: "submit_application", nonce: sent.nonce, status: refused ? "refused" : "ok", contract_id: r.body?.contract?.contractId, error: r.body?.error });
   return r;
 }

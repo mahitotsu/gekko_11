@@ -416,7 +416,7 @@ class Reconciler {
 					&& "submit_application".equals(e.get("tool")) && nonce.equals(e.get("nonce")))
 			.toList();
 		return tools.stream()
-			.filter((e) -> contractId != null && contractId.equals(e.get("contractId")))
+			.filter((e) -> contractId != null && contractId.equals(e.get("contract_id")))
 			.findFirst()
 			.orElse(tools.stream()
 				.filter((e) -> Objects.equals(200, e.get("status")))

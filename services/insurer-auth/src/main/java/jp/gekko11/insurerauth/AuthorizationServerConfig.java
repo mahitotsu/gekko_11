@@ -100,7 +100,7 @@ public class AuthorizationServerConfig {
 	@Bean
 	@Order(2)
 	SecurityFilterChain resourceChain(HttpSecurity http, LoginKeys keys, AuthProperties props) throws Exception {
-		// 運用と内部の受け口は、相手の SPIFFE ID を各受け口で確かめる（AdminController、PasskeyController）。
+		// 運用と内部の受け口は、相手の SPIFFE ID を各受け口で確かめる（AdminController、ContactController、PasskeyController）。
 		// 連絡先の受け口は、ログインサーバーが出した P を、DPoP の proof と一緒に確かめる（D-42）。proof のない Bearer は受けない
 		http.authorizeHttpRequests((a) -> a.requestMatchers("/admin/**", "/internal/**")
 			.permitAll()

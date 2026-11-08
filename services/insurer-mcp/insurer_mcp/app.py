@@ -14,6 +14,7 @@ import time
 from typing import Any
 
 import httpx2 as httpx
+import rfc8785
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 
@@ -32,9 +33,8 @@ def _incoming() -> dict[str, str]:
 
 def digest(value: Any) -> str:
     """JCS（RFC 8785）で正規化した内容の SHA-256 の base64url（D-1 の challenge と同じ値）。
-    このシステムの書類は、文字列と整数と入れ子だけなので、鍵を並べ替えた空白のない JSON が、JCS と同じ並びになる。"""
-    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return base64.urlsafe_b64encode(hashlib.sha256(canonical.encode()).digest()).rstrip(b"=").decode()
+    正規化は、ほかの言語と同じく、RFC 8785 の実装（rfc8785）に任せる。"""
+    return base64.urlsafe_b64encode(hashlib.sha256(rfc8785.dumps(value)).digest()).rstrip(b"=").decode()
 
 
 def _record(tool: str, detail: dict[str, Any]) -> None:
@@ -107,7 +107,7 @@ async def submit_application(intent: dict[str, Any], application: dict[str, Any]
     _record("submit_application", {"nonce": application.get("nonce"), "customer": application.get("customer"),
                                    "plan": application.get("plan"),
                                    "application_hash": digest(application), "intent_hash": digest(intent),
-                                   "contractId": (result.get("contract") or {}).get("contractId")
+                                   "contract_id": (result.get("contract") or {}).get("contractId")
                                    if isinstance(result, dict) else None,
                                    "status": result.get("status", 200) if isinstance(result, dict) else None})
     return result

@@ -6,7 +6,7 @@
 
 ## 要旨
 - **構成:** サービスごとに言語を選び、k3d の 1 つのクラスタの secure と vulnerable の名前空間で動かす（D-22）。ログインサーバーは Keycloak に Java の拡張を足したものである。保険会社のシステム、認可サーバー、監査サービスは Java、事務サービスは Python、それ以外は TypeScript である。監査の記録は、Alloy が名前空間ごとの Loki に集める（D-30）。
-- **動かし方:** `npm test` が 3 つの言語の単体テストを回す。`npm run cluster:deploy` がクラスタを組み立て、`npm run cluster:test` が全シナリオと画面のテストを確かめる。画面は、ブラウザで `http://app.secure.localhost:8081` を開いて使う。監査の画面は `http://audit.secure.localhost:8081` である。
+- **動かし方:** `npm test` が、型の検査、lint、3 つの言語の単体テストを回す。`npm run cluster:deploy` がクラスタを組み立て、`npm run cluster:test` が全シナリオと画面のテストを確かめる。画面は、ブラウザで `http://app.secure.localhost:8081` を開いて使う。監査の画面は `http://audit.secure.localhost:8081` である。
 - **防御を外す受け口は、vulnerable のイメージだけにある:** 防御の ID ごとに、管理のポートで実行中に外す。教材のための意図的な実装で、本番の部品として使わない（D-24）。
 - **営業 AI エージェント:** 顧客と AG-UI 1.0 で会話する（D-29）。secure では本物の Claude（既定は Haiku）、vulnerable では台本で動く（D-23）。
 - **まだ確かめていないこと:** 本物の認証器は、Windows Hello でだけ確かめた。ブラウザは、VS Code に内蔵されたブラウザと Chrome である（F-G98、F-G99）。ほかのブラウザと認証器では、確かめていない。記録が 7 日で消えることも、確かめていない。
@@ -23,10 +23,11 @@
 | token-guard | TypeScript、Hono、jose | `packages/token-guard` |
 | 顧客のアプリ | 画面は React 19、Vite 7、@ag-ui/client、@simplewebauthn/browser、react-markdown。BFF は Hono、openid-client、jose、canonicalize（JCS） | `packages/customer-app` |
 | クラスタと基盤 | k3d 5.9（k3s 1.35）、SPIRE 1.15、spiffe-helper 0.12、Envoy 1.31、NetworkPolicy | `deploy/` |
-| 記録の集約 | Grafana Alloy 1.20（`loki.source.kubernetes`）、Grafana Loki 3.7 | `deploy/k8s/logging/`、`deploy/render.ts` |
+| 記録の集約 | Grafana Alloy 1.20（`loki.source.kubernetes`）、Grafana Loki 3.7 | `deploy/k8s/logging/`、`deploy/render/logging.ts` |
 | テスト | JUnit、pytest、vitest、Playwright 1.64（Docker のブラウザに playwright-core でつなぐ） | 各サービスの `test`、`test/cluster/`、`test/ui/` |
+| lint | ESLint（typescript-eslint の推奨と、React の hooks の 2 つの規則）、ruff。整形の道具は使わない | `eslint.config.js`、`services/insurer-mcp` |
 
-TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。Java と Python は、Docker の中でビルドし、テストする。部品を選んだ理由は、判断（D-16、D-19、D-22、D-30、D-31、D-35）にある。
+TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。Java と Python は、Docker の中でビルドし、テストする。部品を選んだ理由は、判断（D-16、D-19、D-22、D-30、D-31、D-35、D-47）にある。
 
 ## 2. フォルダ構成は、言語ごとのサービスと、クラスタの組み立てと、テストである
 ```text
@@ -43,7 +44,7 @@ packages/
 deploy/              クラスタの構成（k3d、SPIRE、記録の集約）、マニフェストの生成（入口と Loki を含む）、組み立てのスクリプト、Node のイメージ
 test/cluster/        クラスタのシナリオのテストと、クラスタの中で役を演じる probe
 test/ui/             画面のテスト（Docker の Playwright のブラウザにつなぐ）
-scripts/             Java と Python の単体テストを Docker で回すスクリプト
+scripts/             Java と Python の単体テストと、Python の lint（ruff）を Docker で回すスクリプト
 ```
 
 主なファイルは、次のとおり。
@@ -76,7 +77,8 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 | `packages/sales-agent/src/draft.ts`、`submit.ts` | 書類の組み立てと、署名の揃った書類の提出（D-27） |
 | `packages/customer-app/web/agent.ts` | 画面の側の AG-UI の接続と、画面側の道具の定義 |
 | `packages/*/src/*.secure.ts`、`packages/customer-app/web/defenses.secure.ts` | secure のビルドで、防御を外す受け口と置き換えるファイル |
-| `deploy/render.ts` | 名前空間ごとのマニフェスト（Envoy の設定、NetworkPolicy を含む） |
+| `deploy/render.ts` | 名前空間ごとのマニフェストを組み立てて書き出す。変わった Deployment だけが更新されるよう、イメージと設定のハッシュを付ける |
+| `deploy/render/` | マニフェストの部品。共通の値（`common.ts`。入口の名前、発行者、ポート）、サービスの一覧（`services.ts`）、Envoy の設定（`envoy.ts`）、Kubernetes の部品（`kubernetes.ts`）、入口（`entrance.ts`）、記録の集約（`logging.ts`）、NetworkPolicy（`network.ts`） |
 | `test/cluster/scenarios.test.ts`、`test/cluster/expiry.test.ts` | probe で確かめるシナリオと補足のテスト |
 | `test/ui/scenarios.test.ts`、`test/ui/flow.test.ts` | 画面のシナリオ（8、24）、G21 の補足、画面の基本の流れ |
 | `test/cluster/probe/probe.ts` | クラスタの中で、顧客、乗っ取られた複製、攻撃者、運用の担当、監査の役、監査の担当を演じる |
@@ -86,7 +88,7 @@ scripts/             Java と Python の単体テストを Docker で回すス�
 
 ```sh
 npm install
-npm test                 # 3 つの言語の単体テスト
+npm test                 # 型の検査、lint、3 つの言語の単体テスト
 npm run cluster:up       # k3d のクラスタを作る
 npm run cluster:deploy   # SPIRE、イメージ、secure と vulnerable の名前空間を置く
 npm run cluster:test     # 全シナリオと画面のテスト（30 分ほど）。期待する結果: 全て通る

@@ -5,9 +5,18 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 export const MCP_URL = process.env.MCP_EGRESS_URL ?? "http://127.0.0.1:15102/mcp";
 
+/** 道具の答え。保険会社のシステムの答えの JSON で、アプリが読む欄だけに型を付ける。 */
+export interface ToolBody {
+  error?: unknown;
+  status?: number;
+  contract?: { contractId?: string };
+  contracts?: unknown[];
+  [name: string]: unknown;
+}
+
 export interface ToolResult {
   isError: boolean;
-  body: any;
+  body: ToolBody;
 }
 
 export async function callMcp(ctx: string, name: string, args: Record<string, unknown> = {}): Promise<ToolResult> {

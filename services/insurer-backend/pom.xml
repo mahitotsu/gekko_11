@@ -52,7 +52,7 @@
     </dependency>
   </dependencies>
   <profiles>
-    <!-- vulnerable の名前空間のビルドだけ、防御を外す受け口（src/vulnerable/java）を足す（D-20） -->
+    <!-- vulnerable の名前空間のビルドだけ、防御を外す受け口（src/vulnerable/java）を足す（D-24） -->
     <profile>
       <id>vulnerable</id>
       <build>

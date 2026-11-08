@@ -21,7 +21,7 @@ AI エージェントが人の代わりに取引をするとき、その取引�
 
 ```sh
 npm install
-npm test                 # サービスごとの単体テスト（TypeScript、Java、Python）
+npm test                 # 型の検査、lint、サービスごとの単体テスト（TypeScript、Java、Python）
 npm run cluster:up       # k3d のクラスタを作る
 npm run cluster:deploy   # secure と vulnerable の名前空間に、全てのサービスを置く
 npm run cluster:test     # 全シナリオと画面のテストを確かめる（30 分ほど）
