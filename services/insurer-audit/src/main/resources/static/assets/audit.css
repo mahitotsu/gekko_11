@@ -1,0 +1,14 @@
+/* 監査の画面の、Bootstrap への少しの上書き（D-48）。 */
+body { font-family: system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif; }
+code { overflow-wrap: anywhere; }
+.result { white-space: nowrap; }
+.who { color: var(--bs-secondary-color); }
+pre { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); padding: .75rem; font-size: .8rem; max-height: 28rem; overflow: auto; }
+details.group { border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg); margin-bottom: .75rem; background: var(--bs-body-bg); }
+details.group > summary { padding: .6rem 1rem; cursor: pointer; font-weight: 600; }
+details.group[open] > summary { border-bottom: 1px solid var(--bs-border-color); }
+details.group > .body { padding: .75rem 1rem; }
+/* 判定の印。色だけでなく、記号でも示す */
+.verdict-ok::before { content: "✓ "; }
+.verdict-ng::before { content: "⚠ "; }
+.verdict-note::before { content: "! "; }

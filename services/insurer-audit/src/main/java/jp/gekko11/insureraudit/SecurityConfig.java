@@ -55,7 +55,7 @@ class SecurityConfig {
 		// サインアウトでは、認可サーバーのログインも終わらせる（D-33）。残ると、次に開いたときに、前の人のまま通ってしまう
 		OidcClientInitiatedLogoutSuccessHandler signedOut = new OidcClientInitiatedLogoutSuccessHandler(clients);
 		signedOut.setPostLogoutRedirectUri(props.publicOrigin() + "/");
-		http.authorizeHttpRequests((a) -> a.requestMatchers("/error").permitAll().anyRequest().hasRole("AUDITOR"))
+		http.authorizeHttpRequests((a) -> a.requestMatchers("/error", "/webjars/**", "/assets/**").permitAll().anyRequest().hasRole("AUDITOR"))
 			.oauth2Login((o) -> o.authorizationEndpoint((e) -> e.authorizationRequestResolver(pkce(clients)))
 				.tokenEndpoint((t) -> t.accessTokenResponseClient(tokenClient(props)))
 				.userInfoEndpoint((u) -> u.userAuthoritiesMapper(rolesFromIdToken())))

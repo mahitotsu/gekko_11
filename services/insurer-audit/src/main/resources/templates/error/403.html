@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>監査: 見られません</title>
-  <style th:replace="~{style :: style}"></style>
+  <th:block th:replace="~{style :: style}"></th:block>
 </head>
 <body>
-<main>
-  <h1 data-testid="forbidden">この画面は、監査の担当だけが見られます</h1>
-  <p>今のログインは、監査の担当ではありません。サインアウトしてから、監査の担当でログインしてください。</p>
+<main class="container-lg py-5">
+  <h1 class="h4" data-testid="forbidden">この画面は、監査の担当だけが見られます</h1>
+  <p class="text-body-secondary">今のログインは、監査の担当ではありません。サインアウトしてから、監査の担当でログインしてください。</p>
   <form th:replace="~{style :: signout}"></form>
 </main>
 </body>

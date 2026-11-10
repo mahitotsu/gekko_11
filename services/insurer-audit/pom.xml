@@ -28,6 +28,16 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-thymeleaf</artifactId>
     </dependency>
+    <!-- 監査の画面の見た目（D-48）。Bootstrap の CSS を WebJars で配り、Java のビルドに Node を持ち込まない -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>bootstrap</artifactId>
+      <version>5.3.8</version>
+    </dependency>
+    <dependency>
+      <groupId>org.webjars</groupId>
+      <artifactId>webjars-locator-lite</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.github.erdtman</groupId>
       <artifactId>java-json-canonicalization</artifactId>

@@ -91,4 +91,19 @@ class AuditAccessTest {
 			.getStatus()).isEqualTo(403);
 	}
 
+	@Test
+	void stylesAreServedWithoutLoginAndThePageShowsTheNamespace() throws Exception {
+		// ログインの前と 403 の画面でも見た目が崩れないよう、CSS とスクリプトは誰にでも配る（D-48）
+		for (String path : List.of("/webjars/bootstrap/dist/css/bootstrap.min.css", "/assets/audit.css", "/assets/theme.js")) {
+			assertThat(this.mvc.perform(get(path)).andReturn().getResponse().getStatus()).as(path).isEqualTo(200);
+		}
+		given(this.source.selfReported()).willReturn(List.of());
+		given(this.source.contracts()).willReturn(List.of());
+		String page = this.mvc.perform(get("/").with(oidcLogin().authorities(new SimpleGrantedAuthority("ROLE_AUDITOR"))))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		assertThat(page).contains("data-testid=\"namespace\"", "名前空間: secure");
+	}
+
 }

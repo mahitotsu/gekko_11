@@ -1,30 +1,26 @@
-<style th:fragment="style">
-  :root { --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --bg: #ffffff; --panel: #f6f8fa; --ok: #1a7f37; --ng: #cf222e; --note: #9a6700; }
-  @media (prefers-color-scheme: dark) {
-    :root { --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --bg: #0d1117; --panel: #151b23; --ok: #3fb950; --ng: #f85149; --note: #d29922; }
-  }
-  body { margin: 0; font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; color: var(--fg); background: var(--bg); line-height: 1.6; }
-  header, main { max-width: 960px; margin: 0 auto; padding: 0 16px; }
-  header { border-bottom: 1px solid var(--line); }
-  h1 { font-size: 1.4rem; margin: 16px 0 4px; }
-  h2 { font-size: 1.1rem; margin: 24px 0 8px; border-bottom: 1px solid var(--line); }
-  h3 { font-size: 1rem; margin: 16px 0 4px; }
-  code { overflow-wrap: anywhere; }
-  .result { white-space: nowrap; }
-  details { margin: 8px 0; }
-  summary { cursor: pointer; }
-  .who { color: var(--muted); margin: 0 0 12px; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
-  th { background: var(--panel); }
-  .ok { color: var(--ok); font-weight: bold; }
-  .ng { color: var(--ng); font-weight: bold; }
-  .note { color: var(--note); }
-  pre { background: var(--panel); border: 1px solid var(--line); padding: 8px; overflow-x: auto; font-size: 0.85rem; }
-  a { color: inherit; }
-  .signout { margin: 0 0 12px; }
-</style>
+<!-- 監査の画面の共通の部品（D-48）。見た目は Bootstrap 5 で、CSS は WebJars から配る。色のモードは theme.js が OS の設定に合わせる（F-G105）。 -->
+<th:block th:fragment="style">
+  <link rel="stylesheet" th:href="@{/webjars/bootstrap/dist/css/bootstrap.min.css}">
+  <link rel="stylesheet" th:href="@{/assets/audit.css}">
+  <script th:src="@{/assets/theme.js}"></script>
+</th:block>
 
-<form th:fragment="signout" th:action="@{/logout}" method="post" class="signout">
-  <button type="submit" data-testid="signout">サインアウト</button>
+<!-- 見出しの帯。名前空間を出し、防御を外せる複製（vulnerable）なら目立たせる -->
+<nav th:fragment="navbar(title)" class="navbar border-bottom bg-body-tertiary mb-4">
+  <div class="container-lg flex-wrap gap-2">
+    <span class="navbar-brand d-flex align-items-center gap-2 mb-0">
+      <span class="badge text-bg-primary">教</span>
+      <span>教材保険会社 <span class="text-body-secondary fw-normal" th:text="${title}">監査</span></span>
+    </span>
+    <span th:if="${namespace != null}" class="badge rounded-pill" th:classappend="${namespace == 'secure'} ? 'text-bg-secondary' : 'text-bg-warning'" data-testid="namespace"
+          th:text="${namespace == 'secure'} ? '名前空間: secure' : '⚠ 防御を外せる複製（' + ${namespace} + '）'">名前空間</span>
+    <span class="ms-auto d-flex align-items-center gap-2">
+      <span class="who small">監査の担当: <span th:text="${user}">kansa</span></span>
+      <form th:replace="~{style :: signout}"></form>
+    </span>
+  </div>
+</nav>
+
+<form th:fragment="signout" th:action="@{/logout}" method="post" class="signout m-0">
+  <button type="submit" class="btn btn-sm btn-outline-secondary" data-testid="signout">サインアウト</button>
 </form>
