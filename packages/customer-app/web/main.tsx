@@ -6,5 +6,5 @@ import { loadDefenses } from "./defenses.ts";
 import "./styles.css";
 
 const cfg = (await (await fetch("/config.json")).json()) as Config;
-const enabled = await loadDefenses();
-createRoot(document.getElementById("root")!).render(<App cfg={cfg} auth={auth} enabled={enabled} />);
+const { enabled, replica } = await loadDefenses();
+createRoot(document.getElementById("root")!).render(<App cfg={cfg} auth={auth} enabled={enabled} replica={replica} />);

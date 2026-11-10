@@ -8,7 +8,8 @@ import { termsRowsOf } from "../checks.ts";
 import { initialState, reducer, type ReconcileRow, type Step } from "../conversation.ts";
 import { createController, reconciled } from "../controller.ts";
 import { signalAccepted } from "../passkey.ts";
-import { Cards, RowsTable } from "./Cards.tsx";
+import { Cards, ReconcileList, RowsTable } from "./Cards.tsx";
+import { Alert, Badge, Button, Card, ICON } from "./ui.tsx";
 
 const STEPS: { step: Step; label: string }[] = [
   { step: "consult", label: "相談" },
@@ -22,6 +23,8 @@ interface Props {
   cfg: Config;
   auth: Auth;
   enabled: (id: string) => boolean;
+  /** 防御を外せる複製（vulnerable）のときだけある。帯に出す */
+  replica?: { off: string[] };
 }
 
 const failText = (e: unknown) => {
@@ -47,22 +50,24 @@ function Apply(props: Props & { session: Session; device: Device; hidden: boolea
   useEffect(() => onSigning(state.signing), [state.signing, onSigning]);
   const at = STEPS.findIndex((s) => s.step === state.step);
   return (
-    <section id="apply" hidden={hidden}>
-      <ol id="steps" data-testid="steps">
+    <section id="apply" hidden={hidden} className="space-y-4">
+      <ol id="steps" data-testid="steps" className="flex flex-wrap gap-2" aria-label="申込みの段">
         {STEPS.map((s, i) => (
           <li key={s.step} data-step={s.step} className={i < at ? "done" : undefined} aria-current={i === at ? "step" : undefined}>{s.label}</li>
         ))}
       </ol>
       <Cards controller={controller} state={state} auth={auth} enabled={enabled} />
-      <p id="agent-status" data-testid="agent-status" data-state={state.busy ? "busy" : "idle"}>{state.busy ? "営業 AI エージェントが考えています…" : ""}</p>
-      <div id="new-confirm-box" className="confirm" data-testid="new-confirm-box" hidden={!state.confirmNew}>
-        <p>申込書に署名した後で、営業 AI エージェントが提出を進めています。ここで始め直しても、契約になることがあります。結果は「受信箱と契約」で確かめてください。</p>
-        <button id="new-confirm" data-testid="new-confirm" type="button" onClick={() => controller.startOver()}>それでも始め直す</button>
-        <button id="new-back" data-testid="new-back" type="button" onClick={() => send({ type: "confirmNew", on: false })}>戻る</button>
+      <p id="agent-status" data-testid="agent-status" data-state={state.busy ? "busy" : "idle"} className={state.busy ? "waiting text-sm text-muted-foreground" : "text-sm text-muted-foreground"}>{state.busy ? "営業 AI エージェントが考えています…" : ""}</p>
+      <div id="new-confirm-box" className="space-y-3 rounded-lg border border-danger/50 bg-danger-soft p-4" data-testid="new-confirm-box" hidden={!state.confirmNew}>
+        <p className="text-sm">申込書に署名した後で、営業 AI エージェントが提出を進めています。ここで始め直しても、契約になることがあります。結果は「受信箱と契約」で確かめてください。</p>
+        <div className="flex gap-2">
+          <Button id="new-confirm" data-testid="new-confirm" variant="danger" onClick={() => controller.startOver()}>それでも始め直す</Button>
+          <Button id="new-back" data-testid="new-back" onClick={() => send({ type: "confirmNew", on: false })}>戻る</Button>
+        </div>
       </div>
       <p>
         {/* 提出の途中で始め直しても、契約になることがあるので、確かめてから始め直す */}
-        <button id="new-application" data-testid="new-application" type="button" hidden={!state.started} disabled={state.signing} onClick={() => (state.submitting ? send({ type: "confirmNew", on: true }) : controller.startOver())}>新しい申し込み</button>
+        <Button id="new-application" data-testid="new-application" hidden={!state.started} disabled={state.signing} onClick={() => (state.submitting ? send({ type: "confirmNew", on: true }) : controller.startOver())}>新しい申し込み</Button>
       </p>
     </section>
   );
@@ -79,15 +84,15 @@ function Inbox({ session, device, hidden, visible, onError }: { session: Session
   }, [visible]);
   const unexpected = rows.filter((r) => r.status === "unexpected").length;
   return (
-    <section id="inbox" hidden={hidden}>
-      <h2>受信箱と契約</h2>
-      <p>保険会社から直接届いた全ての契約内容を、この端末に残した申込みの写しと突き合わせます。申し込んだ覚えのない契約が届いていたら、保険会社へ連絡してください。</p>
-      <button id="check-inbox" data-testid="check-inbox" type="button" onClick={() => void check()}>最新の受信箱を照合する</button>
-      <p id="inbox-alert" className="alert" data-testid="inbox-alert" hidden={unexpected === 0}>{`申し込んだ覚えのない契約が ${unexpected} 件届いています。保険会社へ連絡してください。`}</p>
-      <ul id="inbox-list">
-        {rows.map((r) => <li key={r.nonce} data-status={r.status} data-testid={`inbox-${r.nonce}`}>{r.text}</li>)}
-      </ul>
-    </section>
+    <Card id="inbox" hidden={hidden} className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold">受信箱と契約</h2>
+        <p className="text-sm text-muted-foreground">保険会社から直接届いた全ての契約内容を、この端末に残した申込みの写しと突き合わせます。申し込んだ覚えのない契約が届いていたら、保険会社へ連絡してください。</p>
+      </div>
+      <Button id="check-inbox" data-testid="check-inbox" variant="primary" onClick={() => void check()}>最新の受信箱を照合する</Button>
+      <Alert id="inbox-alert" tone="danger" data-testid="inbox-alert" hidden={unexpected === 0}>{`申し込んだ覚えのない契約が ${unexpected} 件届いています。保険会社へ連絡してください。`}</Alert>
+      <ReconcileList id="inbox-list" rows={rows} testid={(r) => `inbox-${r.nonce}`} />
+    </Card>
   );
 }
 
@@ -100,35 +105,37 @@ function Passkeys({ session, auth, hidden }: { session: Session; auth: Auth; hid
   const list = session.passkeys?.passkeys;
   const used = usedPasskey.get(session.sub);
   return (
-    <section id="passkeys" data-testid="passkeys" hidden={hidden}>
+    <Card id="passkeys" data-testid="passkeys" hidden={hidden} className="space-y-4">
       <p>パスキーは、ログインと、申込みの署名に使います。保険会社に登録されているパスキーは、次のとおりです。</p>
-      {!list && <p data-testid="passkeys-unknown">保険会社から、パスキーの一覧を読めませんでした。</p>}
-      {list && list.length === 0 && <p data-testid="passkeys-none">まだありません。</p>}
+      {!list && <p data-testid="passkeys-unknown" className="text-sm text-muted-foreground">保険会社から、パスキーの一覧を読めませんでした。</p>}
+      {list && list.length === 0 && <p data-testid="passkeys-none" className="text-sm text-muted-foreground">まだありません。</p>}
       {list && list.length > 0 && (
-        <ul data-testid="passkeys-list">
+        <ul data-testid="passkeys-list" className="divide-y rounded-lg border">
           {list.map((k) => (
-            <li key={k.id} data-testid="passkey-item" data-used={k.id === used ? "true" : undefined}>
-              {k.label || `名前のないパスキー（${new Date(k.created).toLocaleString("ja-JP")} に作成）`}
-              {k.id === used && <strong>（この端末で使ったパスキー）</strong>}{" "}
-              <button data-testid="delete-passkey" type="button" onClick={() => auth.deletePasskey(k.ref)}>消す</button>
+            <li key={k.id} data-testid="passkey-item" data-used={k.id === used ? "true" : undefined} data-icon="🔑" className={`flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm ${ICON}`}>
+              <span className="grow">
+                {k.label || `名前のないパスキー（${new Date(k.created).toLocaleString("ja-JP")} に作成）`}
+                {k.id === used && <strong className="ml-1 text-verified">（この端末で使ったパスキー）</strong>}{" "}
+              </span>
+              <Button data-testid="delete-passkey" variant="danger" onClick={() => auth.deletePasskey(k.ref)}>消す</Button>
             </li>
           ))}
         </ul>
       )}
-      <p className="hint">
+      <p className="hint text-sm text-muted-foreground">
         なくした端末や、使えなくなったパスキーは、「消す」で保険会社から消してください。消す前に、保険会社のログインの画面で確かめます。
         「この端末で使ったパスキー」の印は、この端末で申込みに署名したときに付きます。
       </p>
-      <p className="hint">
+      <p className="hint text-sm text-muted-foreground">
         この端末でパスキーが使えないとき（ログインで「unknown user」と出る、署名できない）は、作ってください。この端末にまだ使えるパスキーがあるときは、作れません。
         作ると、この端末の使えなくなったパスキーは置き換わります（端末によっては、置き換えずに追加されます）。
       </p>
-      <button data-testid="add-passkey" type="button" onClick={() => auth.startLogin(true)}>パスキーを作る</button>
-    </section>
+      <Button data-testid="add-passkey" variant="primary" onClick={() => auth.startLogin(true)}>パスキーを作る</Button>
+    </Card>
   );
 }
 
-export function App({ cfg, auth, enabled }: Props) {
+export function App({ cfg, auth, enabled, replica }: Props) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session>();
   const [device, setDevice] = useState<Device>();
@@ -178,48 +185,73 @@ export function App({ cfg, auth, enabled }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const tabClass = (name: typeof tab) =>
+    `tab rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors ${tab === name ? "active bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`;
   return (
     <>
-      <h1>教材保険会社 顧客のアプリ</h1>
-      <p id="error" data-testid="error" hidden={!(error ?? notice)}>{error ?? notice}</p>
-      <p id="info" data-testid="info" hidden={!info}>{info}</p>
-      {ready && !session && (
-        <section id="login">
-          <p>営業 AI エージェントに、次の範囲で申込みの取り次ぎを任せます（取決め）。</p>
-          <div id="terms" data-testid="terms">
-            <RowsTable rows={termsRowsOf(cfg.terms as { kinds: string[]; maxBenefit: number }[])} prefix="terms" />
-          </div>
-          <p className="hint">ログインと、申込みの署名には、同じパスキーを使います。パスキーがまだないときは、パスワードでログインした後に作れます。</p>
-          <button id="login-button" data-testid="login" type="button" onClick={() => auth.startLogin()}>同意して保険会社にログインする</button>
-        </section>
-      )}
-      {session && (
-        <section id="signed-in">
-          <p>
-            ログイン中: <strong id="whoami" data-testid="whoami">{session.sub}</strong>{" "}
-            <button id="signout-button" data-testid="signout" type="button" disabled={signing} onClick={() => auth.signOut().catch((e) => setError(failText(e)))}>サインアウト</button>{" "}
-          </p>
-        </section>
-      )}
-      {session && prompt && (
-        <section id="passkey-prompt" data-testid="passkey-prompt">
-          <p>この端末でパスキーを作りますか。パスキーは、次からのログインと、申込みの署名に使います。保険会社には、あなたのパスキーがまだありません。</p>
-          <button data-testid="create-passkey" type="button" onClick={() => auth.startLogin(true)}>パスキーを作る</button>{" "}
-          <button data-testid="passkey-later" type="button" onClick={() => setPrompt(false)}>後で</button>
-        </section>
-      )}
-      {session && device && (
-        <>
-          <nav id="tabs">
-            <button id="tab-apply" data-testid="tab-apply" type="button" className={tab === "apply" ? "tab active" : "tab"} onClick={() => setTab("apply")}>申し込む</button>
-            <button id="tab-inbox" data-testid="tab-inbox" type="button" className={tab === "inbox" ? "tab active" : "tab"} onClick={() => setTab("inbox")}>受信箱と契約</button>
-            <button id="tab-passkeys" data-testid="tab-passkeys" type="button" className={tab === "passkeys" ? "tab active" : "tab"} onClick={() => setTab("passkeys")}>パスキー</button>
-          </nav>
-          <Apply cfg={cfg} auth={auth} enabled={enabled} session={session} device={device} hidden={tab !== "apply"} onError={setError} onSigning={setSigning} />
-          <Inbox session={session} device={device} hidden={tab !== "inbox"} visible={tab === "inbox"} onError={setError} />
-          <Passkeys session={session} auth={auth} hidden={tab !== "passkeys"} />
-        </>
-      )}
+      {replica && <ReplicaBanner off={replica.off} />}
+      <header className="border-b bg-card">
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3 px-4 py-3">
+          <span aria-hidden="true" className="grid size-8 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">教</span>
+          <h1 className="text-base font-semibold">
+            教材保険会社 <span className="font-normal text-muted-foreground">顧客のアプリ</span>
+          </h1>
+          {session && (
+            <p id="signed-in" className="ml-auto flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">ログイン中:</span> <strong id="whoami" data-testid="whoami">{session.sub}</strong>{" "}
+              <Button id="signout-button" data-testid="signout" variant="ghost" disabled={signing} onClick={() => auth.signOut().catch((e) => setError(failText(e)))}>サインアウト</Button>{" "}
+            </p>
+          )}
+        </div>
+      </header>
+      <main className="mx-auto max-w-3xl space-y-4 px-4 py-6">
+        <Alert id="error" tone="danger" data-testid="error" hidden={!(error ?? notice)} className="sticky top-2 z-10 shadow-md">{error ?? notice}</Alert>
+        <Alert id="info" tone="verified" data-testid="info" hidden={!info}>{info}</Alert>
+        {ready && !session && (
+          <Card id="login" className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold">申込みの取り次ぎを任せる範囲</h2>
+              <p className="text-sm text-muted-foreground">営業 AI エージェントに、次の範囲で申込みの取り次ぎを任せます（取決め）。</p>
+            </div>
+            <div id="terms" data-testid="terms" className="rounded-lg border">
+              <RowsTable rows={termsRowsOf(cfg.terms as { kinds: string[]; maxBenefit: number }[])} prefix="terms" />
+            </div>
+            <p className="hint text-sm text-muted-foreground">ログインと、申込みの署名には、同じパスキーを使います。パスキーがまだないときは、パスワードでログインした後に作れます。</p>
+            <Button id="login-button" data-testid="login" variant="primary" onClick={() => auth.startLogin()}>同意して保険会社にログインする</Button>
+          </Card>
+        )}
+        {session && prompt && (
+          <Card id="passkey-prompt" data-testid="passkey-prompt" className="space-y-3 border-primary/40">
+            <p>この端末でパスキーを作りますか。パスキーは、次からのログインと、申込みの署名に使います。保険会社には、あなたのパスキーがまだありません。</p>
+            <div className="flex gap-2">
+              <Button data-testid="create-passkey" variant="primary" onClick={() => auth.startLogin(true)}>パスキーを作る</Button>{" "}
+              <Button data-testid="passkey-later" onClick={() => setPrompt(false)}>後で</Button>
+            </div>
+          </Card>
+        )}
+        {session && device && (
+          <>
+            <nav id="tabs" className="inline-flex gap-1 rounded-lg bg-muted p-1" aria-label="画面の切り替え">
+              <button id="tab-apply" data-testid="tab-apply" type="button" className={tabClass("apply")} aria-current={tab === "apply" ? "page" : undefined} onClick={() => setTab("apply")}>申し込む</button>
+              <button id="tab-inbox" data-testid="tab-inbox" type="button" className={tabClass("inbox")} aria-current={tab === "inbox" ? "page" : undefined} onClick={() => setTab("inbox")}>受信箱と契約</button>
+              <button id="tab-passkeys" data-testid="tab-passkeys" type="button" className={tabClass("passkeys")} aria-current={tab === "passkeys" ? "page" : undefined} onClick={() => setTab("passkeys")}>パスキー</button>
+            </nav>
+            <Apply cfg={cfg} auth={auth} enabled={enabled} session={session} device={device} hidden={tab !== "apply"} onError={setError} onSigning={setSigning} />
+            <Inbox session={session} device={device} hidden={tab !== "inbox"} visible={tab === "inbox"} onError={setError} />
+            <Passkeys session={session} auth={auth} hidden={tab !== "passkeys"} />
+          </>
+        )}
+      </main>
     </>
+  );
+}
+
+/** 防御を外せる複製（vulnerable）の帯。secure の版は、この帯を出さない（D-24）。 */
+function ReplicaBanner({ off }: { off: string[] }) {
+  return (
+    <div data-testid="replica-banner" className="border-b border-warning/60 bg-warning-soft px-4 py-2 text-center text-sm">
+      <Badge tone="warning" icon="⚠">防御を外せる複製（vulnerable）</Badge>{" "}
+      <span>{off.length ? `今外している画面の防御: ${off.join("、")}` : "画面の防御は、今は全て効いています。"}</span>
+    </div>
   );
 }

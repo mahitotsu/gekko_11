@@ -1,41 +1,149 @@
-:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-body { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
-section { border: 1px solid #8884; border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
-.warning { color: #b00; }
-.user { text-align: right; background: #8881; padding: .4rem .8rem; border-radius: .4rem; }
-.agent table, .tool table { border-collapse: collapse; margin: .4rem 0; }
-#steps { display: flex; flex-wrap: wrap; gap: .4rem; list-style: none; padding: 0; margin: 0 0 1rem; }
-#steps li { margin: 0; padding: .1rem .7rem; border: 1px solid #8886; border-radius: 1rem; font-size: .9rem; color: #888; }
-#steps li.done { color: #1a7f37; border-color: #1a7f37; }
-#steps li.done::before { content: "✓ "; }
-#steps li[aria-current] { color: inherit; font-weight: bold; border-color: currentColor; }
-.tool { border: 1px solid #8884; border-left: 4px solid #8886; border-radius: .4rem; padding: .6rem .8rem; margin: .6rem 0; }
-.tool[open] { border-left-color: #2f6fdd; }
-.tool button { margin: .2rem .4rem .2rem 0; }
-.tool td:first-child { white-space: nowrap; }
-.tool summary { cursor: pointer; font-weight: bold; overflow-wrap: anywhere; }
-.tool:not([open]) summary { font-weight: normal; color: #888; }
-.frame-label { margin: 0 0 .2rem; font-size: .8rem; font-weight: bold; color: #888; }
-.agent { background: #8881; border-radius: .4rem; padding: .5rem .8rem; margin: .5rem 0; }
-.issued { border: 1px solid #1a7f3788; border-radius: .4rem; padding: .5rem .8rem; margin: .5rem 0; }
-.issued ul { padding-left: 1.2rem; margin: .2rem 0; }
-.free { margin-top: .6rem; }
-.free label { display: block; margin-bottom: .2rem; }
-.free textarea { display: block; width: 100%; box-sizing: border-box; margin-bottom: .3rem; font: inherit; }
-.hint { margin: .3rem 0 0; font-size: .8rem; color: #888; }
-.confirm { border: 1px solid #b00; border-radius: .4rem; padding: .5rem .8rem; }
-.chosen { font-weight: bold; outline: 2px solid #1a7f37; }
-#agent-status { color: #888; }
-.tab { padding: .4rem 1rem; border: 1px solid #8886; background: none; border-radius: .4rem .4rem 0 0; }
-.tab.active { font-weight: bold; border-bottom-color: transparent; }
-.alert { color: #fff; background: #b00; padding: .6rem 1rem; border-radius: .4rem; }
-#error { position: sticky; top: 0; z-index: 1; color: #fff; background: #b00; padding: .6rem 1rem; border-radius: .4rem; }
-td, th { padding: .2rem .6rem; border-bottom: 1px solid #8883; text-align: left; }
-.step { font-size: .9rem; color: #888; }
-.signed { color: #1a7f37; font-weight: bold; }
-li { margin: .4rem 0; }
-.waiting { color: #888; }
-.waiting::before { content: ""; display: inline-block; width: .8em; height: .8em; margin-right: .4em; vertical-align: -.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .waiting::before { animation: none; } }
-[aria-busy] button:disabled { cursor: wait; }
+/* 顧客のアプリの見た目（D-48）。Tailwind CSS が、使ったクラスから静的な CSS を作る。インラインのスタイルは使わない（G32）。
+   色は、意味ごとの値（トークン）で決め、ライトとダークで値を替える。部品は components/ui.tsx にある。 */
+@import "tailwindcss";
+
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+:root {
+  color-scheme: light dark;
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.21 0.02 260);
+  --card: oklch(1 0 0);
+  --muted: oklch(0.96 0.005 250);
+  --muted-foreground: oklch(0.5 0.02 260);
+  --border: oklch(0.91 0.008 250);
+  --primary: oklch(0.45 0.15 255);
+  --primary-foreground: oklch(0.99 0 0);
+  /* 保険会社が署名し、画面が確かめた内容 */
+  --verified: oklch(0.52 0.13 155);
+  --verified-soft: oklch(0.97 0.03 155);
+  /* 営業 AI エージェントの言葉（確かめていない） */
+  --agent: oklch(0.5 0.13 295);
+  --agent-soft: oklch(0.97 0.02 295);
+  --danger: oklch(0.55 0.2 27);
+  --danger-soft: oklch(0.97 0.025 27);
+  --warning: oklch(0.6 0.13 75);
+  --warning-soft: oklch(0.97 0.04 85);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.17 0.01 260);
+    --foreground: oklch(0.95 0.005 250);
+    --card: oklch(0.21 0.012 260);
+    --muted: oklch(0.26 0.012 260);
+    --muted-foreground: oklch(0.72 0.015 260);
+    --border: oklch(0.32 0.012 260);
+    --primary: oklch(0.7 0.13 255);
+    --primary-foreground: oklch(0.17 0.02 260);
+    --verified: oklch(0.75 0.14 155);
+    --verified-soft: oklch(0.25 0.04 155);
+    --agent: oklch(0.76 0.11 295);
+    --agent-soft: oklch(0.25 0.04 295);
+    --danger: oklch(0.7 0.17 25);
+    --danger-soft: oklch(0.26 0.05 25);
+    --warning: oklch(0.8 0.13 85);
+    --warning-soft: oklch(0.27 0.05 85);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-verified: var(--verified);
+  --color-verified-soft: var(--verified-soft);
+  --color-agent: var(--agent);
+  --color-agent-soft: var(--agent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --font-sans: system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans leading-relaxed antialiased;
+  }
+  * {
+    @apply border-border;
+  }
+  /* 隠した要素は、クラスの display より優先して隠す */
+  [hidden] {
+    display: none !important;
+  }
+  button:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+  [aria-busy] button:disabled {
+    @apply cursor-wait;
+  }
+}
+
+/* 申込みの段。テストは #steps li.done と aria-current を見る */
+#steps li {
+  @apply flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-sm text-muted-foreground;
+}
+#steps li.done {
+  @apply border-verified text-verified;
+}
+#steps li.done::before {
+  content: "✓";
+}
+#steps li[aria-current] {
+  @apply border-primary bg-primary font-semibold text-primary-foreground;
+}
+
+/* カードの枠（details）。開いたカードは、左の線で示す */
+details.tool > summary {
+  @apply flex cursor-pointer list-none items-center gap-2 font-semibold;
+  overflow-wrap: anywhere;
+}
+details.tool > summary::-webkit-details-marker {
+  display: none;
+}
+details.tool > summary::before {
+  content: "▸";
+  @apply text-muted-foreground transition-transform;
+}
+details.tool[open] > summary::before {
+  @apply rotate-90;
+}
+details.tool:not([open]) > summary {
+  @apply font-normal text-muted-foreground;
+}
+
+/* 営業 AI エージェントの言葉の中の Markdown */
+.agent-body > * + * {
+  @apply mt-2;
+}
+.agent-body ul {
+  @apply list-disc pl-5;
+}
+.agent-body ol {
+  @apply list-decimal pl-5;
+}
+.agent-body table {
+  @apply my-1 text-sm;
+}
+.agent-body td,
+.agent-body th {
+  @apply border-b px-2 py-1 text-left;
+}
+
+/* 署名を待つ間の印 */
+.waiting::before {
+  content: "";
+  @apply mr-2 inline-block size-3.5 animate-spin rounded-full border-2 border-current border-r-transparent align-[-0.15em];
+}
+@media (prefers-reduced-motion: reduce) {
+  .waiting::before {
+    animation: none;
+  }
+}
