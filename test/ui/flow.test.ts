@@ -57,7 +57,8 @@ describe("顧客の希望から案を組み立てる（secure の本物の Claud
   it("希望に近い案が出て、条件を変えて頼み直すと新しい提示になり、最初の文が意向確認書面に残る", async () => {
     alice = await new BrowserCustomer("secure", "alice").ready();
     const wish = "年に 80 万円を 15 年受け取れる個人年金を考えています。";
-    await alice.chat(wish);
+    // 質問（掛け金など）には、希望の年額を保つ答えを書く。最初の選択肢を選ぶと、希望より安い掛け金に決まることがある
+    await alice.chat(wish, "年に 80 万円を 15 年受け取れる掛け金でかまいません。");
     expect(await alice.error()).toBeNull();
     // 掛け金を変えて探すので、ぴったりとは限らない。受取期間が 15 年で、年額が 80 万円の前後 1 割の案があるかを見る
     const near = (await alice.shownPlans()).map((p) => /確定年金 15年・年額(\d+)万円/.exec(p.name)?.[1]).filter(Boolean).map(Number);

@@ -195,7 +195,11 @@ export class BrowserCustomer {
    * 相談して、案が示されるまで会話を進める。営業 AI エージェントの質問には、最初の選択肢で答える。
    * Claude が案を示さずに番を終えたときは、1 度だけ頼み直す。
    */
-  async chat(message = "老後に備えて、個人年金保険を考えています。") {
+  /**
+   * 希望を伝え、案が出るまで進める。質問には、answer があれば「その他」の欄にその文で答え、なければ最初の選択肢で答える。
+   * 最初の選択肢は、希望と合わないことがある（Claude が掛け金を尋ね、最も安い選択肢を選ぶと、希望の年額に届かない）。
+   */
+  async chat(message = "老後に備えて、個人年金保険を考えています。", answer?: string) {
     for (const text of [message, "保険会社の案を示して、選ばせてください。"]) {
       await this.page.getByTestId("free-input").fill(text);
       await this.page.getByTestId("free-send").click();
@@ -206,7 +210,10 @@ export class BrowserCustomer {
         if (await this.page.getByTestId("error").isVisible()) return;
         const ask = this.page.locator("[data-testid=ask-option-0]:enabled");
         if (await ask.count()) {
-          await ask.click();
+          if (answer) {
+            await this.page.getByTestId("ask-other-input").fill(answer);
+            await this.page.getByTestId("ask-other-send").click();
+          } else await ask.click();
           await this.page.waitForTimeout(300);
           continue;
         }
