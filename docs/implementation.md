@@ -45,6 +45,7 @@ deploy/              クラスタの構成（k3d、SPIRE、記録の集約）、
 test/cluster/        クラスタのシナリオのテストと、クラスタの中で役を演じる probe
 test/ui/             画面のテスト（Docker の Playwright のブラウザにつなぐ）
 scripts/             Java と Python の単体テストと、Python の lint（ruff）を Docker で回すスクリプト
+.github/workflows/    GitHub Actions。push とプルリクエストで、npm test と日本語の校正を回す（クラスタのテストは回さない）
 ```
 
 主なファイルは、次のとおり。

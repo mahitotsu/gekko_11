@@ -10,7 +10,7 @@
     "test": "tsc --noEmit && eslint . && vitest run && scripts/unit-tests.sh",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "lint:text": "textlint README.md docs",
+    "lint:text": "textlint README.md SECURITY.md docs",
     "cluster:up": "deploy/cluster.sh up",
     "cluster:deploy": "deploy/cluster.sh deploy",
     "cluster:down": "deploy/cluster.sh down",
