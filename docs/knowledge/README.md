@@ -179,6 +179,10 @@
 | [F-G99](facts/F-G99.md) | Windows Hello での passkey のログインと署名で、押してから確認画面が出るまでは、Chrome で 1.8 秒ほど、VS Code に内蔵されたブラウザで 5 秒ほどだった。待つ間、ブラウザから通信は出ない。hints（client-device）、transports、ページを開いたときの認証器の問い合わせは、Chrome での時間を変えなかった | 実機確認 |
 | [F-G100](facts/F-G100.md) | Keycloak 26.8.1 は、passkey の資格情報の credentialData に、登録のときの transports を持つ。標準のログインのスクリプトは、利用者を特定する前の要求では allowCredentials を空にし、特定した後も transports を添えない | 実機確認 |
 | [F-G101](facts/F-G101.md) | Keycloak 26.8.1 は、テーマの静的なファイルを max-age=2592000（30 日）で返し、配置し直しても URL の版が変わらないことがある。そのため、写したスクリプトを置いても、ブラウザは前のものを使い続けた。起動の引数 --spi-theme--static-max-age=-1 で no-cache になる | 実機確認 |
+| [F-G102](facts/F-G102.md) | CSP の style-src は、'unsafe-inline' がなければ、要素の style 属性を止める。nonce は属性に効かず、ハッシュで許すには 'unsafe-hashes' が要る | 本文確認 |
+| [F-G103](facts/F-G103.md) | Floating UI の React の useFloating は、位置を floatingStyles として返し、浮く要素の style 属性に当てる | 本文確認 |
+| [F-G104](facts/F-G104.md) | Tailwind CSS は、使ったクラスから CSS を作り、静的な CSS ファイルに書き出す。Vite では、@tailwindcss/vite を足し、CSS で @import "tailwindcss" と書く | 本文確認 |
+| [F-G105](facts/F-G105.md) | Bootstrap 5.3 の色のモードは、html 要素の data-bs-theme で切り替わる。既定では OS の設定に自動で従わず、従わせるにはスクリプトか、Sass の media-query の設定が要る | 本文確認 |
 | [C-1](facts/C-1.md) | 承認者は申請内容を修正できず、差し戻すか取り下げさせる（法人向け外為） | 本文確認 |
 | [C-2](facts/C-2.md) | 窓口で、高額の振込や払戻しに声をかける取組がある | 要約のみ |
 | [C-3](facts/C-3.md) | 国際監査基準は、独立した外部の情報源の証拠を、内部で作られた証拠より信頼できるとする。ただし IAASB は、この一般化が今は合わない可能性を検討した | 本文確認（日本の監基報は未確認） |
@@ -239,6 +243,7 @@
 | [D-45](decisions/D-45.md) | 事務サービスの道具は、誰の代理かを指す引数を持たない。誰の依頼かは、保険会社のシステムがトークンの本人（sub）から決める | 承認 |
 | [D-46](decisions/D-46.md) | 防御の ID は、G1〜G32（枝は G3a〜G3f）とし、判断の ID（D-、P-）と別の文字にする | 承認 |
 | [D-47](decisions/D-47.md) | lint だけを入れる。TypeScript は ESLint（typescript-eslint の推奨と、React の hooks の 2 つの規則）、Python は ruff の既定の規則とし、npm test で回す。整形の道具と、Java の lint は入れない | 承認 |
+| [D-48](decisions/D-48.md) | 顧客のアプリの見た目は Tailwind CSS と、shadcn/ui を写した自前の小さな部品で、監査の画面は Bootstrap 5（WebJars）で組む。style 属性で位置を決める部品は使わず、画面の CSP は緩めない | 承認 |
 | [P-1](decisions/P-1.md) | 示す案の中身は、保険会社が計算して署名する。AI は条件を選んで案を組み立て、示し、推奨の理由を説明する（P-17） | 承認 |
 | [P-2](decisions/P-2.md) | 署名を意向確認と申込みの 2 段に置き、申込みの署名が意向確認の署名の値を含む | 承認 |
 | [P-3](decisions/P-3.md) | 推奨の偏りは、人にも AI にも当てはまる補い方で抑える。全案の表示、指示と変更履歴の監査、利益情報を指示に含めない設計、人の窓口への引き継ぎ | 見送り |

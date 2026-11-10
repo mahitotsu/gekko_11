@@ -18,16 +18,16 @@
 | 認可サーバー | Java 21、Spring Boot 3.5、Spring Authorization Server 1.5、Spring Security の Resource Server 6.5 | `services/insurer-auth` |
 | 保険会社のシステム | Java 21、Spring Boot 3.5、nimbus-jose-jwt、java-json-canonicalization（JCS）、webauthn4j | `services/insurer-backend` |
 | 事務サービス | Python 3.12、FastMCP 4.1、httpx2 | `services/insurer-mcp` |
-| 監査サービス | Java 21、Spring Boot 3.5、Spring Security の OAuth2 Client 6.5、Thymeleaf、java-json-canonicalization（JCS） | `services/insurer-audit` |
+| 監査サービス | Java 21、Spring Boot 3.5、Spring Security の OAuth2 Client 6.5、Thymeleaf、Bootstrap 5.3（WebJars）、java-json-canonicalization（JCS） | `services/insurer-audit` |
 | 営業 AI エージェント | TypeScript、Claude Agent SDK 0.3.302、@ag-ui/core 1.0.3（AG-UI の型と確かめ）、MCP の SDK、Hono | `packages/sales-agent` |
 | token-guard | TypeScript、Hono、jose | `packages/token-guard` |
-| 顧客のアプリ | 画面は React 19、Vite 7、@ag-ui/client、@simplewebauthn/browser、react-markdown。BFF は Hono、openid-client、jose、canonicalize（JCS） | `packages/customer-app` |
+| 顧客のアプリ | 画面は React 19、Vite 7、Tailwind CSS 4、@ag-ui/client、@simplewebauthn/browser、react-markdown。BFF は Hono、openid-client、jose、canonicalize（JCS） | `packages/customer-app` |
 | クラスタと基盤 | k3d 5.9（k3s 1.35）、SPIRE 1.15、spiffe-helper 0.12、Envoy 1.31、NetworkPolicy | `deploy/` |
 | 記録の集約 | Grafana Alloy 1.20（`loki.source.kubernetes`）、Grafana Loki 3.7 | `deploy/k8s/logging/`、`deploy/render/logging.ts` |
 | テスト | JUnit、pytest、vitest、Playwright 1.64（Docker のブラウザに playwright-core でつなぐ） | 各サービスの `test`、`test/cluster/`、`test/ui/` |
 | lint | ESLint（typescript-eslint の推奨と、React の hooks の 2 つの規則）、ruff。整形の道具は使わない | `eslint.config.js`、`services/insurer-mcp` |
 
-TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。Java と Python は、Docker の中でビルドし、テストする。部品を選んだ理由は、判断（D-16、D-19、D-22、D-30、D-31、D-35、D-47）にある。
+TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。Java と Python は、Docker の中でビルドし、テストする。部品を選んだ理由は、判断（D-16、D-19、D-22、D-30、D-31、D-35、D-47、D-48）にある。
 
 ## 2. フォルダ構成は、言語ごとのサービスと、クラスタの組み立てと、テストである
 ```text
@@ -67,6 +67,8 @@ scripts/             Java と Python の単体テストと、Python の lint（r
 | `packages/token-guard/src/exchange.ts` | 出口の交換（G2） |
 | `packages/customer-app/web/checks.ts` | 画面の確かめ（G21〜G23） |
 | `packages/customer-app/web/components/` | 画面（ログイン、登録、カードで進む申込み、確認、署名、照合。D-34） |
+| `packages/customer-app/web/components/ui.tsx`、`web/styles.css` | 画面の小さな部品（Card、Button、Badge、Alert、Table）と、色の値（ライトとダーク）。Tailwind のクラスだけで描き、style 属性を使わない（D-48） |
+| `services/insurer-audit/src/main/resources/templates/`、`static/assets/` | 監査の画面（Thymeleaf と Bootstrap）と、上書きの CSS、色のモードを OS に合わせるスクリプト（D-48） |
 | `packages/customer-app/src/bff.ts` | BFF（D-41）。ログイン（頼まれたら passkey の登録も。D-42）、本人の passkey の一覧の読み取り（D-43）、セッション、更新（P-18）、ID トークンの確かめ（G21）、受信箱の番号の登録（D-26）、営業 AI エージェントへの中継、CSRF の対策 |
 | `packages/customer-app/web/auth.ts` | 画面の側のログイン。BFF の受け口を呼ぶだけで、トークンを持たない。端末の受信箱の番号を覚える |
 | `packages/customer-app/web/passkey.ts` | passkey での署名（保険会社にある passkey に限る）と、一覧を端末に伝える Signal API（D-43） |
