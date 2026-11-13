@@ -26,8 +26,9 @@
 | 記録の集約 | Grafana Alloy 1.20（`loki.source.kubernetes`）、Grafana Loki 3.7 | `deploy/k8s/logging/`、`deploy/render/logging.ts` |
 | テスト | JUnit、pytest、vitest、Playwright 1.64（Docker のブラウザに playwright-core でつなぐ） | 各サービスの `test`、`test/cluster/`、`test/ui/` |
 | lint | ESLint（typescript-eslint の推奨と、React の hooks の 2 つの規則）、ruff。整形の道具は使わない | `eslint.config.js`、`services/insurer-mcp` |
+| 価値を伝えるサイト | Astro 7、Tailwind CSS 4（PostCSS）、Lucide のアイコン。静的な HTML を GitHub Pages に出す | `site/` |
 
-TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。Java と Python は、Docker の中でビルドし、テストする。部品を選んだ理由は、判断（D-16、D-19、D-22、D-30、D-31、D-35、D-47、D-48）にある。
+TypeScript は、Node.js 24 の型の取り除きで、そのまま動かす。Java と Python は、Docker の中でビルドし、テストする。部品を選んだ理由は、判断（D-16、D-19、D-22、D-30、D-31、D-35、D-47、D-48、D-49）にある。
 
 ## 2. フォルダ構成は、言語ごとのサービスと、クラスタの組み立てと、テストである
 ```text
@@ -45,7 +46,8 @@ deploy/              クラスタの構成（k3d、SPIRE、記録の集約）、
 test/cluster/        クラスタのシナリオのテストと、クラスタの中で役を演じる probe
 test/ui/             画面のテスト（Docker の Playwright のブラウザにつなぐ）
 scripts/             Java と Python の単体テストと、Python の lint（ruff）を Docker で回すスクリプト
-.github/workflows/    GitHub Actions。push とプルリクエストで、npm test と日本語の校正を回す（クラスタのテストは回さない）
+.github/workflows/    GitHub Actions。push とプルリクエストで、npm test と日本語の校正とサイトの build を回す（クラスタのテストは回さない）。main への push で、サイトを GitHub Pages に出す
+site/                価値を伝えるサイト。依存を分けた別のパッケージ。src/pages がページ、src/data が数字と章の並び、test が docs との照合（D-49）
 ```
 
 主なファイルは、次のとおり。
@@ -96,6 +98,16 @@ npm run cluster:up       # k3d のクラスタを作る
 npm run cluster:deploy   # SPIRE、イメージ、secure と vulnerable の名前空間を置く
 npm run cluster:test     # 全シナリオと画面のテスト（30 分ほど）。期待する結果: 全て通る
 npm run cluster:down     # クラスタを消す
+```
+
+価値を伝えるサイトは、依存を分けた別のパッケージなので、`site/` で回す（D-49）。
+
+```sh
+cd site
+npm ci
+npm test                 # サイトの数字が、docs の見出しと一致するか
+npm run dev              # 手元で開く（http://localhost:4321/gekko_11/）
+npm run build            # 型の検査と、dist/ への書き出し
 ```
 
 営業 AI エージェントを secure で Claude として動かすには、`.env` に `CLAUDE_CODE_OAUTH_TOKEN` を置いてから `cluster:deploy` を回す。値は `claude setup-token` で取得する。値は secure の名前空間の Secret にだけ入り、`.env` は git に入れない。文書とコードに値を書かない。値がなければ、secure でも台本で動く。
