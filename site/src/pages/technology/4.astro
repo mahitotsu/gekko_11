@@ -1,0 +1,65 @@
+---
+import { ArrowRight, Braces, Building, Fingerprint, Hash, Link2 } from "@lucide/astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 4-4 の「署名の組み方」
+const FLOW = [
+  { icon: Braces, who: "顧客のアプリ", title: "署名する内容", text: "意向確認は、選んだ案、提示集合の識別子、意向。申込みは、申込内容と、意向確認の署名の値" },
+  { icon: Hash, who: "顧客のアプリ", title: "JCS で正規化し、SHA-256", text: "同じ内容なら、誰が作っても同じバイト列とハッシュになる（RFC 8785）" },
+  { icon: Fingerprint, who: "顧客の端末", title: "passkey で署名", text: "ハッシュを challenge にし、端末の鍵で署名する。鍵は端末から出ない" },
+  { icon: Building, who: "保険会社のシステム", title: "3 点を確かめる", text: "登録された公開鍵で署名が正しい。署名した画面（origin）が顧客のアプリ。challenge が内容のハッシュと一致する" },
+];
+---
+
+<Slide
+  path="technology/4/"
+  lead="顧客は、画面に出た内容そのもののハッシュに、passkey で署名します。営業 AI エージェントが運ぶ途中で 1 文字でも変えれば、ハッシュが合わず、保険会社のシステムは受け付けません。申込みへの署名は 2 段に分け、申込みの署名が意向確認の署名を含むので、段の間のすり替えも見つかります。"
+  evidence={[
+    { label: "architecture 4-4: 署名の組み方", href: doc("architecture.md") },
+    { label: "scenarios 3 章: シナリオ 7、9（防御 G13、G14）", href: doc("scenarios.md") },
+    { label: "限界: 署名前の画面の信頼と、押す前の判断（architecture 6 章）", href: doc("architecture.md") },
+  ]}
+>
+  <ol class="grid items-stretch gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr]" aria-label="署名の 4 段。顧客のアプリが署名する内容を作り、JCS で正規化して SHA-256 を取る。顧客の端末が、そのハッシュを challenge にして passkey で署名する。保険会社のシステムが、公開鍵、origin、ハッシュの一致の 3 点を確かめる。">
+    {
+      FLOW.map((f, i) => (
+        <>
+          {i > 0 && (
+            <li aria-hidden="true" class="flex items-center justify-center text-muted-foreground">
+              <ArrowRight class="size-6 rotate-90 lg:rotate-0" />
+            </li>
+          )}
+          <li class:list={["flex flex-col rounded-3xl border-2 p-5", i === 2 ? "border-ok/50 bg-ok-soft" : i === 3 ? "border-primary/40 bg-primary-soft" : "bg-card"]}>
+            <span class="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+              <f.icon class="size-5" aria-hidden="true" />
+              {f.who}
+            </span>
+            <span class="mt-3 font-bold">{f.title}</span>
+            <span class="mt-2 text-sm">{f.text}</span>
+          </li>
+        </>
+      ))
+    }
+  </ol>
+
+  <div class="mt-12 grid items-center gap-4 rounded-3xl bg-muted/60 p-5 sm:p-6 md:grid-cols-[1fr_auto_1fr]" aria-label="2 段の署名のつながり。申込書の署名の対象に、意向確認書面の署名の値を含める。">
+    <div class="rounded-2xl border-2 border-ok/50 bg-card p-4">
+      <p class="text-xs font-bold text-ok">署名 1/2</p>
+      <p class="font-bold">意向確認書面</p>
+      <p class="mt-1 text-sm text-muted-foreground">選んだ案、提示集合の識別子、意向</p>
+    </div>
+    <div class="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+      <Link2 class="size-6 text-primary" aria-hidden="true" />
+      <span>署名の値を含める</span>
+    </div>
+    <div class="rounded-2xl border-2 border-ok/50 bg-card p-4">
+      <p class="text-xs font-bold text-ok">署名 2/2</p>
+      <p class="font-bold">申込書</p>
+      <p class="mt-1 text-sm text-muted-foreground">申込内容 ＋ 意向確認の署名の値</p>
+    </div>
+  </div>
+  <p class="mt-4 text-sm text-muted-foreground">
+    passkey は 1 つで、ログインと申込みの署名に使います。保険会社のシステムは origin を確かめ、ログインの画面で作った署名を、申込みの署名として受け付けません。
+  </p>
+</Slide>

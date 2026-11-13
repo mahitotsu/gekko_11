@@ -1,0 +1,83 @@
+---
+// 1 ページ 1 主張の枠（CLAUDE.md の「site/」）。章と位置、主張の見出し、図、短い本文、根拠、前へ／次へを持つ。
+import { ChevronLeft, ChevronRight } from "@lucide/astro";
+import Base from "./Base.astro";
+import { locate } from "../data/pages";
+
+export interface Evidence {
+  label: string;
+  href?: string;
+}
+interface Props {
+  path: string;
+  lead: string;
+  evidence: Evidence[];
+}
+const { path, lead, evidence } = Astro.props;
+const { chapter, page, index, prev, next } = locate(path);
+const base = import.meta.env.BASE_URL;
+---
+
+<Base title={`${page.title} | ${chapter.name}`} description={lead} current={chapter.id}>
+  <main class="mx-auto w-full max-w-6xl flex-1 px-6 pt-10 pb-16 sm:pt-16">
+    <p class="mb-4 flex items-center gap-3 text-sm font-medium text-primary">
+      <a href={`${base}${chapter.id}/`} class="no-underline hover:underline">{chapter.name}</a>
+      <span aria-label={`${chapter.pages.length} ページ中 ${index + 1} ページ目`} class="flex items-center gap-1.5">
+        {chapter.pages.map((_, i) => <span aria-hidden="true" class:list={["h-1.5 rounded-full", i === index ? "w-6 bg-primary" : "w-1.5 bg-border"]} />)}
+      </span>
+      <span class="text-muted-foreground">{index + 1} / {chapter.pages.length}</span>
+    </p>
+    <h1 class="max-w-4xl text-3xl leading-snug font-bold sm:text-[2.5rem] sm:leading-[1.35]">{page.title}</h1>
+    <p class="mt-5 max-w-3xl text-lg text-muted-foreground">{lead}</p>
+
+    <figure class="my-12 sm:my-16">
+      <slot />
+    </figure>
+
+    <aside class="max-w-4xl rounded-xl border bg-muted/50 px-5 py-4 text-sm" aria-label="根拠">
+      <p class="mb-2 font-semibold">根拠</p>
+      <ul class="flex flex-wrap gap-x-5 gap-y-1.5">
+        {
+          evidence.map((e) =>
+            e.href ? (
+              <li>
+                <a href={e.href} class="text-primary">{e.label}</a>
+              </li>
+            ) : (
+              <li class="text-muted-foreground">{e.label}</li>
+            ),
+          )
+        }
+      </ul>
+    </aside>
+
+    <nav aria-label="前後のページ" class="mt-12 grid gap-4 sm:grid-cols-2">
+      {
+        prev ? (
+          <a href={`${base}${prev.path}`} class="group flex items-center gap-3 rounded-xl border px-5 py-4 no-underline hover:border-primary">
+            <ChevronLeft class="size-5 shrink-0 text-muted-foreground group-hover:text-primary" />
+            <span>
+              <span class="block text-xs text-muted-foreground">前へ</span>
+              <span class="line-clamp-2 font-medium">{prev.title}</span>
+            </span>
+          </a>
+        ) : (
+          <span />
+        )
+      }
+      {
+        next ? (
+          <a href={`${base}${next.path}`} class="group flex items-center justify-end gap-3 rounded-xl border px-5 py-4 text-right no-underline hover:border-primary">
+            <span>
+              <span class="block text-xs text-muted-foreground">次へ</span>
+              <span class="line-clamp-2 font-medium">{next.title}</span>
+            </span>
+            <ChevronRight class="size-5 shrink-0 text-muted-foreground group-hover:text-primary" />
+          </a>
+        ) : (
+          <a href={base} class="flex items-center justify-end rounded-xl border px-5 py-4 text-right font-medium no-underline hover:border-primary">入口へ戻る</a>
+        )
+      }
+    </nav>
+  </main>
+</Base>

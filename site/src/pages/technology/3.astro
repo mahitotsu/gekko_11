@@ -1,0 +1,85 @@
+---
+import { BadgeCheck, KeyRound, Server, ShieldCheck, Skull } from "@lucide/astro";
+import Mark from "../../components/figures/Mark.astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 4-3 の E4 の補いと、2-3 の SVID の発行基盤。シナリオ 22、23 は盗用の再現
+const BINDINGS = [
+  {
+    token: "A",
+    how: "DPoP",
+    spec: "RFC 9449",
+    bind: "顧客のアプリの BFF の鍵（メモリにあり、取り出さない）",
+    check: "呼ぶたびに、その鍵で作った proof を示す。営業 AI エージェントの token-guard が、トークンの cnf と proof の鍵を照らす",
+    attack: "盗んだ A を、鍵なしで使って照会させる",
+    scenario: "22",
+  },
+  {
+    token: "B、C",
+    how: "証明書に結んだトークン",
+    spec: "RFC 8705",
+    bind: "替えを頼んだサービスの SVID（X.509 の証明書）",
+    check: "mTLS の相手の証明書が、トークンの cnf の指紋と一致するかを、受け取る側の token-guard が照らす",
+    attack: "盗んだ B を、別のサービスの SVID で使って照会する",
+    scenario: "23",
+  },
+];
+const SPIFFE = [
+  { icon: Server, text: "SPIRE の agent が、Pod の配置（ServiceAccount とラベル）を確かめてから、SVID を配り、期限の前に入れ替える" },
+  { icon: ShieldCheck, text: "サービスどうしは、全て SVID の mTLS でつなぎ、token-guard が相手の SPIFFE ID を確かめる（G27）" },
+  { icon: BadgeCheck, text: "NetworkPolicy が、全ての通信を拒むことから始め、決めた経路だけを許す" },
+];
+---
+
+<Slide
+  path="technology/3/"
+  lead="トークンは、全ての段で、送る者の鍵に結びます。トークンだけを盗んでも、結ばれた鍵がなければ使えません。サービスの身元は、配置を確かめた基盤が配る証明書（SVID）で示し、名乗りだけでは信じません。"
+  evidence={[
+    { label: "architecture 4-3: E4 の補い（全段の送信者の鍵への結び付け）", href: doc("architecture.md") },
+    { label: "architecture 2-3: SPIRE と NetworkPolicy", href: doc("architecture.md") },
+    { label: "scenarios 3 章: シナリオ 21〜23（防御 G26、G27）", href: doc("scenarios.md") },
+    { label: "限界: 基盤とクラスタの管理者を信頼する（architecture 6 章）", href: doc("architecture.md") },
+  ]}
+>
+  <div class="grid gap-5 lg:grid-cols-2" aria-label="トークン A は DPoP で BFF の鍵に、B と C は証明書に結んだトークンで、替えを頼んだサービスの証明書に結ぶ。盗んだトークンを鍵なしで使う手口と、別のサービスの証明書で使う手口は、どちらも止まる。">
+    {
+      BINDINGS.map((b) => (
+        <section class="flex flex-col rounded-3xl border-2 bg-card p-5 sm:p-6">
+          <p class="flex flex-wrap items-baseline gap-x-3">
+            <span class="text-2xl font-bold text-primary">トークン {b.token}</span>
+            <span class="font-semibold">{b.how}</span>
+            <span class="text-xs text-muted-foreground">{b.spec}</span>
+          </p>
+          <p class="mt-4 flex items-start gap-2 rounded-xl bg-ok-soft px-4 py-3 text-sm">
+            <KeyRound class="mt-0.5 size-5 shrink-0 text-ok" aria-hidden="true" />
+            <span><span class="block text-xs font-bold text-ok">結び付ける鍵</span>{b.bind}</span>
+          </p>
+          <p class="mt-3 text-sm">{b.check}</p>
+          <div class="mt-auto pt-5">
+            <p class="flex items-start gap-2 rounded-xl border-2 border-dashed border-danger/50 px-4 py-3 text-sm">
+              <Skull class="mt-0.5 size-5 shrink-0 text-danger" aria-hidden="true" />
+              <span>
+                <span class="block text-xs font-bold text-danger">手口（シナリオ {b.scenario}）</span>
+                {b.attack}
+              </span>
+            </p>
+            <p class="mt-3"><Mark kind="stopped" label="鍵がないので止まる" /></p>
+          </div>
+        </section>
+      ))
+    }
+  </div>
+
+  <h2 class="mt-14 mb-5 text-xl font-bold">サービスの身元は、SPIFFE の証明書で示す</h2>
+  <ul class="grid gap-4 md:grid-cols-3">
+    {
+      SPIFFE.map((s) => (
+        <li class="flex gap-3 rounded-2xl border-2 bg-card p-5 text-sm">
+          <s.icon class="size-6 shrink-0 text-primary" aria-hidden="true" />
+          <span>{s.text}</span>
+        </li>
+      ))
+    }
+  </ul>
+</Slide>

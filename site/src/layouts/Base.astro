@@ -1,0 +1,57 @@
+---
+// 全ページの外枠。見出しの帯（章への道）と、末尾（ライセンスと注意、GitHub）を持つ。
+import "../styles/site.css";
+import { chapters } from "../data/pages";
+import { REPO } from "../data/facts";
+
+interface Props {
+  title: string;
+  description: string;
+  current?: string;
+}
+const { title, description, current } = Astro.props;
+const base = import.meta.env.BASE_URL;
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+  </head>
+  <body class="flex min-h-dvh flex-col">
+    <header class="border-b bg-card/80 backdrop-blur">
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-3">
+        <a href={base} class="flex items-center gap-2 font-semibold no-underline">
+          <span aria-hidden="true" class="grid size-7 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">確</span>
+          AI に任せる取引の確かめ方
+        </a>
+        <nav aria-label="章" class="ml-auto flex gap-1 text-sm">
+          {
+            chapters.map((c) => (
+              <a
+                href={`${base}${c.id}/`}
+                aria-current={current === c.id ? "true" : undefined}
+                class:list={[
+                  "rounded-md px-3 py-1.5 no-underline transition-colors",
+                  current === c.id ? "bg-primary-soft font-semibold text-primary" : "text-muted-foreground hover:text-foreground",
+                ]}
+              >
+                <span class="hidden sm:inline">{c.question} — </span>{c.name}
+              </a>
+            ))
+          }
+        </nav>
+      </div>
+    </header>
+    <slot />
+    <footer class="mt-auto border-t">
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-6 text-sm text-muted-foreground">
+        <span>MIT License。保険会社、顧客、契約は架空で、法令の記述は法的な助言ではありません。</span>
+        <a href={REPO} class="ml-auto font-medium text-foreground">GitHub のリポジトリ</a>
+      </div>
+    </footer>
+  </body>
+</html>

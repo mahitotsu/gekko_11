@@ -1,0 +1,85 @@
+---
+import { ArrowRight, Repeat } from "@lucide/astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 4-4 の「証明の組み方」の表
+const TOKENS = [
+  { id: "A", iss: "ログインサーバー", holder: "顧客のアプリの BFF", aud: "営業 AI エージェント", act: "—", mayAct: "営業 AI エージェント", cnf: "BFF の DPoP の鍵", ttl: "5 分（BFF が更新）" },
+  { id: "B", iss: "認可サーバー", holder: "営業 AI エージェント", aud: "事務サービス", act: "営業 AI エージェント", mayAct: "事務サービス", cnf: "営業 AI エージェントの証明書", ttl: "1 分（呼び出しごと）" },
+  { id: "C", iss: "認可サーバー", holder: "事務サービス", aud: "保険会社のシステム", act: "事務サービス ← 営業 AI エージェント", mayAct: "—", cnf: "事務サービスの証明書", ttl: "1 分（呼び出しごと）" },
+];
+const FIELDS: { key: keyof (typeof TOKENS)[number]; label: string; note: string; tone: string }[] = [
+  { key: "aud", label: "宛先（aud）", note: "段ごとに替わる", tone: "text-primary" },
+  { key: "act", label: "経由（act）", note: "替えるたびに積む", tone: "text-agent" },
+  { key: "cnf", label: "結び付ける鍵（cnf）", note: "替えを頼んだ者に結び直す", tone: "text-ok" },
+];
+const EXCHANGE = [
+  "替えを頼む者は、SPIFFE ID の mTLS で自分を示し、自分のトークンを actor_token として出す",
+  "認可サーバーは、actor_token の sub が may_act と一致するかを確かめる",
+  "出すトークンの宛先は、窓口ごとに決めた先だけにする。範囲は狭めるだけで、広げない",
+];
+---
+
+<Slide
+  path="technology/2/"
+  lead="トークンは A、B、C の 3 つで、渡る先ごとに替えます。本人（sub）は最後まで同じで、経由した者（act）が積まれていきます。そのため、最後に受け取る保険会社のシステムまで、誰の依頼かと、誰が取り次いだかが届きます。"
+  evidence={[
+    { label: "architecture 4-4: 証明の組み方", href: doc("architecture.md") },
+    { label: "scenarios 2 章: 防御 G2、G3a〜G3f、G9、G29", href: doc("scenarios.md") },
+    { label: "限界: 替える段は、前の段の鍵の所持を確かめない（architecture 6 章）", href: doc("architecture.md") },
+  ]}
+>
+  <div class="grid items-stretch gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr]" aria-label="トークン A、B、C の中身。本人の sub は 3 つとも顧客のまま。宛先は営業 AI エージェント、事務サービス、保険会社のシステムと段ごとに替わる。経由の act は、B で営業 AI エージェント、C で事務サービスと営業 AI エージェントが積まれる。結び付ける鍵は、BFF の DPoP の鍵、営業 AI エージェントの証明書、事務サービスの証明書と結び直される。">
+    {
+      TOKENS.map((t, i) => (
+        <>
+          {i > 0 && (
+            <div class="flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground" aria-hidden="true">
+              <Repeat class="size-5" />
+              <span>認可サーバーで替える</span>
+              <ArrowRight class="size-6 rotate-90 lg:rotate-0" />
+            </div>
+          )}
+          <section class="rounded-3xl border-2 bg-card p-5">
+            <p class="flex items-baseline justify-between">
+              <span class="text-3xl font-bold text-primary">{t.id}</span>
+              <span class="text-xs text-muted-foreground">出す者: {t.iss}</span>
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">持って呼ぶ者: {t.holder}</p>
+            <dl class="mt-4 grid gap-2 text-sm">
+              <div class="rounded-lg bg-ok-soft px-3 py-2">
+                <dt class="text-xs font-bold text-ok">本人（sub）</dt>
+                <dd>顧客（替えても同じ）</dd>
+              </div>
+              {FIELDS.map((f) => (
+                <div class="rounded-lg bg-muted/70 px-3 py-2">
+                  <dt class:list={["text-xs font-bold", f.tone]}>{f.label}</dt>
+                  <dd>{t[f.key]}</dd>
+                </div>
+              ))}
+              <div class="flex justify-between px-1 text-xs text-muted-foreground">
+                <span>代理を許す相手: {t.mayAct}</span>
+                <span>{t.ttl}</span>
+              </div>
+            </dl>
+          </section>
+        </>
+      ))
+    }
+  </div>
+
+  <div class="mt-12 rounded-3xl border-2 border-primary/40 bg-primary-soft p-5 sm:p-6">
+    <p class="mb-4 flex items-center gap-2 font-bold"><Repeat class="size-5 text-primary" aria-hidden="true" />替えるときに、認可サーバーが確かめること（RFC 8693 の委任）</p>
+    <ol class="grid gap-3 md:grid-cols-3">
+      {
+        EXCHANGE.map((e, i) => (
+          <li class="flex gap-3 text-sm">
+            <span class="grid size-6 shrink-0 place-items-center rounded-full bg-card text-xs font-bold">{i + 1}</span>
+            <span>{e}</span>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</Slide>

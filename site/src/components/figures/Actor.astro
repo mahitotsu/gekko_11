@@ -1,0 +1,23 @@
+---
+// 図の登場人物。アイコンと名前と、短い補足を縦に並べる。tone で、AI や確かめる者を色と枠で見分ける。
+interface Props {
+  label: string;
+  sub?: string;
+  tone?: "neutral" | "agent" | "primary" | "ok";
+  class?: string;
+}
+const { label, sub, tone = "neutral", class: className } = Astro.props;
+const TONE = {
+  neutral: "bg-card",
+  agent: "border-agent/50 border-dashed bg-agent-soft",
+  primary: "border-primary/40 bg-primary-soft",
+  ok: "border-ok/50 bg-ok-soft",
+};
+const ICON = { neutral: "text-foreground", agent: "text-agent", primary: "text-primary", ok: "text-ok" };
+---
+
+<div class:list={["flex min-w-0 flex-col items-center gap-1.5 rounded-2xl border-2 px-4 py-4 text-center", TONE[tone], className]}>
+  <span class:list={["[&>svg]:size-8", ICON[tone]]} aria-hidden="true"><slot name="icon" /></span>
+  <span class="font-semibold">{label}</span>
+  {sub && <span class="text-xs leading-snug text-muted-foreground">{sub}</span>}
+</div>

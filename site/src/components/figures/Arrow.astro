@@ -1,0 +1,26 @@
+---
+// 図の矢印。広い画面では右向き、狭い画面では下向きになる。label は矢印の上に出す。
+import { ArrowDown, ArrowRight } from "@lucide/astro";
+interface Props {
+  label?: string;
+  tone?: "neutral" | "agent" | "ok" | "danger";
+  /** 狭い画面でも横向きのままにする */
+  horizontal?: boolean;
+}
+const { label, tone = "neutral", horizontal = false } = Astro.props;
+const TONE = { neutral: "text-muted-foreground", agent: "text-agent", ok: "text-ok", danger: "text-danger" };
+---
+
+<div class:list={["flex shrink-0 items-center justify-center gap-1 px-1 text-xs", horizontal ? "flex-col" : "flex-row sm:flex-col", TONE[tone]]}>
+  {label && <span class="max-w-32 text-center leading-snug">{label}</span>}
+  {
+    horizontal ? (
+      <ArrowRight class="size-7" aria-hidden="true" />
+    ) : (
+      <>
+        <ArrowDown class="size-7 sm:hidden" aria-hidden="true" />
+        <ArrowRight class="hidden size-7 sm:block" aria-hidden="true" />
+      </>
+    )
+  }
+</div>

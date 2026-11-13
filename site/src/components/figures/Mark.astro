@@ -1,0 +1,17 @@
+---
+// 結果の印。色だけでなく、記号と文言で意味を伝える。
+import { CircleCheck, OctagonX, TriangleAlert } from "@lucide/astro";
+interface Props {
+  kind: "stopped" | "harmed" | "warn";
+  label: string;
+}
+const { kind, label } = Astro.props;
+const STYLE = { stopped: "bg-ok text-primary-foreground dark:text-background", harmed: "bg-danger text-primary-foreground dark:text-background", warn: "bg-warning text-foreground" };
+---
+
+<span class:list={["inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold", STYLE[kind]]}>
+  {kind === "stopped" && <CircleCheck class="size-3.5" aria-hidden="true" />}
+  {kind === "harmed" && <OctagonX class="size-3.5" aria-hidden="true" />}
+  {kind === "warn" && <TriangleAlert class="size-3.5" aria-hidden="true" />}
+  {label}
+</span>

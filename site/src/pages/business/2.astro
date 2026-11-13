@@ -1,0 +1,66 @@
+---
+import { Bot, FileX, PenLine, Scale, ShieldCheck, UserX, Calculator, MessageSquare } from "@lucide/astro";
+import Arrow from "../../components/figures/Arrow.astro";
+import Mark from "../../components/figures/Mark.astro";
+import Panel from "../../components/figures/Panel.astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// AI がしうることと、止める確かめ。シナリオの番号は、docs/scenarios.md の 3 章と同じである
+const ATTACKS = [
+  { icon: UserX, what: "他人の名前で申し込む", stop: "本人が自分の端末で署名した申込みしか受け付けない", scenarios: "1〜5" },
+  { icon: FileX, what: "会社が示していない案を、画面に混ぜる", stop: "画面は、会社が署名した案だけを出し、すり替えを知らせる", scenarios: "8" },
+  { icon: PenLine, what: "署名のあとで、申込みを書き換える", stop: "署名した内容と 1 文字でも違えば、受け付けない", scenarios: "7、9" },
+  { icon: MessageSquare, what: "説明の文で、違う案を選んだように見せる", stop: "画面は、AI の説明ではなく、署名する内容そのものを出す", scenarios: "24" },
+  { icon: Scale, what: "任された範囲を超える契約を申し込む", stop: "任された商品と上限の外は、受け付けない", scenarios: "12、13" },
+  { icon: Calculator, what: "保険料を安く書き換えた案に、署名させる", stop: "会社が、規則と計算に合う案にだけ署名する", scenarios: "26、27" },
+];
+---
+
+<Slide
+  path="business/2/"
+  lead="AI の言葉は、契約の根拠になりません。根拠になるのは、会社が出した案と、本人が自分の端末で署名した内容だけです。AI が乗っ取られて偽りを言っても、途中で書き換えても、本人が承認していない契約は成立しません。"
+  evidence={[
+    { label: "architecture 1-2 の要件 2、4、5、9", href: doc("architecture.md") },
+    { label: "scenarios 3 章のシナリオ 1〜5、7、8、9、12、13、24、26、27", href: doc("scenarios.md") },
+    { label: "テストは、乗っ取られた AI エージェントを演じて確かめる（scenarios 4 章）" },
+  ]}
+>
+  <div class="grid gap-6 lg:grid-cols-2" aria-label="例: AI が、会社が示していない案を画面に混ぜる。確認を省いた設計では、顧客がその案を選び、契約になる。このリポジトリの設計では、画面が会社の署名のない案を出さず、会社も示していない案を受け付けないので、止まる。">
+    <Panel tone="danger" title="確認を省いた設計">
+      <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+        <p class="flex flex-1 items-center gap-2 rounded-xl border-2 border-dashed border-agent/50 bg-card px-4 py-3 text-sm"><Bot class="size-5 shrink-0 text-agent" aria-hidden="true" />AI が、会社の示していない案を混ぜる</p>
+        <Arrow tone="danger" />
+        <p class="flex-1 rounded-xl bg-card px-4 py-3 text-sm">顧客は、AI が見せた案を選んで署名する</p>
+      </div>
+      <p class="mt-5 flex flex-wrap items-center gap-2"><Mark kind="harmed" label="被害" /><span class="font-semibold">会社が出していない案で、契約になる</span></p>
+    </Panel>
+    <Panel tone="ok" title="このリポジトリの設計">
+      <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+        <p class="flex flex-1 items-center gap-2 rounded-xl border-2 border-dashed border-agent/50 bg-card px-4 py-3 text-sm"><Bot class="size-5 shrink-0 text-agent" aria-hidden="true" />AI が、会社の示していない案を混ぜる</p>
+        <Arrow tone="ok" />
+        <p class="flex flex-1 items-center gap-2 rounded-xl bg-card px-4 py-3 text-sm"><ShieldCheck class="size-5 shrink-0 text-ok" aria-hidden="true" />画面は会社が署名した案だけを出し、すり替えを知らせる</p>
+      </div>
+      <p class="mt-5 flex flex-wrap items-center gap-2"><Mark kind="stopped" label="止まる" /><span class="font-semibold">会社も、示していない案の申込みを受け付けない</span></p>
+    </Panel>
+  </div>
+
+  <h2 class="mt-16 mb-6 text-xl font-bold">AI がしうることは、どれも本人の署名と会社の確かめで止まる</h2>
+  <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      ATTACKS.map((a) => (
+        <li class="flex flex-col rounded-2xl border-2 bg-card p-5">
+          <p class="flex items-start gap-3 font-semibold">
+            <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-agent-soft text-agent"><a.icon class="size-5" aria-hidden="true" /></span>
+            <span><span class="block text-xs font-medium text-agent">AI がしうること</span>{a.what}</span>
+          </p>
+          <p class="mt-4 flex-1 border-t pt-4 text-sm">{a.stop}</p>
+          <p class="mt-4 flex items-center justify-between gap-2">
+            <Mark kind="stopped" label="止まる" />
+            <span class="text-xs text-muted-foreground">シナリオ {a.scenarios}</span>
+          </p>
+        </li>
+      ))
+    }
+  </ul>
+</Slide>

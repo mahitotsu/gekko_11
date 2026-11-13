@@ -1,0 +1,74 @@
+---
+import { Bot, MessageSquare, Monitor, Route, Wrench } from "@lucide/astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 2-1、3 章と、implementation 1 章の部品
+const FRONT = ["ask_customer（質問と選択肢）", "present_offers（保険会社が署名した提示）", "present_intent（意向確認書面）", "present_application（申込書）"];
+const MCP = ["get_products", "quote_plan", "issue_offer", "submit_application", "list_contracts"];
+---
+
+<Slide
+  path="technology/5/"
+  lead="営業 AI エージェントは、Claude Agent SDK で動き、顧客とは AG-UI で、事務サービスとは MCP で話します。AG-UI では、AI の文と、画面側の道具の呼び出しが、別のイベントとして届きます。画面は、案と書類を道具の引数から描き、案は保険会社の署名を確かめてから示します。AI の文は、別の枠に出します。"
+  evidence={[
+    { label: "architecture 2-1: 営業 AI エージェントと事務サービス", href: doc("architecture.md") },
+    { label: "implementation 1 章: Claude Agent SDK、AG-UI、MCP の SDK、FastMCP", href: doc("implementation.md") },
+    { label: "scenarios 3 章: シナリオ 8、24（防御 G22、G23）", href: doc("scenarios.md") },
+  ]}
+>
+  <div class="mx-auto grid max-w-4xl gap-2" aria-label="顧客のアプリ、営業 AI エージェント、事務サービスの 3 者と、その間の 2 つの取り決め。顧客のアプリと営業 AI エージェントの間は AG-UI で、AI の文と画面側の道具の呼び出しを分けて運ぶ。営業 AI エージェントと事務サービスの間は MCP で、トークン B を付けて道具を呼ぶ。">
+    <section class="grid gap-3 rounded-3xl border-2 bg-card p-5 md:grid-cols-[13rem_1fr]">
+      <div>
+        <p class="flex items-center gap-2 font-bold"><Monitor class="size-6 text-primary" aria-hidden="true" />顧客のアプリ</p>
+        <p class="mt-1 text-xs text-muted-foreground">React、@ag-ui/client</p>
+      </div>
+      <div class="grid gap-2 text-sm sm:grid-cols-2">
+        <p class="rounded-xl border-2 border-ok/50 bg-ok-soft px-3 py-2">案と書類は、道具の引数から描く。案は、保険会社の署名を確かめてから示す</p>
+        <p class="rounded-xl border-2 border-dashed border-agent/50 bg-agent-soft px-3 py-2">AI の文は、「営業 AI エージェントの説明」の枠に出す</p>
+      </div>
+    </section>
+
+    <section class="mx-4 grid gap-3 rounded-2xl border-2 border-primary/40 bg-primary-soft px-5 py-4 md:mx-10 md:grid-cols-[11rem_1fr]">
+      <p class="font-bold">↕ AG-UI（SSE）</p>
+      <div class="grid gap-3 text-sm sm:grid-cols-2">
+        <div>
+          <p class="flex items-center gap-2 font-semibold text-agent"><MessageSquare class="size-4" aria-hidden="true" />文のイベント</p>
+          <p class="mt-1">AI の言葉。画面は、説明の枠にだけ出す</p>
+        </div>
+        <div>
+          <p class="flex items-center gap-2 font-semibold text-ok"><Wrench class="size-4" aria-hidden="true" />画面側の道具の呼び出し</p>
+          <ul class="mt-1 grid gap-0.5 text-xs">
+            {FRONT.map((t) => <li class="font-mono">{t}</li>)}
+          </ul>
+          <p class="mt-1 text-xs text-muted-foreground">顧客の答え（選択と署名）は、道具の結果として返る</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-3 rounded-3xl border-2 border-dashed border-agent/60 bg-agent-soft p-5 md:grid-cols-[13rem_1fr]">
+      <div>
+        <p class="flex items-center gap-2 font-bold"><Bot class="size-6 text-agent" aria-hidden="true" />営業 AI エージェント</p>
+        <p class="mt-1 text-xs text-muted-foreground">Claude Agent SDK（既定のモデルは Haiku）</p>
+      </div>
+      <p class="text-sm">質問し、試算を使って案を組み立て、書類を用意して、署名の揃った申込みを運ぶ。防御を外せる複製では、同じ道具を台本で呼ぶ</p>
+    </section>
+
+    <section class="mx-4 grid gap-3 rounded-2xl border-2 border-primary/40 bg-primary-soft px-5 py-4 md:mx-10 md:grid-cols-[11rem_1fr]">
+      <p class="font-bold">↕ MCP</p>
+      <div class="text-sm">
+        <p>トークン B を付けて、道具を呼ぶ</p>
+        <p class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-xs">{MCP.map((t) => <span>{t}</span>)}</p>
+        <p class="mt-1 text-xs text-muted-foreground">道具は、トークンではなく、確かめた主張だけを受け取る</p>
+      </div>
+    </section>
+
+    <section class="grid gap-3 rounded-3xl border-2 bg-card p-5 md:grid-cols-[13rem_1fr]">
+      <div>
+        <p class="flex items-center gap-2 font-bold"><Route class="size-6 text-primary" aria-hidden="true" />事務サービス</p>
+        <p class="mt-1 text-xs text-muted-foreground">Python、FastMCP</p>
+      </div>
+      <p class="text-sm">B を C に替えて、保険会社のシステムを呼ぶ。呼び出しごとに記録を書く</p>
+    </section>
+  </div>
+</Slide>

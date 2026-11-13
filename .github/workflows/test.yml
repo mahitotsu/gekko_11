@@ -19,6 +19,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            site/package-lock.json
       - uses: actions/cache@v4
         with:
           path: |
@@ -29,3 +32,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run lint:text
+      # 価値を伝えるサイト（site/）は、依存を分けた別のパッケージである（D-49）
+      - run: npm ci
+        working-directory: site
+      - run: npm test
+        working-directory: site
+      - run: npm run build
+        working-directory: site

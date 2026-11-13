@@ -1,0 +1,22 @@
+---
+// 図の中の枠。題と、記号つきの印（止まる、被害など）を持てる。
+interface Props {
+  title?: string;
+  tone?: "neutral" | "ok" | "danger" | "agent" | "primary" | "warning";
+  class?: string;
+}
+const { title, tone = "neutral", class: className } = Astro.props;
+const TONE = {
+  neutral: "bg-card",
+  ok: "border-ok/50 bg-ok-soft",
+  danger: "border-danger/50 bg-danger-soft",
+  agent: "border-agent/50 border-dashed bg-agent-soft",
+  primary: "border-primary/40 bg-primary-soft",
+  warning: "border-warning/60 bg-warning-soft",
+};
+---
+
+<div class:list={["rounded-2xl border-2 p-5 sm:p-6", TONE[tone], className]}>
+  {title && <p class="mb-4 font-semibold">{title}</p>}
+  <slot />
+</div>

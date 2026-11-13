@@ -1,0 +1,91 @@
+---
+import { BadgeCheck, Link2, Wrench } from "@lucide/astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 4-2 のまとまりと、4-3 の要素ごとの標準。標準の細目（番号や版）は、テクノロジーの章に置く
+const GROUPS = [
+  {
+    id: "A",
+    name: "証明",
+    basis: "AI と独立した者が出す証明と記録",
+    items: [
+      { e: "ログインの証明", std: ["OAuth 2.0（認可コードと PKCE）", "OpenID Connect"] },
+      { e: "本人確認の証明", std: ["OpenID Connect for Identity Assurance"] },
+      { e: "代理の引き継ぎと経由", std: ["OAuth 2.0 Token Exchange"] },
+      { e: "宛先の限定", std: ["JWT のアクセストークン", "MCP の認可仕様"] },
+      { e: "宛先の限定の補い（盗まれた証明を使わせない）", std: ["DPoP", "証明書に結んだトークン", "SPIFFE"] },
+      { e: "扱える範囲", std: ["Rich Authorization Requests"] },
+      { e: "登録と有効性", std: ["Token Introspection", "Token Revocation"] },
+    ],
+  },
+  { id: "B", name: "署名", basis: "内容への署名", items: [{ e: "案への署名", std: ["JWS"] }, { e: "承認の固定", std: ["passkey（WebAuthn）", "JCS"] }] },
+  { id: "C", name: "受け付けと記録の規則", basis: "保険会社のシステムの中の規則", items: [{ e: "一度きりの印", std: [] }, { e: "記録の作成", std: [] }] },
+  { id: "D", name: "事後の経路と記録", basis: "AI を通らない経路と、後から辿れる記録", items: [{ e: "直送と照合", std: [] }, { e: "承認と経由の記録", std: [] }] },
+];
+const OWN = [
+  { title: "トークンを段ごとに替え、本人と経由を最後まで届ける", text: "宛先を段ごとに絞り、本人はそのまま残し、経由した者を積む。替えるたびに、頼んだ者の鍵に結び直す" },
+  { title: "申込みへの署名を 2 段に分け、つなげる", text: "意向確認と申込書に署名し、申込書の署名に意向確認の署名を含める。段の間のすり替えも見つかる" },
+];
+---
+
+<Slide
+  path="architecture/3/"
+  lead="要件から、判定に要る要素を 12 件導き、要素ごとに標準を選びました。標準があるものは、標準に従います。標準がないのは、保険会社のシステムの中の規則と、事後の経路と記録だけです。自分で決めたのは、標準から一通りに決まらない組み方の 2 つです。"
+  evidence={[
+    { label: "architecture 4-1〜4-3: 要素、まとまり、標準の選択", href: doc("architecture.md") },
+    { label: "architecture 4-4: 標準から一通りに決まらない組み方", href: doc("architecture.md") },
+    { label: "knowledge の判断（選んだ理由と、退けた案）", href: doc("knowledge/README.md") },
+  ]}
+>
+  <div class="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr_1fr_1fr]" aria-label="12 件の要素を、信頼の根拠で 4 つにまとめた図。A の証明は 6 件とその補いで、全て標準に従う。B の署名は 2 件で、JWS と passkey と JCS に従う。C の受け付けと記録の規則と、D の事後の経路と記録は、標準がなく、このシステムの規則で決める。">
+    {
+      GROUPS.map((g) => (
+        <section class="flex flex-col rounded-3xl border-2 bg-card p-4 sm:p-5">
+          <p class="flex items-center gap-2">
+            <span class="grid size-8 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">{g.id}</span>
+            <span class="text-lg font-bold">{g.name}</span>
+          </p>
+          <p class="mt-1 text-xs text-muted-foreground">根拠: {g.basis}</p>
+          <ul class="mt-4 grid gap-2.5">
+            {g.items.map((it) => (
+              <li class="rounded-xl bg-muted/70 px-3 py-2.5 text-sm">
+                <span class="font-semibold">{it.e}</span>
+                <span class="mt-1.5 flex flex-wrap gap-1.5">
+                  {it.std.length ? (
+                    it.std.map((s) => (
+                      <span class="inline-flex items-center gap-1 rounded-md border border-ok/50 bg-ok-soft px-1.5 py-0.5 text-xs text-ok">
+                        <BadgeCheck class="size-3.5" aria-hidden="true" />
+                        {s}
+                      </span>
+                    ))
+                  ) : (
+                    <span class="inline-flex items-center gap-1 rounded-md border border-dashed px-1.5 py-0.5 text-xs text-muted-foreground">
+                      <Wrench class="size-3.5" aria-hidden="true" />
+                      標準なし。このシステムの規則
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))
+    }
+  </div>
+
+  <h2 class="mt-14 mb-5 text-xl font-bold">標準から一通りに決まらず、自分で決めた組み方は 2 つ</h2>
+  <ul class="grid gap-4 md:grid-cols-2">
+    {
+      OWN.map((o) => (
+        <li class="flex gap-4 rounded-2xl border-2 border-primary/40 bg-primary-soft p-5">
+          <Link2 class="size-7 shrink-0 text-primary" aria-hidden="true" />
+          <span>
+            <span class="block font-bold">{o.title}</span>
+            <span class="mt-1 block text-sm">{o.text}</span>
+          </span>
+        </li>
+      ))
+    }
+  </ul>
+</Slide>

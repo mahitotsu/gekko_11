@@ -1,0 +1,103 @@
+---
+import { ArrowRight } from "@lucide/astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 4-4 の割り当てを、証明と署名の種類ごとにまとめる。AI は「運ぶ者」の列にだけ出る
+const ROWS = [
+  { what: "ログインの証明（A）", issue: ["ログインサーバー"], carry: ["顧客のアプリ"], verify: ["営業 AI エージェント", "認可サーバー"] },
+  { what: "代理の証明（B、C）", issue: ["認可サーバー"], carry: ["営業 AI エージェント", "事務サービス"], verify: ["事務サービス", "保険会社のシステム"] },
+  { what: "案への署名", issue: ["保険会社のシステム"], carry: ["事務サービス", "営業 AI エージェント"], verify: ["顧客のアプリ", "保険会社のシステム"] },
+  { what: "承認の署名", issue: ["顧客（端末の鍵）"], carry: ["営業 AI エージェント", "事務サービス"], verify: ["保険会社のシステム"] },
+  { what: "監査の記録", issue: ["各サービス"], carry: ["記録の集約"], verify: ["監査サービス"] },
+];
+const AI = "営業 AI エージェント";
+const RULES = [
+  { title: "出す者は、AI と独立している", text: "証明と署名を出すのは、ログインサーバー、認可サーバー、保険会社のシステム、顧客だけである" },
+  { title: "運ぶ者は、中身を変えられない", text: "運ぶ途中で書き換えれば、確かめる者の検証で落ちる" },
+  { title: "確かめる者は、運ばれたものを自分で検証する", text: "運んだ者の言い分ではなく、出した者の鍵で確かめる" },
+];
+const chip = (name: string) =>
+  name === AI ? "border-agent/60 border-dashed bg-agent-soft text-agent" : "bg-card";
+---
+
+<Slide
+  path="architecture/2/"
+  lead="証明と署名ごとに、出す者、運ぶ者、確かめる者を決めます。営業 AI エージェントは、運ぶ者の列にだけ入り、証明も署名も出しません。受け取った証明を自分の受け口で確かめることはありますが、確かめた結果を、ほかの者に証明として渡すことはありません。"
+  evidence={[
+    { label: "architecture 4-4: 割り当て（出す者、運ぶ者、確かめる者と防御）", href: doc("architecture.md") },
+    { label: "glossary: この設計での整理（出す者、運ぶ者、確かめる者）", href: doc("glossary.md") },
+  ]}
+>
+  <ol class="grid gap-4 md:hidden" aria-label="証明と署名の種類ごとの、出す者、運ぶ者、確かめる者。">
+    {
+      ROWS.map((r) => (
+        <li class="rounded-2xl border-2 bg-card p-4">
+          <p class="font-bold">{r.what}</p>
+          {[
+            { role: "出す者", names: r.issue, style: "text-ok" },
+            { role: "運ぶ者", names: r.carry, style: "text-agent" },
+            { role: "確かめる者", names: r.verify, style: "text-primary" },
+          ].map((x) => (
+            <p class="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+              <span class:list={["w-20 shrink-0 text-xs font-bold", x.style]}>{x.role}</span>
+              {x.names.map((n) => (
+                <span class:list={["rounded-lg border px-2 py-0.5", chip(n)]}>{n}</span>
+              ))}
+            </p>
+          ))}
+        </li>
+      ))
+    }
+  </ol>
+  <div class="hidden md:block" role="region" aria-label="証明と署名の種類ごとに、出す者、運ぶ者、確かめる者を並べた表。営業 AI エージェントは、運ぶ者と、ログインの証明を受け取って確かめる者にだけ出て、出す者には出ない。" >
+    <table class="w-full border-separate border-spacing-2 text-sm">
+      <thead>
+        <tr>
+          <th class="w-44" />
+          <th class="rounded-xl bg-ok px-4 py-3 text-left font-bold text-primary-foreground dark:text-background">出す者</th>
+          <th class="w-6" aria-hidden="true" />
+          <th class="rounded-xl bg-agent px-4 py-3 text-left font-bold text-primary-foreground dark:text-background">運ぶ者</th>
+          <th class="w-6" aria-hidden="true" />
+          <th class="rounded-xl bg-primary px-4 py-3 text-left font-bold text-primary-foreground">確かめる者</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          ROWS.map((r) => (
+            <tr>
+              <th class="rounded-xl bg-muted px-4 py-3 text-left font-bold">{r.what}</th>
+              {[r.issue, null, r.carry, null, r.verify].map((cell) =>
+                cell === null ? (
+                  <td aria-hidden="true" class="text-muted-foreground">
+                    <ArrowRight class="size-5" />
+                  </td>
+                ) : (
+                  <td class="rounded-xl border-2 bg-card/60 px-3 py-2.5">
+                    <span class="flex flex-wrap gap-1.5">
+                      {cell.map((n) => (
+                        <span class:list={["rounded-lg border px-2 py-1", chip(n)]}>{n}</span>
+                      ))}
+                    </span>
+                  </td>
+                ),
+              )}
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <ul class="mt-12 grid gap-4 md:grid-cols-3">
+    {
+      RULES.map((r, i) => (
+        <li class="rounded-2xl border-2 bg-card p-5">
+          <span class="grid size-8 place-items-center rounded-full bg-primary-soft text-sm font-bold text-primary">{i + 1}</span>
+          <p class="mt-3 font-bold">{r.title}</p>
+          <p class="mt-1 text-sm text-muted-foreground">{r.text}</p>
+        </li>
+      ))
+    }
+  </ul>
+</Slide>

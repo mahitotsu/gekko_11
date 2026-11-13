@@ -1,0 +1,78 @@
+---
+import { ArrowRight, ClipboardCheck, Inbox, Signature } from "@lucide/astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 4-4 の E7、E8、E10〜E12 と、その防御とシナリオ
+const STAGES = [
+  {
+    icon: Signature,
+    when: "取引のとき",
+    name: "署名",
+    who: "保険会社のシステム、顧客のアプリ",
+    how: "案は保険会社の鍵で、承認は本人の端末の鍵で署名する。受け取る者が、出した者の公開鍵で確かめる",
+    finds: ["示していない案、規則の外の案", "署名のあとの書き換え", "意向確認と申込みのすり替え"],
+    ids: "G12〜G14、G22、G23、G30 ／ シナリオ 7〜9、24、26、27",
+  },
+  {
+    icon: Inbox,
+    when: "事後",
+    name: "直送と照合",
+    who: "顧客のアプリ",
+    how: "保険会社のシステムが、契約内容を AI を通さずに本人の端末へ送り、端末が手元の写しと照らす",
+    finds: ["承認と違う内容の記録", "送り先のすり替え", "身に覚えのない契約"],
+    ids: "G17〜G19 ／ シナリオ 10、19",
+  },
+  {
+    icon: ClipboardCheck,
+    when: "事後",
+    name: "突き合わせ",
+    who: "監査サービス",
+    how: "保険会社のシステムの記録を、ログインサーバー、認可サーバー、事務サービスの記録と、契約ごとに照らす",
+    finds: ["自己申告と第三者の記録の食い違い", "AI が会話で示した申込みと、実際の取り次ぎの違い", "決まった書き手でない記録"],
+    ids: "G25 ／ 補足のテスト（事後の照合と監査）、監査の画面",
+  },
+];
+---
+
+<Slide
+  path="architecture/4/"
+  lead="書き換えを見つける仕組みを、時点と、見つける者を変えて 3 段に置きます。取引のときは署名で、事後は AI を通らない直送と照合で、最後は第三者の記録との突き合わせで見つけます。3 段とも、見つける者は AI ではありません。"
+  evidence={[
+    { label: "architecture 4-4: 要素 E7、E8、E10〜E12 の割り当て", href: doc("architecture.md") },
+    { label: "scenarios 2 章: 防御の表", href: doc("scenarios.md") },
+    { label: "限界: 署名前の画面の信頼と、押す前の判断は確かめきれない（architecture 6 章）", href: doc("architecture.md") },
+  ]}
+>
+  <ol class="grid items-stretch gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr]" aria-label="書き換えを見つける 3 段。1 段目は取引のときの署名で、保険会社のシステムと顧客のアプリが確かめる。2 段目は事後の直送と照合で、顧客のアプリが確かめる。3 段目は事後の突き合わせで、監査サービスが確かめる。">
+    {
+      STAGES.map((s, i) => (
+        <>
+          {i > 0 && (
+            <li aria-hidden="true" class="flex items-center justify-center text-muted-foreground">
+              <ArrowRight class="size-7 rotate-90 lg:rotate-0" />
+            </li>
+          )}
+          <li class="flex flex-col rounded-3xl border-2 bg-card p-5">
+            <p class="flex items-center justify-between">
+              <span class="flex items-center gap-2 text-lg font-bold">
+                <span class="grid size-10 place-items-center rounded-xl bg-primary-soft text-primary"><s.icon class="size-6" /></span>
+                {s.name}
+              </span>
+              <span class="rounded-full bg-muted px-2.5 py-0.5 text-xs">{s.when}</span>
+            </p>
+            <p class="mt-3 text-xs font-semibold text-primary">確かめる者: {s.who}</p>
+            <p class="mt-2 text-sm">{s.how}</p>
+            <p class="mt-4 text-xs font-bold text-muted-foreground">見つけるもの</p>
+            <ul class="mt-1.5 grid flex-1 content-start gap-1.5 text-sm">
+              {s.finds.map((f) => (
+                <li class="rounded-lg border border-danger/40 bg-danger-soft px-2.5 py-1.5">{f}</li>
+              ))}
+            </ul>
+            <p class="mt-4 border-t pt-3 text-xs text-muted-foreground">{s.ids}</p>
+          </li>
+        </>
+      ))
+    }
+  </ol>
+</Slide>

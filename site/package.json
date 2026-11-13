@@ -1,0 +1,19 @@
+{
+  "name": "@gekko/site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@lucide/astro": "1.64.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "astro": "7.4.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3"
+  }
+}

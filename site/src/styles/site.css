@@ -1,0 +1,92 @@
+/* サイトの見た目（D-49）。色は意味ごとの値で決め、ライトとダークで値を替える。1 ページに 1 つの主張を置き、余白を広く取る。 */
+@import "tailwindcss/index.css";
+
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+:root {
+  color-scheme: light dark;
+  --background: oklch(0.99 0.003 250);
+  --foreground: oklch(0.22 0.025 260);
+  --card: oklch(1 0 0);
+  --muted: oklch(0.965 0.006 250);
+  --muted-foreground: oklch(0.5 0.02 260);
+  --border: oklch(0.9 0.01 250);
+  --primary: oklch(0.47 0.16 262);
+  --primary-soft: oklch(0.96 0.03 262);
+  --primary-foreground: oklch(0.99 0 0);
+  /* 確かめた、止まった */
+  --ok: oklch(0.55 0.14 155);
+  --ok-soft: oklch(0.965 0.035 155);
+  /* AI の言葉、AI がしたこと */
+  --agent: oklch(0.52 0.15 300);
+  --agent-soft: oklch(0.965 0.025 300);
+  /* 被害、食い違い */
+  --danger: oklch(0.56 0.2 27);
+  --danger-soft: oklch(0.965 0.03 27);
+  --warning: oklch(0.62 0.14 70);
+  --warning-soft: oklch(0.97 0.045 85);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.16 0.012 260);
+    --foreground: oklch(0.95 0.006 250);
+    --card: oklch(0.205 0.014 260);
+    --muted: oklch(0.25 0.014 260);
+    --muted-foreground: oklch(0.72 0.016 260);
+    --border: oklch(0.32 0.014 260);
+    --primary: oklch(0.72 0.13 262);
+    --primary-soft: oklch(0.27 0.05 262);
+    --primary-foreground: oklch(0.16 0.02 260);
+    --ok: oklch(0.76 0.14 155);
+    --ok-soft: oklch(0.26 0.045 155);
+    --agent: oklch(0.77 0.12 300);
+    --agent-soft: oklch(0.27 0.045 300);
+    --danger: oklch(0.72 0.16 25);
+    --danger-soft: oklch(0.27 0.055 25);
+    --warning: oklch(0.82 0.13 85);
+    --warning-soft: oklch(0.28 0.05 85);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-agent: var(--agent);
+  --color-agent-soft: var(--agent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --font-sans: system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+}
+
+@layer base {
+  html {
+    @apply bg-background text-foreground font-sans antialiased;
+    line-height: 1.75;
+    font-feature-settings: "palt";
+  }
+  * {
+    @apply border-border;
+  }
+  h1,
+  h2,
+  h3 {
+    line-break: strict;
+    word-break: auto-phrase;
+    text-wrap: balance;
+  }
+  a {
+    @apply underline-offset-4;
+  }
+}

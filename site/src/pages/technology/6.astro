@@ -1,0 +1,62 @@
+---
+import { Boxes, FlaskConical, Terminal } from "@lucide/astro";
+import Mark from "../../components/figures/Mark.astro";
+import Slide from "../../layouts/Slide.astro";
+import { REPO, counts, doc } from "../../data/facts";
+
+// scenarios 4 章の 4 種類のテストを、シナリオ 8（止める防御は G12 と G22）で示す
+const KINDS = [
+  { ns: "secure", gaps: "防御が全てある", result: "stopped" as const, label: "被害は出ない" },
+  { ns: "vulnerable", gaps: "防御が全てある", result: "stopped" as const, label: "被害は出ない" },
+  { ns: "vulnerable", gaps: "G12 だけを外す", result: "stopped" as const, label: "G22 が止める" },
+  { ns: "vulnerable", gaps: "G22 だけを外す", result: "stopped" as const, label: "G12 が止める" },
+  { ns: "vulnerable", gaps: "G12 と G22 を外す（最小の漏れ）", result: "harmed" as const, label: "被害が出る" },
+];
+---
+
+<Slide
+  path="technology/6/"
+  lead={`手元の k3d のクラスタに、このシステム（secure）と、防御を 1 つずつ外せる複製（vulnerable）を並べて置きます。${counts.scenarios} のシナリオごとに、防御を全て付けたときと、1 つずつ外したときと、最小の漏れを外したときを比べます。外すと被害が出て、戻すと止まることを、自動のテストで確かめます。`}
+  evidence={[
+    { label: "scenarios 4 章: 再現の方法と、4 種類のテスト", href: doc("scenarios.md") },
+    { label: "architecture 5 章: 品質管理とテスト方針", href: doc("architecture.md") },
+    { label: "README: 前提と動かし方", href: `${REPO}#readme` },
+  ]}
+>
+  <div class="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+    <section class="rounded-3xl border-2 bg-card p-5 sm:p-6" aria-label="シナリオ 8 の例。secure と、防御が全てある vulnerable では、被害は出ない。G12 か G22 の一方だけを外しても、もう一方が止める。両方を外すと、被害が出る。">
+      <p class="flex items-center gap-2 font-bold"><FlaskConical class="size-6 text-primary" aria-hidden="true" />例: シナリオ 8 のテスト（保険会社が示していない案を、画面に出して申し込ませる）</p>
+      <ol class="mt-4 grid gap-2">
+        {
+          KINDS.map((k) => (
+            <li class:list={["grid grid-cols-[6rem_1fr_auto] items-center gap-3 rounded-xl border-2 px-4 py-2.5 text-sm", k.result === "harmed" ? "border-danger/50 bg-danger-soft" : "bg-muted/40"]}>
+              <span class:list={["font-mono text-xs font-bold", k.ns === "secure" ? "text-ok" : "text-warning"]}>{k.ns}</span>
+              <span>{k.gaps}</span>
+              <Mark kind={k.result} label={k.label} />
+            </li>
+          ))
+        }
+      </ol>
+      <p class="mt-4 text-xs text-muted-foreground">同じ形のテストを、{counts.scenarios} のシナリオ全てで回す。防御は {counts.defenses} あり、テストのない防御も、防御の表に載せている</p>
+    </section>
+
+    <section class="flex flex-col gap-4">
+      <div class="rounded-3xl border-2 bg-card p-5">
+        <p class="flex items-center gap-2 font-bold"><Boxes class="size-6 text-primary" aria-hidden="true" />1 つのクラスタに 2 つの名前空間</p>
+        <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+          <p class="rounded-xl border-2 border-ok/50 bg-ok-soft px-3 py-2"><span class="block font-mono text-xs font-bold text-ok">secure</span>防御を外す受け口を、イメージに入れない</p>
+          <p class="rounded-xl border-2 border-warning/60 bg-warning-soft px-3 py-2"><span class="block font-mono text-xs font-bold">vulnerable</span>管理のポートで、防御の ID ごとに外す</p>
+        </div>
+      </div>
+      <div class="flex-1 rounded-3xl border-2 bg-card p-5">
+        <p class="flex items-center gap-2 font-bold"><Terminal class="size-6 text-primary" aria-hidden="true" />手元で動かすのに要るもの</p>
+        <ul class="mt-3 grid gap-2 text-sm">
+          <li>Docker、k3d、kubectl、Node.js 24。Java と Python は Docker の中で使う</li>
+          <li>全シナリオと画面のテストは、30 分ほどで終わる</li>
+          <li>Claude の認証情報がなければ、営業 AI エージェントは台本で動く</li>
+        </ul>
+        <a href={`${REPO}#readme`} class="mt-4 inline-block text-sm font-semibold text-primary">動かし方は README へ</a>
+      </div>
+    </section>
+  </div>
+</Slide>

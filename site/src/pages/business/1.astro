@@ -1,0 +1,49 @@
+---
+import { Bot, Building, FileText, User, UserRound } from "@lucide/astro";
+import Actor from "../../components/figures/Actor.astro";
+import Arrow from "../../components/figures/Arrow.astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+const ROWS = [
+  { label: "保険の窓口", agent: "営業員", icon: UserRound, tone: "neutral" as const, carry: "申込書と説明" },
+  { label: "AI を使うアプリ", agent: "AI エージェント", icon: Bot, tone: "agent" as const, carry: "依頼と説明" },
+];
+---
+
+<Slide
+  path="business/1/"
+  lead="顧客は代理人に頼み、代理人が会社へ運ぶ。会社の手元に届くのは、代理人が運んだものと、代理人の言い分だけです。だから、窓口が営業員の言い分を確かめてきた仕組みを、AI にもそのまま当てはめられます。"
+  evidence={[
+    { label: "purpose 1 章: AI に取引を任せる関係は、窓口と同じ形", href: doc("purpose.md") },
+    { label: "窓口のたとえ話の中身と根拠（公開の規則から組み立てた、たとえ話）", href: doc("knowledge/notes/window-story.md") },
+  ]}
+>
+  <div
+    class="grid gap-6"
+    aria-label="上の段は保険の窓口で、顧客が営業員に頼み、営業員が申込書と説明を保険会社へ運ぶ。下の段は AI を使うアプリで、顧客が AI エージェントに頼み、AI エージェントが依頼と説明を会社へ運ぶ。どちらも、会社に届くのは代理人が運んだものだけである。"
+  >
+    {
+      ROWS.map((r) => (
+        <div class="grid items-center gap-3 rounded-3xl bg-muted/60 p-4 sm:grid-cols-[8rem_1fr_7rem_1fr_7rem_1fr] sm:p-5">
+          <p class="font-bold sm:text-right">{r.label}</p>
+          <Actor label="顧客" sub="頼む"><User slot="icon" /></Actor>
+          <Arrow label="頼む" />
+          <Actor label={r.agent} sub="代理人" tone={r.tone}><r.icon slot="icon" /></Actor>
+          <Arrow label={r.carry} tone={r.tone === "agent" ? "agent" : "neutral"} />
+          <Actor label="会社" sub="届いたものだけを見る" tone="primary"><Building slot="icon" /></Actor>
+        </div>
+      ))
+    }
+    <div class="grid gap-3 sm:grid-cols-[8rem_1fr]">
+      <span />
+      <p class="flex items-start gap-3 rounded-2xl border-2 border-primary/40 bg-primary-soft px-5 py-4 text-primary">
+        <FileText class="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+        <span>
+          <strong>同じ形の関係なので、同じ確かめ方が効く。</strong>
+          <span class="block text-sm text-foreground/80">窓口は、営業員の言い分を、本人確認の書類、会社の名簿、本人に直接届ける書類と照らしてきた。</span>
+        </span>
+      </p>
+    </div>
+  </div>
+</Slide>

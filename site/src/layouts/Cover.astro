@@ -1,0 +1,37 @@
+---
+// 章の扉。章の問いと読み手と、ページの主張を順に並べた目次。ページがなければ「準備中」を出す。
+import { ArrowRight } from "@lucide/astro";
+import Base from "./Base.astro";
+import { chapters, type Chapter } from "../data/pages";
+
+interface Props {
+  id: Chapter["id"];
+}
+const chapter = chapters.find((c) => c.id === Astro.props.id)!;
+const base = import.meta.env.BASE_URL;
+---
+
+<Base title={`${chapter.name} | AI に任せる取引の確かめ方`} description={chapter.summary} current={chapter.id}>
+  <main class="mx-auto w-full max-w-6xl flex-1 px-6 pt-14 pb-20 sm:pt-24">
+    <p class="text-sm font-semibold text-primary">{chapter.question} — {chapter.reader}</p>
+    <h1 class="mt-2 text-4xl font-bold sm:text-5xl">{chapter.name}</h1>
+    <p class="mt-5 max-w-3xl text-lg text-muted-foreground sm:text-xl">{chapter.summary}</p>
+    {
+      chapter.pages.length ? (
+        <ol class="mt-14 grid gap-4">
+          {chapter.pages.map((p, i) => (
+            <li>
+              <a href={`${base}${p.path}`} class="group flex items-center gap-5 rounded-2xl border-2 bg-card px-6 py-5 no-underline transition-colors hover:border-primary">
+                <span class="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft font-bold text-primary">{i + 1}</span>
+                <span class="flex-1 text-lg font-semibold">{p.title}</span>
+                <ArrowRight class="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" aria-hidden="true" />
+              </a>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p class="mt-14 rounded-2xl border-2 border-dashed px-6 py-10 text-center text-muted-foreground">この章は準備中です。</p>
+      )
+    }
+  </main>
+</Base>

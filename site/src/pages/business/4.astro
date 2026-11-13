@@ -1,0 +1,79 @@
+---
+import { Bot, Building, ClipboardCheck, KeyRound, Route, SearchCheck } from "@lucide/astro";
+import Mark from "../../components/figures/Mark.astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// 監査サービスの突き合わせ（Reconciler の 4 つのまとまり）を、技術の言葉を使わずに示す
+const THIRD = [
+  { icon: KeyRound, name: "認可サーバーの記録", by: "取り次ぎを許す証明を出すたびに書く" },
+  { icon: Route, name: "事務サービスの記録", by: "申込みを取り次ぐたびに書く" },
+];
+const CHECKS = [
+  { name: "第三者の記録との比較", text: "会社の契約の記録を、認可サーバーと事務サービスの記録と照らす" },
+  { name: "同じ書き手の記録どうしの比較", text: "会社が申告した記録と、集めた契約の記録が一致するかを見る" },
+  { name: "AI の言い分との比較", text: "AI が会話で示した申込みと、事務サービスが実際に取り次いだ申込みを照らす" },
+  { name: "記録の書き手", text: "記録ごとに、決まった書き手が書いたかを確かめる。ほかの者が書いた記録は受け付けない" },
+];
+---
+
+<Slide
+  path="business/4/"
+  lead="AI が会話で何と言ったかは、AI 自身が書き換えうる記録です。監査は、それを根拠にせず、照らされる側に置きます。根拠にするのは、AI が書けない第三者の記録で、記録ごとに、書いたのが決まった書き手かも確かめます。"
+  evidence={[
+    { label: "architecture 1-2 の要件 12", href: doc("architecture.md") },
+    { label: "scenarios 2 章の防御 G25（監査の突き合わせ）", href: doc("scenarios.md") },
+    { label: "監査の画面で、契約ごとに比べた値と判定を見られる（README の動かし方）", href: "https://github.com/mahitotsu/gekko_11#readme" },
+  ]}
+>
+  <div
+    class="grid items-center gap-4 lg:grid-cols-[1fr_auto_1.1fr_auto_1fr]"
+    aria-label="左に照らす材料を置く。会社のシステムの契約の記録と、AI が書けない第三者の記録 2 つ（認可サーバーの記録、事務サービスの記録）が根拠になる。AI の会話の記録は、照らされる側に置く。中央の突き合わせで 4 つの比較をし、右に、食い違いなしか、食い違いありかを出す。"
+  >
+    <div class="flex flex-col gap-3">
+      <p class="text-sm font-bold text-ok">根拠にする記録</p>
+      <div class="flex items-center gap-3 rounded-2xl border-2 border-primary/40 bg-primary-soft p-4">
+        <Building class="size-7 shrink-0 text-primary" aria-hidden="true" />
+        <span><span class="block font-semibold">会社の契約の記録</span><span class="text-xs text-muted-foreground">会社のシステムが書く</span></span>
+      </div>
+      {
+        THIRD.map((t) => (
+          <div class="flex items-center gap-3 rounded-2xl border-2 border-ok/50 bg-ok-soft p-4">
+            <t.icon class="size-7 shrink-0 text-ok" aria-hidden="true" />
+            <span><span class="block font-semibold">{t.name}</span><span class="text-xs text-muted-foreground">{t.by}。AI は書けない</span></span>
+          </div>
+        ))
+      }
+      <p class="mt-3 text-sm font-bold text-agent">照らされる側</p>
+      <div class="flex items-center gap-3 rounded-2xl border-2 border-dashed border-agent/50 bg-agent-soft p-4">
+        <Bot class="size-7 shrink-0 text-agent" aria-hidden="true" />
+        <span><span class="block font-semibold">AI の会話の記録</span><span class="text-xs text-muted-foreground">AI の言い分。AI が書き換えうる</span></span>
+      </div>
+    </div>
+
+    <div class="hidden items-center text-3xl text-muted-foreground lg:flex" aria-hidden="true">→</div>
+
+    <div class="rounded-2xl border-2 bg-card p-5">
+      <p class="mb-4 flex items-center gap-2 font-bold"><SearchCheck class="size-6 text-primary" aria-hidden="true" />契約ごとの突き合わせ</p>
+      <ol class="grid gap-3">
+        {
+          CHECKS.map((c, i) => (
+            <li class="flex gap-3 text-sm">
+              <span class="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-xs font-bold">{i + 1}</span>
+              <span><span class="block font-semibold">{c.name}</span><span class="text-muted-foreground">{c.text}</span></span>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+
+    <div class="hidden items-center text-3xl text-muted-foreground lg:flex" aria-hidden="true">→</div>
+
+    <div class="flex flex-col justify-center gap-4 rounded-2xl border-2 bg-card p-5">
+      <p class="flex items-center gap-2 font-bold"><ClipboardCheck class="size-6 text-primary" aria-hidden="true" />監査の担当が見る結果</p>
+      <p class="flex flex-wrap items-center gap-2"><Mark kind="stopped" label="食い違いなし" /><span class="text-sm">全ての比較が一致した</span></p>
+      <p class="flex flex-wrap items-center gap-2"><Mark kind="harmed" label="食い違いあり" /><span class="text-sm">どの比較の、どの値が違うかを示す</span></p>
+      <p class="text-xs text-muted-foreground">確かめていないことも、画面に書いて示す（AI の説明の文が正しいか、など）</p>
+    </div>
+  </div>
+</Slide>

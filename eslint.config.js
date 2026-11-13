@@ -1,11 +1,12 @@
 // TypeScript の lint（D-47）。typescript-eslint の推奨の規則と、React の hooks の 2 つの規則だけを使い、整形は扱わない。
 // Keycloak のテーマのスクリプト（services/insurer-login/theme）は、製品のものを写して直したので、対象にしない。
+// サイトの .astro/ は、Astro が書き出す型なので、対象にしない。
 import js from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/**", "**/dist/**", "services/**"] },
+  { ignores: ["**/node_modules/**", "**/dist/**", "services/**", "site/.astro/**"] },
   js.configs.recommended,
   tseslint.configs.recommended,
   {

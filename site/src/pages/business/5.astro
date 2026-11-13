@@ -1,0 +1,111 @@
+---
+import { ArrowRight, MonitorCheck } from "@lucide/astro";
+import Mark from "../../components/figures/Mark.astro";
+import Slide from "../../layouts/Slide.astro";
+import { counts, doc } from "../../data/facts";
+
+// architecture 1-2 の要件を、3 つの確認 × 2 つの時点にまとめる（CLAUDE.md の共通の 2 軸）
+const ROWS = [
+  {
+    check: "誰の依頼か",
+    now: { text: "本人確認が済み、本人が依頼した申込みだけを受け付ける。盗んだ証明では、本人の情報を出さない", req: "1、2、3" },
+    after: { text: "契約内容を、AI を通さずに本人へ届け、身に覚えのない契約を見つけられるようにする", req: "11" },
+  },
+  {
+    check: "内容は依頼どおりか",
+    now: { text: "会社が示し、本人が承認した内容のとおりにだけ契約する。同じ申込みで二重に契約しない", req: "4〜7" },
+    after: { text: "届いた契約内容を、本人が手元の写しと照らせるようにする", req: "11" },
+  },
+  {
+    check: "権限の範囲内か",
+    now: { text: "登録され、任された範囲の中の AI から、許された経路で届いた申込みだけを受け付ける", req: "8、9、10" },
+    after: { text: "誰が何を承認し、誰が取り次いだかを、後から示せるように残す", req: "12" },
+  },
+];
+---
+
+<Slide
+  path="business/5/"
+  lead="確認を省いても、普段の申込みは同じように完了します。違いが出るのは、AI が乗っ取られたときのように、AI の言い分が偽りのときだけです。だから、作る人に任せず、発注の時点で、何を確かめるかを要件として求める必要があります。"
+  evidence={[
+    { label: `architecture 1-2 の要件 ${counts.requirements} 件と、合格の基準`, href: doc("architecture.md") },
+    { label: "purpose 5 章: 確かめを省いても、普段の操作は同じように動く", href: doc("purpose.md") },
+  ]}
+>
+  <ol class="grid gap-4 md:hidden" aria-label="要件。3 つの確認を、取引のときと事後に分けて、求めることを示す。">
+    {
+      ROWS.map((r, i) => (
+        <li class="rounded-2xl border-2 bg-card p-4">
+          <p class="text-xs font-medium text-muted-foreground">確認 {i + 1}</p>
+          <p class="text-lg font-bold">{r.check}</p>
+          {[
+            { when: "取引のとき", cell: r.now, style: "bg-primary text-primary-foreground" },
+            { when: "事後", cell: r.after, style: "bg-primary-soft text-primary" },
+          ].map((x) => (
+            <div class="mt-3">
+              <span class:list={["inline-block rounded-md px-2 py-0.5 text-xs font-bold", x.style]}>{x.when}</span>
+              <p class="mt-1 text-sm leading-relaxed">{x.cell.text}</p>
+              <p class="text-xs text-muted-foreground">要件 {x.cell.req}</p>
+            </div>
+          ))}
+        </li>
+      ))
+    }
+  </ol>
+  <div class="hidden md:block" role="region" aria-label="要件の表。3 つの確認を、取引のときと事後に分けて、求めることを示す。">
+    <table class="w-full border-separate border-spacing-2 text-sm">
+      <thead>
+        <tr>
+          <th class="w-40" />
+          <th class="rounded-xl bg-primary px-4 py-3 text-left text-base font-bold text-primary-foreground">取引のとき</th>
+          <th class="rounded-xl bg-primary-soft px-4 py-3 text-left text-base font-bold text-primary">事後</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          ROWS.map((r, i) => (
+            <tr>
+              <th class="rounded-xl bg-muted px-4 py-4 text-left align-top">
+                <span class="block text-xs font-medium text-muted-foreground">確認 {i + 1}</span>
+                <span class="text-base font-bold">{r.check}</span>
+              </th>
+              {[r.now, r.after].map((c) => (
+                <td class="rounded-xl border-2 bg-card px-4 py-4 align-top">
+                  <span class="block leading-relaxed">{c.text}</span>
+                  <span class="mt-2 block text-xs text-muted-foreground">要件 {c.req}</span>
+                </td>
+              ))}
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-14 grid items-center gap-6 rounded-3xl bg-muted/60 p-6 sm:p-8 lg:grid-cols-[1fr_auto_1fr]" aria-label="確認がある設計とない設計で、普段の申込みはどちらも同じように完了する。違いは、AI の言い分が偽りのときだけに出る。">
+    <div class="grid grid-cols-2 gap-3">
+      {
+        ["確認がある設計", "確認を省いた設計"].map((name) => (
+          <div class="rounded-2xl border-2 bg-card p-4 text-center">
+            <MonitorCheck class="mx-auto size-8 text-ok" aria-hidden="true" />
+            <p class="mt-2 text-xs text-muted-foreground">{name}</p>
+            <p class="mt-1 font-semibold">申込み完了</p>
+          </div>
+        ))
+      }
+      <p class="col-span-2 text-center text-sm font-semibold">普段は、見分けがつかない</p>
+    </div>
+    <ArrowRight class="mx-auto size-8 rotate-90 text-muted-foreground lg:rotate-0" aria-hidden="true" />
+    <div class="grid grid-cols-2 gap-3">
+      <div class="rounded-2xl border-2 border-ok/50 bg-ok-soft p-4 text-center">
+        <p class="text-xs text-muted-foreground">確認がある設計</p>
+        <p class="mt-2"><Mark kind="stopped" label="止まる" /></p>
+      </div>
+      <div class="rounded-2xl border-2 border-danger/50 bg-danger-soft p-4 text-center">
+        <p class="text-xs text-muted-foreground">確認を省いた設計</p>
+        <p class="mt-2"><Mark kind="harmed" label="被害" /></p>
+      </div>
+      <p class="col-span-2 text-center text-sm font-semibold">AI の言い分が偽りのときだけ、差が出る</p>
+    </div>
+  </div>
+</Slide>

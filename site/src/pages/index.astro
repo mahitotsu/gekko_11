@@ -1,0 +1,69 @@
+---
+// 入口。1 文の主張と、3 つの章への扉（CLAUDE.md の「site/」）。
+import { ArrowRight, Bot, Building, User } from "@lucide/astro";
+import Actor from "../components/figures/Actor.astro";
+import Base from "../layouts/Base.astro";
+import { chapters } from "../data/pages";
+import { counts } from "../data/facts";
+
+const base = import.meta.env.BASE_URL;
+const QUESTIONS = ["誰の依頼か", "内容は依頼どおりか", "権限の範囲内か"];
+---
+
+<Base
+  title="AI に任せる取引の確かめ方"
+  description="AI エージェントに取引を任せると、誰の依頼かの確認が、気づかないうちに抜ける。保険の窓口の例えと動く実装で、確かめ方を示す教材。"
+>
+  <main class="mx-auto w-full max-w-6xl flex-1 px-6 pt-14 pb-20 sm:pt-24">
+    <p class="mb-5 text-sm font-medium text-primary">AI エージェントが代理する取引の、確かめ方の教材</p>
+    <h1 class="max-w-4xl text-4xl leading-tight font-bold sm:text-6xl sm:leading-[1.2]">
+      AI に取引を任せると、「誰の依頼か」の確認が、気づかないうちに抜ける
+    </h1>
+    <p class="mt-7 max-w-3xl text-lg text-muted-foreground sm:text-xl">
+      会社に届くのは、AI が運んできた依頼だけです。保険の窓口が営業員の言い分を確かめてきたように、AI の言い分も、AI から独立した情報で確かめる必要があります。
+    </p>
+
+    <figure class="my-16 sm:my-24" aria-label="顧客が AI に頼み、AI が会社へ運ぶ。会社は、誰の依頼か、内容は依頼どおりか、権限の範囲内かを確かめる必要がある。">
+      <div class="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr]">
+        <Actor label="顧客" sub="AI に頼む"><User slot="icon" /></Actor>
+        <div class="flex justify-center text-muted-foreground"><ArrowRight class="size-8 rotate-90 sm:rotate-0" aria-hidden="true" /></div>
+        <Actor label="AI エージェント" sub="代わりに運ぶ" tone="agent"><Bot slot="icon" /></Actor>
+        <div class="flex justify-center text-muted-foreground"><ArrowRight class="size-8 rotate-90 sm:rotate-0" aria-hidden="true" /></div>
+        <Actor label="会社" sub="届いた依頼を受ける" tone="primary"><Building slot="icon" /></Actor>
+      </div>
+      <div class="mt-6 grid gap-3 sm:ml-[40%] sm:grid-cols-3">
+        {
+          QUESTIONS.map((q, i) => (
+            <p class="relative rounded-xl border-2 border-primary/40 bg-primary-soft px-4 py-3 text-center font-semibold text-primary">
+              <span class="mr-1.5 text-sm opacity-70">確認 {i + 1}</span>
+              {q}
+            </p>
+          ))
+        }
+      </div>
+    </figure>
+
+    <section aria-labelledby="doors">
+      <h2 id="doors" class="mb-6 text-2xl font-bold">立場ごとに、3 つの章から読めます</h2>
+      <div class="grid gap-5 md:grid-cols-3">
+        {
+          chapters.map((c) => (
+            <a href={`${base}${c.id}/`} class="group flex flex-col rounded-2xl border-2 bg-card p-6 no-underline transition-colors hover:border-primary">
+              <span class="text-sm font-semibold text-primary">{c.question}</span>
+              <span class="mt-1 text-2xl font-bold">{c.name}</span>
+              <span class="mt-1 text-sm text-muted-foreground">{c.reader}</span>
+              <span class="mt-4 flex-1">{c.summary}</span>
+              <span class="mt-5 flex items-center gap-1 text-sm font-semibold text-primary">
+                {c.pages.length ? `${c.pages.length} ページで読む` : "準備中"}
+                {c.pages.length > 0 && <ArrowRight class="size-4 transition-transform group-hover:translate-x-1" aria-hidden="true" />}
+              </span>
+            </a>
+          ))
+        }
+      </div>
+      <p class="mt-8 text-sm text-muted-foreground">
+        主張は全て、動く実装で確かめています。要件 {counts.requirements} 件を、{counts.scenarios} のシナリオで、確認を外すと被害が出て、戻すと止まることを確かめました。
+      </p>
+    </section>
+  </main>
+</Base>

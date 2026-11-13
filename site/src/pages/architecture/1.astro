@@ -1,0 +1,77 @@
+---
+import { Bot, Building, ClipboardCheck, Database, KeyRound, LogIn, Route, ShieldCheck, Smartphone } from "@lucide/astro";
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 2-1 の「持つもの」と、4-5 の鍵の持ち主を、サービスごとに並べる
+type Have = { kind: "key" | "record" | "none"; text: string };
+const GROUPS = [
+  {
+    name: "証明と署名を出す（AI と独立した者）",
+    tone: "border-ok/50 bg-ok-soft",
+    services: [
+      { icon: LogIn, name: "ログインサーバー", have: [{ kind: "key", text: "ログインの証明の鍵" }, { kind: "record", text: "本人確認と発行の記録" }] as Have[] },
+      { icon: ShieldCheck, name: "認可サーバー", have: [{ kind: "key", text: "代理の証明の鍵" }, { kind: "record", text: "交換と登録の記録" }] as Have[] },
+      { icon: Building, name: "保険会社のシステム", have: [{ kind: "key", text: "案の署名の鍵" }, { kind: "record", text: "契約と直送の記録" }] as Have[] },
+      { icon: Smartphone, name: "顧客の端末", have: [{ kind: "key", text: "本人の鍵（端末から出ない）" }] as Have[] },
+    ],
+  },
+  {
+    name: "運ぶ",
+    tone: "border-agent/50 border-dashed bg-agent-soft",
+    services: [
+      { icon: Bot, name: "営業 AI エージェント", have: [{ kind: "none", text: "署名の鍵なし" }, { kind: "none", text: "記録なし（会話は書き出すだけ）" }] as Have[], focus: true },
+      { icon: Route, name: "事務サービス", have: [{ kind: "none", text: "署名の鍵なし" }, { kind: "record", text: "取り次ぎの記録" }] as Have[] },
+    ],
+  },
+  {
+    name: "事後に確かめる",
+    tone: "border-primary/40 bg-primary-soft",
+    services: [{ icon: ClipboardCheck, name: "監査サービス", have: [{ kind: "none", text: "記録を持たず、読むたびに突き合わせる" }] as Have[] }],
+  },
+];
+---
+
+<Slide
+  path="architecture/1/"
+  lead="営業 AI エージェントは、顧客と保険会社の間で案と申込みを運ぶだけで、どの署名の鍵も、契約の記録も持ちません。そのため、保険会社の署名のある案も、顧客の署名も作れません。AI が出せるのは言葉だけで、言葉は、ほかの者が出した証明と署名に照らされます。"
+  evidence={[
+    { label: "architecture 2-1: 7 つのサービスと、持つもの", href: doc("architecture.md") },
+    { label: "architecture 4-5: 鍵は 6 種類で、AI と事務サービスは署名の鍵を持たない", href: doc("architecture.md") },
+  ]}
+>
+  <div class="grid gap-5 lg:grid-cols-[2fr_1.2fr_1fr]" aria-label="7 つのサービスを 3 つに分けた図。証明と署名を出すのは、ログインサーバー、認可サーバー、保険会社のシステム、顧客の端末で、それぞれ鍵と記録を持つ。運ぶのは営業 AI エージェントと事務サービスで、どちらも署名の鍵を持たず、営業 AI エージェントは記録も持たない。監査サービスは事後に確かめ、記録を持たずに読むたびに突き合わせる。">
+    {
+      GROUPS.map((g) => (
+        <section class:list={["rounded-3xl border-2 p-4 sm:p-5", g.tone]}>
+          <h2 class="mb-4 text-sm font-bold">{g.name}</h2>
+          <ul class:list={["grid gap-3", g.services.length > 2 && "sm:grid-cols-2"]}>
+            {g.services.map((s) => (
+              <li class:list={["rounded-2xl border-2 bg-card p-4", "focus" in s && s.focus && "border-agent ring-4 ring-agent/20"]}>
+                <p class="flex items-center gap-2 font-bold">
+                  <s.icon class="size-6 shrink-0" aria-hidden="true" />
+                  {s.name}
+                </p>
+                <ul class="mt-3 grid gap-1.5 text-sm">
+                  {s.have.map((h) => (
+                    <li class:list={["flex items-start gap-2", h.kind === "none" && "text-agent"]}>
+                      {h.kind === "key" && <KeyRound class="mt-0.5 size-4 shrink-0 text-ok" aria-hidden="true" />}
+                      {h.kind === "record" && <Database class="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />}
+                      {h.kind === "none" && <span aria-hidden="true" class="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-current text-[10px] leading-none">×</span>}
+                      <span>{h.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))
+    }
+  </div>
+  <p class="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+    <span class="flex items-center gap-1.5"><KeyRound class="size-4 text-ok" aria-hidden="true" />鍵を持つ</span>
+    <span class="flex items-center gap-1.5"><Database class="size-4 text-primary" aria-hidden="true" />記録を持つ</span>
+    <span class="flex items-center gap-1.5"><span aria-hidden="true" class="grid size-4 place-items-center rounded-full border border-agent text-[10px] text-agent">×</span>持たない</span>
+  </p>
+</Slide>

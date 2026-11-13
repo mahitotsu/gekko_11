@@ -1,0 +1,69 @@
+---
+import Slide from "../../layouts/Slide.astro";
+import { doc } from "../../data/facts";
+
+// architecture 4-3 の標準と、scenarios 2 章の防御、3 章のシナリオの対応
+const ROWS = [
+  { tech: "OAuth 2.0（認可コードと PKCE）、OpenID Connect", spec: "PKCE（S256）、ID トークン", gap: "奪った認可コードや偽の証明で、本人としてログインする", g: "G20、G21、G28、G31", s: "25" },
+  { tech: "OAuth 2.0 Token Exchange", spec: "RFC 8693", gap: "AI が自分の資格で呼ぶ。途中で本人や経由が消える", g: "G2、G3d〜G3f、G9", s: "1、13、16、20、21" },
+  { tech: "JWT のアクセストークンの確かめ", spec: "RFC 9068、RFC 8725、RFC 8707", gap: "偽造、期限切れ、別の宛先や種類のトークンを使う", g: "G1、G3a〜G3c、G5〜G8、G29", s: "2〜5、14〜17" },
+  { tech: "DPoP", spec: "RFC 9449", gap: "盗んだトークン A を、鍵なしで使う", g: "G26", s: "22" },
+  { tech: "証明書に結んだトークン、SPIFFE（SPIRE）", spec: "RFC 8705、SPIFFE", gap: "盗んだトークン B を、別のサービスの身元で使う。名乗りだけで相手を信じる", g: "G26、G27", s: "21、23" },
+  { tech: "Rich Authorization Requests", spec: "RFC 9396", gap: "任された商品や上限を超えて申し込む", g: "G3e、G15", s: "12、13" },
+  { tech: "Token Introspection", spec: "RFC 7662", gap: "登録の外れた AI エージェントが取り次ぐ", g: "G10", s: "18" },
+  { tech: "JWS の案の署名", spec: "RFC 7515", gap: "保険会社が示していない案を混ぜる", g: "G12、G22", s: "8" },
+  { tech: "passkey（WebAuthn）、JCS", spec: "WebAuthn、RFC 8785", gap: "署名のあとの書き換えと、段の間のすり替え", g: "G13、G14", s: "7、9" },
+  { tech: "AG-UI の画面側の道具", spec: "AG-UI 1.0", gap: "AI の説明の文で、違う案を選んだように見せる", g: "G23", s: "24" },
+];
+---
+
+<Slide
+  path="technology/1/"
+  lead="採った標準と部品は、それぞれ塞ぐ抜けが決まっています。抜けは、確認を外した複製で被害が出る手口として、シナリオで再現してあります。防御の ID からは、確かめ方と外し方を、シナリオの番号からは、再現のテストを辿れます。"
+  evidence={[
+    { label: "architecture 4-3: 要素ごとの標準と、選んだ理由", href: doc("architecture.md") },
+    { label: "scenarios 2 章: 防御の表、3 章: シナリオ一覧", href: doc("scenarios.md") },
+  ]}
+>
+  <ol class="grid gap-3 md:hidden" aria-label="標準と部品ごとに、塞ぐ抜け、防御、シナリオを示す。">
+    {
+      ROWS.map((r) => (
+        <li class="rounded-2xl border-2 bg-card p-4">
+          <p class="font-bold">{r.tech}</p>
+          <p class="text-xs text-muted-foreground">{r.spec}</p>
+          <p class="mt-2 rounded-lg bg-danger-soft px-3 py-2 text-sm">{r.gap}</p>
+          <p class="mt-2 text-xs text-muted-foreground">防御 {r.g} ／ シナリオ {r.s}</p>
+        </li>
+      ))
+    }
+  </ol>
+  <div class="hidden md:block" role="region" aria-label="標準と部品ごとに、塞ぐ抜け、防御、シナリオを並べた表。">
+    <table class="w-full border-separate border-spacing-y-2 text-sm">
+      <thead>
+        <tr class="text-left text-xs text-muted-foreground">
+          <th class="px-4 font-semibold">標準と部品</th>
+          <th class="px-4 font-semibold">塞ぐ抜け（手口）</th>
+          <th class="px-4 font-semibold">防御</th>
+          <th class="px-4 font-semibold">シナリオ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          ROWS.map((r) => (
+            <tr class="bg-card">
+              <td class="rounded-l-xl border-y-2 border-l-2 px-4 py-3">
+                <span class="block font-bold">{r.tech}</span>
+                <span class="text-xs text-muted-foreground">{r.spec}</span>
+              </td>
+              <td class="border-y-2 px-4 py-3">
+                <span class="inline-block rounded-lg bg-danger-soft px-2.5 py-1">{r.gap}</span>
+              </td>
+              <td class="border-y-2 px-4 py-3 whitespace-nowrap text-ok">{r.g}</td>
+              <td class="rounded-r-xl border-y-2 border-r-2 px-4 py-3 whitespace-nowrap text-muted-foreground">{r.s}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+</Slide>
