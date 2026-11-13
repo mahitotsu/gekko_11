@@ -19,9 +19,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            site/package-lock.json
       - uses: actions/cache@v4
         with:
           path: |
@@ -32,10 +29,21 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run lint:text
-      # 価値を伝えるサイト（site/）は、依存を分けた別のパッケージである（D-49）
+
+  # 価値を伝えるサイト（site/）は、依存を分けた別のパッケージである（D-49）。
+  # ルートの node_modules に頼っていないかも確かめるため、ルートを入れない別のジョブで回す
+  site:
+    runs-on: ubuntu-26.04
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
       - run: npm ci
-        working-directory: site
       - run: npm test
-        working-directory: site
       - run: npm run build
-        working-directory: site
